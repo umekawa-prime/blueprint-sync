@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  overflow: hidden;
+  background: #0f172a;
+  color: #e2e8f0;
+  font-family:
+    "IBM Plex Sans JP",
+    "Noto Sans JP",
+    ui-sans-serif,
+    system-ui,
+    sans-serif;
+}
+
+#app,
+body > div {
+  height: 100%;
+}
+
+button,
+input,
+select {
+  font: inherit;
+}
