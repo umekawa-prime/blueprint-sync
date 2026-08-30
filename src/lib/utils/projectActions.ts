@@ -195,6 +195,10 @@ export async function importPdfIntoProject(): Promise<void> {
   if (!file) {
     return;
   }
+  if (!isProjectPdfBasename(file.name)) {
+    projectStore.error = "PDFファイル名が不正です";
+    return;
+  }
   await persistCurrentAnnotations();
   let name = file.name;
   try {
@@ -218,6 +222,7 @@ export async function importPdfIntoProject(): Promise<void> {
 }
 
 export async function refreshProjectPdfs(): Promise<void> {
+  requireTauri();
   if (!projectStore.folder) {
     return;
   }

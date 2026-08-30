@@ -222,6 +222,23 @@ describe("projectActions", () => {
     });
   });
 
+  it("rejects invalid pdf names before importing into a project", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: ".hidden.pdf",
+      path: "/downloads/.hidden.pdf",
+      bytes: new Uint8Array([9]),
+    });
+
+    await importPdfIntoProject();
+
+    expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
+    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockListProjectPdfs).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+  });
+
   it("surfaces duplicate-name import errors instead of swallowing them", async () => {
     projectStore.folder = "/projects/a";
     mockOpenPdfFromDisk.mockResolvedValue({
@@ -296,6 +313,17 @@ describe("projectActions", () => {
     await refreshProjectPdfs();
 
     expect(projectStore.pdfs).toEqual(["A.pdf", "B.pdf"]);
+  });
+
+  it("requires tauri runtime to refresh project pdfs", async () => {
+    mockIsTauriRuntime.mockReturnValue(false);
+    projectStore.folder = "/projects/a";
+
+    await expect(refreshProjectPdfs()).rejects.toThrow(
+      "プロジェクト機能は Tauri アプリ上でのみ利用できます",
+    );
+
+    expect(mockListProjectPdfs).not.toHaveBeenCalled();
   });
 
   it("closes a project after attempting to persist annotations", async () => {
