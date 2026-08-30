@@ -73,6 +73,7 @@ import {
   createProject,
   importPdfIntoProject,
   loadRecentsIntoStore,
+  openProjectLink,
   openProject,
   openProjectPdf,
   persistCurrentAnnotations,
@@ -121,6 +122,19 @@ describe("projectActions", () => {
 
     expect(projectStore.recents).toEqual([sampleRecent("/keep", "keep")]);
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([sampleRecent("/keep", "keep")]);
+  });
+
+  it("loads recents, caps them at 8, and persists the trimmed list", async () => {
+    const items = Array.from({ length: 10 }, (_, index) =>
+      sampleRecent(`/projects/${index}`, `project-${index}`),
+    );
+    mockLoadRecentProjects.mockResolvedValue(items);
+    mockPathExists.mockResolvedValue(true);
+
+    await loadRecentsIntoStore();
+
+    expect(projectStore.recents).toEqual(items.slice(0, 8));
+    expect(mockSaveRecentProjects).toHaveBeenCalledWith(items.slice(0, 8));
   });
 
   it("creates a project and remembers it", async () => {
@@ -251,6 +265,28 @@ describe("projectActions", () => {
       "/projects/a",
       expect.objectContaining({ links: [] }),
     );
+  });
+
+  it("opens project links only in tauri runtime", async () => {
+    mockIsTauriRuntime.mockReturnValue(false);
+
+    await expect(openProjectLink("https://example.com/share")).rejects.toThrow(
+      "プロジェクト機能は Tauri アプリ上でのみ利用できます",
+    );
+
+    expect(mockOpenUrl).not.toHaveBeenCalled();
+  });
+
+  it("rejects invalid project pdf names before reading files", async () => {
+    projectStore.folder = "/projects/a";
+
+    await openProjectPdf(".hidden.pdf");
+
+    expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
+    expect(mockReadBinaryFile).not.toHaveBeenCalled();
+    expect(mockReadAnnotationFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
   });
 
   it("refreshes the project pdf list", async () => {

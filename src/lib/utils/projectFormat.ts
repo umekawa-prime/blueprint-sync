@@ -79,14 +79,19 @@ export function createProjectMeta(name: string, now = new Date()): ProjectMeta {
   };
 }
 
+export function isProjectPdfBasename(pdfName: string): boolean {
+  return Boolean(
+    pdfName &&
+      pdfName.toLowerCase().endsWith(".pdf") &&
+      !pdfName.startsWith(".") &&
+      !pdfName.includes("/") &&
+      !pdfName.includes("\\") &&
+      !pdfName.includes(".."),
+  );
+}
+
 export function annotationFileName(pdfName: string): string {
-  if (
-    !pdfName ||
-    pdfName.includes("/") ||
-    pdfName.includes("\\") ||
-    pdfName.includes("..") ||
-    !pdfName.toLowerCase().endsWith(".pdf")
-  ) {
+  if (!isProjectPdfBasename(pdfName)) {
     throw new Error("Invalid annotation file name");
   }
   return `${pdfName}.json`;
@@ -94,13 +99,7 @@ export function annotationFileName(pdfName: string): string {
 
 export function listPdfFileNames(names: string[]): string[] {
   return names
-    .filter(
-      (name) =>
-        name.toLowerCase().endsWith(".pdf") &&
-        !name.startsWith(".") &&
-        !name.includes("/") &&
-        !name.includes("\\"),
-    )
+    .filter((name) => isProjectPdfBasename(name))
     .sort((a, b) => a.localeCompare(b, "ja"));
 }
 

@@ -5,6 +5,7 @@ import {
   displayLinkTitle,
   dropRecent,
   isAllowedLinkUrl,
+  isProjectPdfBasename,
   listPdfFileNames,
   parseProjectJson,
   rememberRecent,
@@ -65,10 +66,20 @@ describe("annotationFileName", () => {
     expect(annotationFileName("1F平面図.pdf")).toBe("1F平面図.pdf.json");
   });
 
-  it("rejects path separators and parent segments", () => {
+  it("rejects hidden names, path separators, and parent segments", () => {
+    expect(() => annotationFileName(".hidden.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("../x.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("a/b.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("a\\b.pdf")).toThrow(/invalid/i);
+  });
+});
+
+describe("isProjectPdfBasename", () => {
+  it("accepts only folder-root pdf basenames", () => {
+    expect(isProjectPdfBasename("A.pdf")).toBe(true);
+    expect(isProjectPdfBasename(".hidden.pdf")).toBe(false);
+    expect(isProjectPdfBasename("nested/A.pdf")).toBe(false);
+    expect(isProjectPdfBasename("A.txt")).toBe(false);
   });
 });
 

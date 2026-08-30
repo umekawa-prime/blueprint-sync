@@ -7,6 +7,7 @@ import {
   createProjectMeta,
   dropRecent,
   isAllowedLinkUrl,
+  isProjectPdfBasename,
   rememberRecent,
 } from "./projectFormat";
 import {
@@ -54,9 +55,10 @@ export async function loadRecentsIntoStore(): Promise<void> {
       kept.push(item);
     }
   }
-  projectStore.recents = kept;
-  if (kept.length !== items.length) {
-    await saveRecentProjects(kept);
+  const next = kept.slice(0, 8);
+  projectStore.recents = next;
+  if (next.length !== items.length) {
+    await saveRecentProjects(next);
   }
 }
 
@@ -146,6 +148,7 @@ export async function removeProjectLink(id: string): Promise<void> {
 }
 
 export async function openProjectLink(url: string): Promise<void> {
+  requireTauri();
   if (!isAllowedLinkUrl(url)) {
     return;
   }
@@ -170,6 +173,10 @@ export async function persistCurrentAnnotations(): Promise<void> {
 
 export async function openProjectPdf(fileName: string): Promise<void> {
   if (!projectStore.folder) {
+    return;
+  }
+  if (!isProjectPdfBasename(fileName)) {
+    projectStore.error = "PDFファイル名が不正です";
     return;
   }
   await persistCurrentAnnotations();
