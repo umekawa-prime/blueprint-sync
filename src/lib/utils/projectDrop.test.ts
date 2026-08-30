@@ -9,6 +9,7 @@ const {
   mockOpenProjectPdf,
   mockCopyFileIntoFolder,
   mockListProjectPdfs,
+  mockPathExists,
 } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
   mockReadFileAsBytes: vi.fn(),
@@ -17,6 +18,7 @@ const {
   mockOpenProjectPdf: vi.fn(),
   mockCopyFileIntoFolder: vi.fn(),
   mockListProjectPdfs: vi.fn(),
+  mockPathExists: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -46,6 +48,7 @@ vi.mock("./projectIo", async () => {
     ...actual,
     copyFileIntoFolder: mockCopyFileIntoFolder,
     listProjectPdfs: mockListProjectPdfs,
+    pathExists: mockPathExists,
   };
 });
 
@@ -64,6 +67,7 @@ describe("projectDrop", () => {
     projectStore.folder = "/projects/a";
     mockReadFileAsBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    mockPathExists.mockResolvedValue(false);
   });
 
   it("writes browser-dropped PDFs into the current project and opens them", async () => {
@@ -109,6 +113,45 @@ describe("projectDrop", () => {
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+  });
+
+  it("rejects browser drops with invalid pdf basenames before writing", async () => {
+    const dotted = new File([new Uint8Array([1])], "A..pdf", { type: "application/pdf" });
+    await expect(importBrowserPdfIntoProject(dotted)).resolves.toBe(false);
+    expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+
+    projectStore.error = "";
+    const traversal = new File([new Uint8Array([1])], "../x.pdf", { type: "application/pdf" });
+    await expect(importBrowserPdfIntoProject(traversal)).resolves.toBe(false);
+    expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("rejects tauri drops with invalid pdf basenames before copying", async () => {
+    await expect(importTauriPdfIntoProject("/downloads/A..pdf")).resolves.toBe(false);
+
+    expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
+    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+  });
+
+  it("rejects browser drops that would overwrite an existing pdf", async () => {
+    mockPathExists.mockResolvedValue(true);
+    const file = new File([new Uint8Array([1, 2, 3])], "A.pdf", {
+      type: "application/pdf",
+    });
+
+    await expect(importBrowserPdfIntoProject(file)).resolves.toBe(false);
+
+    expect(projectStore.error).toBe("同じ名前のPDFが既にあります");
+    expect(mockPathExists).toHaveBeenCalledWith("/projects/a/A.pdf");
+    expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
 });
