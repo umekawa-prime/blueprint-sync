@@ -26,6 +26,26 @@ fn is_visible_pdf_name(name: &str) -> bool {
     lower.ends_with(".pdf") && !name.starts_with('.')
 }
 
+enum CopyIntoFolderDecision {
+    SkipSamePath,
+    NameCollision,
+    Proceed,
+}
+
+fn decide_copy_into_folder(
+    source_canon: &Path,
+    dest_canon: &Path,
+    dest_exists: bool,
+) -> CopyIntoFolderDecision {
+    if source_canon == dest_canon {
+        CopyIntoFolderDecision::SkipSamePath
+    } else if dest_exists {
+        CopyIntoFolderDecision::NameCollision
+    } else {
+        CopyIntoFolderDecision::Proceed
+    }
+}
+
 #[tauri::command]
 async fn start_sync_server(
     state: State<'_, Arc<SyncServer>>,
@@ -117,11 +137,18 @@ fn copy_file_into_folder(source: String, folder: String) -> Result<String, Strin
     let dest = Path::new(&folder).join(name);
     let source_canon = source_path.canonicalize().unwrap_or(source_path.clone());
     let dest_canon = dest.canonicalize().unwrap_or(dest.clone());
-    if source_canon == dest_canon {
-        return Ok(dest.to_string_lossy().into_owned());
+    let dest_exists = dest.exists();
+
+    match decide_copy_into_folder(&source_canon, &dest_canon, dest_exists) {
+        CopyIntoFolderDecision::SkipSamePath => Ok(dest.to_string_lossy().into_owned()),
+        CopyIntoFolderDecision::NameCollision => {
+            Err("同じ名前のPDFが既にあります".to_string())
+        }
+        CopyIntoFolderDecision::Proceed => {
+            std::fs::copy(&source_path, &dest).map_err(|error| error.to_string())?;
+            Ok(dest.to_string_lossy().into_owned())
+        }
     }
-    std::fs::copy(&source_path, &dest).map_err(|error| error.to_string())?;
-    Ok(dest.to_string_lossy().into_owned())
 }
 
 fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -202,7 +229,11 @@ pub fn run() {
 
 #[cfg(test)]
 mod tests {
-    use super::is_visible_pdf_name;
+    use std::path::Path;
+
+    use super::{
+        decide_copy_into_folder, is_visible_pdf_name, CopyIntoFolderDecision,
+    };
 
     #[test]
     fn accepts_pdf_and_rejects_hidden_and_other_types() {
@@ -211,5 +242,34 @@ mod tests {
         assert!(!is_visible_pdf_name(".hidden.pdf"));
         assert!(!is_visible_pdf_name("notes.txt"));
         assert!(!is_visible_pdf_name(".blueprint-sync"));
+    }
+
+    #[test]
+    fn copy_decision_skips_same_canonical_path() {
+        let path = Path::new("/tmp/same.pdf");
+        assert!(matches!(
+            decide_copy_into_folder(path, path, true),
+            CopyIntoFolderDecision::SkipSamePath
+        ));
+    }
+
+    #[test]
+    fn copy_decision_errors_when_dest_exists_and_paths_differ() {
+        let source = Path::new("/tmp/a/source.pdf");
+        let dest = Path::new("/tmp/a/dest.pdf");
+        assert!(matches!(
+            decide_copy_into_folder(source, dest, true),
+            CopyIntoFolderDecision::NameCollision
+        ));
+    }
+
+    #[test]
+    fn copy_decision_proceeds_when_dest_missing() {
+        let source = Path::new("/tmp/a/source.pdf");
+        let dest = Path::new("/tmp/a/dest.pdf");
+        assert!(matches!(
+            decide_copy_into_folder(source, dest, false),
+            CopyIntoFolderDecision::Proceed
+        ));
     }
 }
