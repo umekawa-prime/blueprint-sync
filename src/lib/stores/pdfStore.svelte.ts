@@ -1,5 +1,9 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
+function destroyDocument(document: PDFDocumentProxy | null) {
+  (document as PDFDocumentProxy & { destroy?: () => void } | null)?.destroy?.();
+}
+
 class PdfStore {
   name = $state("未読み込み");
   bytes = $state<Uint8Array | null>(null);
@@ -19,11 +23,21 @@ class PdfStore {
 
   async load(name: string, bytes: Uint8Array) {
     const { loadPdfDocument } = await import("$lib/utils/pdfRenderer");
-    this.document?.destroy();
+    destroyDocument(this.document);
     this.name = name;
     this.bytes = bytes;
     this.document = await loadPdfDocument(bytes);
     this.pageCount = this.document.numPages;
+    this.pageIndex = 0;
+    this.status = "";
+  }
+
+  clear() {
+    destroyDocument(this.document);
+    this.name = "未読み込み";
+    this.bytes = null;
+    this.document = null;
+    this.pageCount = 0;
     this.pageIndex = 0;
     this.status = "";
   }
