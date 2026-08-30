@@ -22,9 +22,11 @@ export async function exportCurrentPdfToDisk(): Promise<void> {
     suggestedExportName(pdfStore.name),
     projectStore.folder || undefined,
   );
-  await persistCurrentAnnotations();
-  pdfStore.status = saved ? "PDFを保存しました" : "保存をキャンセルしました";
-  if (saved) {
+  const persisted = await persistCurrentAnnotations();
+  if (saved && persisted) {
+    pdfStore.status = "PDFを保存しました";
     annotationStore.dirty = false;
+  } else if (!saved && persisted) {
+    pdfStore.status = "保存をキャンセルしました";
   }
 }

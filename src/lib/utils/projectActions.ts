@@ -156,9 +156,9 @@ export async function openProjectLink(url: string): Promise<void> {
   await openUrl(url);
 }
 
-export async function persistCurrentAnnotations(): Promise<void> {
+export async function persistCurrentAnnotations(): Promise<boolean> {
   if (!projectStore.folder || !projectStore.currentPdf) {
-    return;
+    return true;
   }
   try {
     await writeAnnotationFile(
@@ -166,8 +166,10 @@ export async function persistCurrentAnnotations(): Promise<void> {
       projectStore.currentPdf,
       annotationStore.exportByPage(),
     );
+    return true;
   } catch (error) {
     pdfStore.status = error instanceof Error ? error.message : "注釈の保存に失敗しました";
+    return false;
   }
 }
 

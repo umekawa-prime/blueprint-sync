@@ -68,6 +68,7 @@ describe("toolbarActions", () => {
 
   it("saves exported PDFs into the project folder and persists annotations", async () => {
     mockSavePdfToDisk.mockResolvedValue(true);
+    mockPersistCurrentAnnotations.mockResolvedValue(true);
 
     await exportCurrentPdfToDisk();
 
@@ -83,11 +84,40 @@ describe("toolbarActions", () => {
 
   it("keeps dirty annotations when PDF export is canceled", async () => {
     mockSavePdfToDisk.mockResolvedValue(false);
+    mockPersistCurrentAnnotations.mockResolvedValue(true);
 
     await exportCurrentPdfToDisk();
 
     expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
     expect(annotationStore.dirty).toBe(true);
     expect(pdfStore.status).toBe("保存をキャンセルしました");
+  });
+
+  it("keeps dirty annotations and persist error when export succeeds but persist fails", async () => {
+    mockSavePdfToDisk.mockResolvedValue(true);
+    mockPersistCurrentAnnotations.mockImplementation(async () => {
+      pdfStore.status = "write failed";
+      return false;
+    });
+
+    await exportCurrentPdfToDisk();
+
+    expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
+    expect(annotationStore.dirty).toBe(true);
+    expect(pdfStore.status).toBe("write failed");
+  });
+
+  it("keeps persist error when export is canceled and persist fails", async () => {
+    mockSavePdfToDisk.mockResolvedValue(false);
+    mockPersistCurrentAnnotations.mockImplementation(async () => {
+      pdfStore.status = "write failed";
+      return false;
+    });
+
+    await exportCurrentPdfToDisk();
+
+    expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
+    expect(annotationStore.dirty).toBe(true);
+    expect(pdfStore.status).toBe("write failed");
   });
 });

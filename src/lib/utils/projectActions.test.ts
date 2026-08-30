@@ -195,12 +195,37 @@ describe("projectActions", () => {
     annotationStore.importByPage({ 0: { a: { id: "a", type: "path" } } });
     mockWriteAnnotationFile.mockRejectedValue(new Error("write failed"));
 
-    await persistCurrentAnnotations();
+    const persisted = await persistCurrentAnnotations();
 
+    expect(persisted).toBe(false);
     expect(mockWriteAnnotationFile).toHaveBeenCalledWith("/projects/a", "A.pdf", {
       0: { a: { id: "a", type: "path" } },
     });
     expect(pdfStore.status).toBe("write failed");
+  });
+
+  it("returns true when annotations are persisted successfully", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "A.pdf";
+    annotationStore.importByPage({ 0: { a: { id: "a", type: "path" } } });
+    mockWriteAnnotationFile.mockResolvedValue(undefined);
+
+    const persisted = await persistCurrentAnnotations();
+
+    expect(persisted).toBe(true);
+    expect(mockWriteAnnotationFile).toHaveBeenCalledWith("/projects/a", "A.pdf", {
+      0: { a: { id: "a", type: "path" } },
+    });
+  });
+
+  it("returns true when there is nothing to persist", async () => {
+    projectStore.folder = "";
+    projectStore.currentPdf = "";
+
+    const persisted = await persistCurrentAnnotations();
+
+    expect(persisted).toBe(true);
+    expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
   });
 
   it("opens a project pdf after persisting current annotations", async () => {
