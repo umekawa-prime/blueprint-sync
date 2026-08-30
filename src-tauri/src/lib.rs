@@ -1,0 +1,285 @@
+mod sync_server;
+
+use std::path::{Path, PathBuf};
+use std::sync::Arc;
+
+use serde::{Deserialize, Serialize};
+use tauri::{AppHandle, Manager, State};
+
+use crate::sync_server::{ServerInfo, SyncServer, DEFAULT_PORT};
+
+#[derive(Serialize)]
+struct PdfFile {
+    name: String,
+    path: String,
+    bytes: Vec<u8>,
+}
+
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
+struct RecentProject {
+    name: String,
+    path: String,
+}
+
+fn is_visible_pdf_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    lower.ends_with(".pdf") && !name.starts_with('.')
+}
+
+enum CopyIntoFolderDecision {
+    SkipSamePath,
+    NameCollision,
+    Proceed,
+}
+
+fn decide_copy_into_folder(
+    source_canon: &Path,
+    dest_canon: &Path,
+    dest_exists: bool,
+) -> CopyIntoFolderDecision {
+    if source_canon == dest_canon {
+        CopyIntoFolderDecision::SkipSamePath
+    } else if dest_exists {
+        CopyIntoFolderDecision::NameCollision
+    } else {
+        CopyIntoFolderDecision::Proceed
+    }
+}
+
+#[tauri::command]
+async fn start_sync_server(
+    state: State<'_, Arc<SyncServer>>,
+    port: Option<u16>,
+) -> Result<ServerInfo, String> {
+    state.start(port.unwrap_or(DEFAULT_PORT)).await
+}
+
+#[tauri::command]
+async fn stop_sync_server(state: State<'_, Arc<SyncServer>>) -> Result<(), String> {
+    state.stop().await;
+    Ok(())
+}
+
+#[tauri::command]
+fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
+    std::fs::read(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
+    std::fs::write(path, bytes).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
+    let selected = rfd::FileDialog::new()
+        .add_filter("PDF", &["pdf"])
+        .pick_file();
+
+    let Some(path) = selected else {
+        return Ok(None);
+    };
+
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("document.pdf")
+        .to_string();
+    let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+    Ok(Some(PdfFile {
+        name,
+        path: path.to_string_lossy().into_owned(),
+        bytes,
+    }))
+}
+
+#[tauri::command]
+fn pick_folder() -> Result<Option<String>, String> {
+    Ok(rfd::FileDialog::new()
+        .pick_folder()
+        .map(|path| path.to_string_lossy().into_owned()))
+}
+
+#[tauri::command]
+fn init_project_dir(folder: String) -> Result<(), String> {
+    let annotations = Path::new(&folder)
+        .join(".blueprint-sync")
+        .join("annotations");
+    std::fs::create_dir_all(annotations).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn list_project_pdfs(folder: String) -> Result<Vec<String>, String> {
+    let mut names = Vec::new();
+    let entries = std::fs::read_dir(&folder).map_err(|error| error.to_string())?;
+    for entry in entries {
+        let entry = entry.map_err(|error| error.to_string())?;
+        let file_type = entry.file_type().map_err(|error| error.to_string())?;
+        if !file_type.is_file() {
+            continue;
+        }
+        let name = entry.file_name().to_string_lossy().into_owned();
+        if is_visible_pdf_name(&name) {
+            names.push(name);
+        }
+    }
+    names.sort();
+    Ok(names)
+}
+
+#[tauri::command]
+fn copy_file_into_folder(source: String, folder: String) -> Result<String, String> {
+    let source_path = PathBuf::from(&source);
+    let name = source_path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .ok_or_else(|| "ファイル名を取得できません".to_string())?;
+    let dest = Path::new(&folder).join(name);
+    let source_canon = source_path.canonicalize().unwrap_or(source_path.clone());
+    let dest_canon = dest.canonicalize().unwrap_or(dest.clone());
+    let dest_exists = dest.exists();
+
+    match decide_copy_into_folder(&source_canon, &dest_canon, dest_exists) {
+        CopyIntoFolderDecision::SkipSamePath => Ok(dest.to_string_lossy().into_owned()),
+        CopyIntoFolderDecision::NameCollision => {
+            Err("同じ名前のPDFが既にあります".to_string())
+        }
+        CopyIntoFolderDecision::Proceed => {
+            std::fs::copy(&source_path, &dest).map_err(|error| error.to_string())?;
+            Ok(dest.to_string_lossy().into_owned())
+        }
+    }
+}
+
+fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    Ok(dir.join("recent-projects.json"))
+}
+
+fn parse_recent_projects_json(raw: &str) -> Vec<RecentProject> {
+    serde_json::from_str(raw).unwrap_or_default()
+}
+
+#[tauri::command]
+fn load_recent_projects(app: AppHandle) -> Result<Vec<RecentProject>, String> {
+    let path = recent_path(&app)?;
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let raw = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    Ok(parse_recent_projects_json(&raw))
+}
+
+#[tauri::command]
+fn save_recent_projects(app: AppHandle, items: Vec<RecentProject>) -> Result<(), String> {
+    let path = recent_path(&app)?;
+    let raw = serde_json::to_string_pretty(&items).map_err(|error| error.to_string())?;
+    std::fs::write(path, raw).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn path_exists(path: String) -> Result<bool, String> {
+    Ok(Path::new(&path).exists())
+}
+
+#[tauri::command]
+fn save_pdf_file(
+    default_name: String,
+    bytes: Vec<u8>,
+    default_dir: Option<String>,
+) -> Result<bool, String> {
+    let mut dialog = rfd::FileDialog::new()
+        .add_filter("PDF", &["pdf"])
+        .set_file_name(&default_name);
+    if let Some(dir) = default_dir {
+        dialog = dialog.set_directory(dir);
+    }
+    let selected = dialog.save_file();
+
+    let Some(path) = selected else {
+        return Ok(false);
+    };
+
+    std::fs::write(path, bytes).map_err(|error| error.to_string())?;
+    Ok(true)
+}
+
+#[cfg_attr(mobile, tauri::mobile_entry_point)]
+pub fn run() {
+    tauri::Builder::default()
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .manage(Arc::new(SyncServer::default()))
+        .invoke_handler(tauri::generate_handler![
+            start_sync_server,
+            stop_sync_server,
+            read_file_bytes,
+            write_file_bytes,
+            pick_pdf_file,
+            pick_folder,
+            init_project_dir,
+            list_project_pdfs,
+            copy_file_into_folder,
+            load_recent_projects,
+            save_recent_projects,
+            path_exists,
+            save_pdf_file
+        ])
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
+}
+
+#[cfg(test)]
+mod tests {
+    use std::path::Path;
+
+    use super::{
+        decide_copy_into_folder, is_visible_pdf_name, parse_recent_projects_json,
+        CopyIntoFolderDecision, RecentProject,
+    };
+
+    #[test]
+    fn accepts_pdf_and_rejects_hidden_and_other_types() {
+        assert!(is_visible_pdf_name("a.pdf"));
+        assert!(is_visible_pdf_name("B.PDF"));
+        assert!(!is_visible_pdf_name(".hidden.pdf"));
+        assert!(!is_visible_pdf_name("notes.txt"));
+        assert!(!is_visible_pdf_name(".blueprint-sync"));
+    }
+
+    #[test]
+    fn copy_decision_skips_same_canonical_path() {
+        let path = Path::new("/tmp/same.pdf");
+        assert!(matches!(
+            decide_copy_into_folder(path, path, true),
+            CopyIntoFolderDecision::SkipSamePath
+        ));
+    }
+
+    #[test]
+    fn copy_decision_errors_when_dest_exists_and_paths_differ() {
+        let source = Path::new("/tmp/a/source.pdf");
+        let dest = Path::new("/tmp/a/dest.pdf");
+        assert!(matches!(
+            decide_copy_into_folder(source, dest, true),
+            CopyIntoFolderDecision::NameCollision
+        ));
+    }
+
+    #[test]
+    fn copy_decision_proceeds_when_dest_missing() {
+        let source = Path::new("/tmp/a/source.pdf");
+        let dest = Path::new("/tmp/a/dest.pdf");
+        assert!(matches!(
+            decide_copy_into_folder(source, dest, false),
+            CopyIntoFolderDecision::Proceed
+        ));
+    }
+
+    #[test]
+    fn invalid_recent_projects_json_returns_empty_list() {
+        assert_eq!(parse_recent_projects_json("{not json}"), Vec::<RecentProject>::new());
+    }
+}
