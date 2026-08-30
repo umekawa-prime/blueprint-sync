@@ -7,6 +7,7 @@
 #   - Bundle ID は src-tauri/tauri.conf.json の identifier（com.mitra.blueprintsync）
 #   - src-tauri/gen/apple は gitignore 対象のため、CI 上で `tauri ios init --ci` する
 #   - APPLE_DEVELOPMENT_TEAM は init 用のダミー。実証明書は使わない
+#   - `tauri ios` サブコマンドは macOS 版 CLI にのみ存在する
 #
 name: Build iOS IPA
 
@@ -19,18 +20,31 @@ on:
 env:
   CARGO_TERM_COLOR: always
   CI: true
+  IPHONEOS_DEPLOYMENT_TARGET: "15.0"
   # tauri ios init が Team ID を要求するためだけに置く。署名には使わない
   APPLE_DEVELOPMENT_TEAM: AAAAAAAAAA
 
 jobs:
   build-ios:
     name: Build unsigned IPA
-    runs-on: macos-14
-    timeout-minutes: 60
+    # macos-14 のデフォルトは Xcode 15.4 で、tauri ios init が生成する
+    # project format 77（Xcode 16+）を開けない
+    runs-on: macos-15
+    timeout-minutes: 90
 
     steps:
       - name: Checkout
         uses: actions/checkout@v4
+
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@v1
+        with:
+          xcode-version: "16.4"
+
+      - name: Show Xcode version
+        run: |
+          xcodebuild -version
+          xcode-select -p
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -63,45 +77,47 @@ jobs:
           pod --version
 
       - name: Initialize iOS project
-        run: npm run tauri ios init -- --ci
+        run: npm run tauri -- ios init --ci --skip-targets-install
 
-      - name: Disable code signing in Xcode project
+      - name: Ensure iOS platform runtime is installed
         run: |
           set -euo pipefail
-          PBX="$(find src-tauri/gen/apple -name project.pbxproj | head -n 1)"
-          if [ -z "$PBX" ]; then
-            echo "project.pbxproj が見つかりません"
-            find src-tauri/gen/apple -maxdepth 3 -type f | head -n 50
+          if ! xcrun simctl list runtimes | grep -q 'iOS'; then
+            echo "iOS Simulator runtime が無いためダウンロードします"
+            xcodebuild -downloadPlatform iOS
+          fi
+          xcrun simctl list runtimes
+
+      - name: Ensure 1024px App Icon exists
+        run: |
+          set -euo pipefail
+          SOURCE="src-tauri/icons/icon.png"
+          ICONSET="$(find src-tauri/gen/apple -type d -name 'AppIcon.appiconset' | head -n 1 || true)"
+          if [ -z "${ICONSET:-}" ]; then
+            echo "AppIcon.appiconset が見つかりません（ios init 後に生成される想定）"
+            find src-tauri/gen/apple -maxdepth 4 -type d | head -n 50
             exit 1
           fi
-          sed -i '' \
-            -e 's/CODE_SIGN_STYLE = Automatic;/CODE_SIGN_STYLE = Manual;/g' \
-            -e 's/CODE_SIGN_IDENTITY = "[^"]*";/CODE_SIGN_IDENTITY = "";/g' \
-            -e 's/DEVELOPMENT_TEAM = [^;]*;/DEVELOPMENT_TEAM = "";/g' \
-            "$PBX"
-          echo "patched $PBX"
+          ICON_FILE="$ICONSET/AppIcon-1024x1024.png"
+          sips -z 1024 1024 "$SOURCE" --out "$ICON_FILE"
+          python3 -c 'import json,pathlib,sys; p=pathlib.Path(sys.argv[1]); n=pathlib.Path(sys.argv[2]).name; c=p/"Contents.json"; d=json.loads(c.read_text()) if c.exists() else {"images":[],"info":{"author":"xcode","version":1}}; imgs=[i for i in d.setdefault("images",[]) if i.get("size")!="1024x1024"]; imgs.append({"filename":n,"idiom":"ios-marketing","scale":"1x","size":"1024x1024"}); d["images"]=imgs; c.write_text(json.dumps(d,indent=2)+"\n")' "$ICONSET" "$ICON_FILE"
+          echo "wrote $ICON_FILE"
 
-      - name: Build unsigned iOS app
-        run: |
-          set -euo pipefail
-          if npm run tauri ios build -- --help 2>&1 | grep -q -- "--no-sign"; then
-            npm run tauri ios build -- --ci --target aarch64 --no-sign
-          else
-            # 古い CLI は export で落ちることがある。アーカイブまで進めば後続で IPA 化する
-            npm run tauri ios build -- --ci --target aarch64 || true
-          fi
+      - name: Build unsigned iOS IPA
+        run: npm run tauri -- ios build --ci --target aarch64 --no-sign
 
       - name: Package IPA for SideStore
         run: |
           set -euo pipefail
-
           mkdir -p artifacts
-          IPA_PATH="$(find src-tauri/gen/apple -name '*.ipa' -type f | head -n 1 || true)"
 
-          if [ -z "${IPA_PATH:-}" ]; then
+          IPA_PATH="$(find src-tauri/gen/apple -name '*.ipa' -type f | head -n 1 || true)"
+          if [ -n "${IPA_PATH:-}" ]; then
+            cp "$IPA_PATH" artifacts/BlueprintSync.ipa
+          else
             APP_PATH="$(
               find src-tauri/gen/apple \
-                ~/Library/Developer/Xcode/DerivedData \
+                "$HOME/Library/Developer/Xcode/DerivedData" \
                 -name '*.app' -type d 2>/dev/null \
                 | grep -E 'iphoneos|Products/Applications|apple/build' \
                 | head -n 1 || true
@@ -117,15 +133,10 @@ jobs:
             mkdir -p "$WORK/Payload"
             cp -R "$APP_PATH" "$WORK/Payload/"
             (cd "$WORK" && zip -qr "$GITHUB_WORKSPACE/artifacts/BlueprintSync.ipa" Payload)
-            IPA_PATH="$GITHUB_WORKSPACE/artifacts/BlueprintSync.ipa"
-          else
-            cp "$IPA_PATH" artifacts/BlueprintSync.ipa
-            IPA_PATH="$GITHUB_WORKSPACE/artifacts/BlueprintSync.ipa"
           fi
 
-          echo "IPA: $IPA_PATH"
-          ls -lh "$IPA_PATH"
-          echo "IPA_PATH=$IPA_PATH" >> "$GITHUB_ENV"
+          ls -lh artifacts/BlueprintSync.ipa
+          unzip -l artifacts/BlueprintSync.ipa | head -n 20
 
       - name: Upload IPA artifact
         uses: actions/upload-artifact@v4

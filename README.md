@@ -48,7 +48,7 @@ npm run tauri android dev
 
 有料の Apple Developer Program は不要です。CI が未署名の `.ipa` を作り、iPad では [SideStore](https://docs.sidestore.io/) が無料 Apple ID で再署名してインストールします。
 
-Bundle ID は `com.mitra.blueprintsync`。iPhone / iPad 両対応、最低バージョンは iOS / iPadOS 14.0 です。Xcode プロジェクト（`src-tauri/gen/apple`）は gitignore 対象です。
+Bundle ID は `com.mitra.blueprintsync`。iPhone / iPad 両対応、最低バージョンは iOS / iPadOS 15.0 です。Xcode プロジェクト（`src-tauri/gen/apple`）は gitignore 対象です。
 
 ### GitHub Actions で IPA をビルドする
 

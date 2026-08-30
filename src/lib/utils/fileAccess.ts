@@ -1,11 +1,11 @@
-import { isTauriRuntime } from "./platform";
+import { usesRfdFileDialog } from "./platform";
 
 export async function openPdfFromDisk(): Promise<{
   name: string;
   bytes: Uint8Array;
   path?: string;
 } | null> {
-  if (isTauriRuntime()) {
+  if (usesRfdFileDialog()) {
     const { invoke } = await import("@tauri-apps/api/core");
     const selected = await invoke<{
       name: string;
@@ -30,7 +30,7 @@ export async function savePdfToDisk(
   defaultName: string,
   defaultDir?: string,
 ): Promise<boolean> {
-  if (isTauriRuntime()) {
+  if (usesRfdFileDialog()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<boolean>("save_pdf_file", {
       defaultName,

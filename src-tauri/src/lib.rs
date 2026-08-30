@@ -70,6 +70,7 @@ fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
     std::fs::write(path, bytes).map_err(|error| error.to_string())
 }
 
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
 fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
     let selected = rfd::FileDialog::new()
@@ -93,11 +94,24 @@ fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
     }))
 }
 
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
+    Err("モバイルでは HTML のファイル選択を使ってください".to_string())
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
 fn pick_folder() -> Result<Option<String>, String> {
     Ok(rfd::FileDialog::new()
         .pick_folder()
         .map(|path| path.to_string_lossy().into_owned()))
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn pick_folder() -> Result<Option<String>, String> {
+    Err("モバイルではフォルダ選択ダイアログを使えません".to_string())
 }
 
 #[tauri::command]
@@ -183,6 +197,7 @@ fn path_exists(path: String) -> Result<bool, String> {
     Ok(Path::new(&path).exists())
 }
 
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
 fn save_pdf_file(
     default_name: String,
@@ -203,6 +218,16 @@ fn save_pdf_file(
 
     std::fs::write(path, bytes).map_err(|error| error.to_string())?;
     Ok(true)
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn save_pdf_file(
+    _default_name: String,
+    _bytes: Vec<u8>,
+    _default_dir: Option<String>,
+) -> Result<bool, String> {
+    Err("モバイルでは HTML のダウンロードを使ってください".to_string())
 }
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
