@@ -3,16 +3,23 @@ import { isTauriRuntime } from "./platform";
 export async function openPdfFromDisk(): Promise<{
   name: string;
   bytes: Uint8Array;
+  path?: string;
 } | null> {
   if (isTauriRuntime()) {
     const { invoke } = await import("@tauri-apps/api/core");
-    const selected = await invoke<{ name: string; bytes: number[] } | null>(
-      "pick_pdf_file",
-    );
+    const selected = await invoke<{
+      name: string;
+      path: string;
+      bytes: number[];
+    } | null>("pick_pdf_file");
     if (!selected) {
       return null;
     }
-    return { name: selected.name, bytes: Uint8Array.from(selected.bytes) };
+    return {
+      name: selected.name,
+      path: selected.path,
+      bytes: Uint8Array.from(selected.bytes),
+    };
   }
 
   return pickFileInBrowser("application/pdf");
@@ -21,12 +28,14 @@ export async function openPdfFromDisk(): Promise<{
 export async function savePdfToDisk(
   bytes: Uint8Array,
   defaultName: string,
+  defaultDir?: string,
 ): Promise<boolean> {
   if (isTauriRuntime()) {
     const { invoke } = await import("@tauri-apps/api/core");
     return invoke<boolean>("save_pdf_file", {
       defaultName,
       bytes,
+      defaultDir: defaultDir ?? null,
     });
   }
 
