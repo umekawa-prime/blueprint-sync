@@ -66,6 +66,14 @@ describe("toolbarActions", () => {
     expect(mockImportPdfIntoProject).toHaveBeenCalledTimes(1);
   });
 
+  it("surfaces open errors on the status bar instead of rejecting", async () => {
+    mockImportPdfIntoProject.mockRejectedValue(new Error("read failed"));
+
+    await expect(openPdfIntoCurrentProject()).resolves.toBeUndefined();
+
+    expect(pdfStore.status).toBe("read failed");
+  });
+
   it("saves exported PDFs into the project folder and persists annotations", async () => {
     mockSavePdfToDisk.mockResolvedValue(true);
     mockPersistCurrentAnnotations.mockResolvedValue(true);

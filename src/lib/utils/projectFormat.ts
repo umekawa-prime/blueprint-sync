@@ -29,7 +29,7 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-function parseLink(value: unknown): ProjectLink {
+function parseLink(value: unknown): ProjectLink | null {
   if (
     !isRecord(value) ||
     typeof value.id !== "string" ||
@@ -37,7 +37,7 @@ function parseLink(value: unknown): ProjectLink {
     typeof value.url !== "string" ||
     !isAllowedLinkUrl(value.url)
   ) {
-    throw new Error("Invalid project.json");
+    return null;
   }
   return { id: value.id, title: value.title, url: value.url };
 }
@@ -62,7 +62,7 @@ export function parseProjectJson(raw: string): ProjectMeta {
     id: parsed.id,
     name: parsed.name,
     createdAt: parsed.createdAt,
-    links: parsed.links.map(parseLink),
+    links: parsed.links.map(parseLink).filter((link): link is ProjectLink => link !== null),
   };
 }
 

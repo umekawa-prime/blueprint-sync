@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 
 const {
@@ -58,6 +59,7 @@ describe("projectDrop", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     projectStore.reset();
+    pdfStore.clear();
     projectStore.meta = {
       id: "project-1",
       name: "現場A",
@@ -65,6 +67,7 @@ describe("projectDrop", () => {
       links: [],
     };
     projectStore.folder = "/projects/a";
+    mockPersistCurrentAnnotations.mockResolvedValue(true);
     mockReadFileAsBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
     mockPathExists.mockResolvedValue(false);
@@ -84,7 +87,21 @@ describe("projectDrop", () => {
     });
     expect(projectStore.pdfs).toEqual(["A.pdf"]);
     expect(mockOpenProjectPdf).toHaveBeenCalledWith("A.pdf");
-    expect(mockSendCurrentPdf).toHaveBeenCalled();
+    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current drawing when browser-drop persistence fails", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "A.pdf", {
+      type: "application/pdf",
+    });
+    mockPersistCurrentAnnotations.mockResolvedValue(false);
+
+    await expect(importBrowserPdfIntoProject(file)).resolves.toBe(false);
+
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockListProjectPdfs).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("copies tauri-dropped PDFs into the current project and opens them", async () => {
@@ -97,7 +114,18 @@ describe("projectDrop", () => {
     expect(mockCopyFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a");
     expect(projectStore.pdfs).toEqual(["A.pdf", "B.pdf"]);
     expect(mockOpenProjectPdf).toHaveBeenCalledWith("B.pdf");
-    expect(mockSendCurrentPdf).toHaveBeenCalled();
+    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current drawing when tauri-drop persistence fails", async () => {
+    mockPersistCurrentAnnotations.mockResolvedValue(false);
+
+    await expect(importTauriPdfIntoProject("/downloads/B.pdf")).resolves.toBe(false);
+
+    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockListProjectPdfs).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("ignores project imports when no project folder is open", async () => {
@@ -120,6 +148,7 @@ describe("projectDrop", () => {
     const dotted = new File([new Uint8Array([1])], "A..pdf", { type: "application/pdf" });
     await expect(importBrowserPdfIntoProject(dotted)).resolves.toBe(false);
     expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
@@ -128,6 +157,7 @@ describe("projectDrop", () => {
     const traversal = new File([new Uint8Array([1])], "../x.pdf", { type: "application/pdf" });
     await expect(importBrowserPdfIntoProject(traversal)).resolves.toBe(false);
     expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 
@@ -135,6 +165,7 @@ describe("projectDrop", () => {
     await expect(importTauriPdfIntoProject("/downloads/A..pdf")).resolves.toBe(false);
 
     expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
@@ -149,6 +180,7 @@ describe("projectDrop", () => {
     await expect(importBrowserPdfIntoProject(file)).resolves.toBe(false);
 
     expect(projectStore.error).toBe("同じ名前のPDFが既にあります");
+    expect(pdfStore.status).toBe("同じ名前のPDFが既にあります");
     expect(mockPathExists).toHaveBeenCalledWith("/projects/a/A.pdf");
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();

@@ -1,6 +1,7 @@
 import { annotationStore } from "$lib/stores/annotationStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
+import { sendCurrentPdf } from "./connectionActions";
 import { openPdfFromDisk } from "./fileAccess";
 import { isTauriRuntime } from "./platform";
 import {
@@ -42,6 +43,11 @@ function setProjectImportError(error: unknown): Error {
   projectStore.error = message;
   pdfStore.status = message;
   return error instanceof Error ? error : new Error(message);
+}
+
+function setPdfOpenError(message: string) {
+  projectStore.error = message;
+  pdfStore.status = message;
 }
 
 export async function loadRecentsIntoStore(): Promise<void> {
@@ -87,6 +93,7 @@ export async function openProject(folder?: string): Promise<void> {
   }
   try {
     const meta = await readProjectMeta(selected);
+    await initProjectDir(selected);
     projectStore.folder = selected;
     projectStore.meta = meta;
     projectStore.pdfs = await listProjectPdfs(selected);
@@ -111,7 +118,10 @@ export async function openProject(folder?: string): Promise<void> {
 }
 
 export async function closeProject(): Promise<void> {
-  await persistCurrentAnnotations().catch(() => undefined);
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return;
+  }
   projectStore.reset();
   pdfStore.clear();
   annotationStore.clear();
@@ -125,26 +135,37 @@ export async function addProjectLink(url: string, title: string): Promise<void> 
     projectStore.error = "http または https の URL だけ追加できます";
     return;
   }
-  projectStore.error = "";
-  projectStore.meta = {
+  const nextMeta = {
     ...projectStore.meta,
     links: [
       ...projectStore.meta.links,
       { id: crypto.randomUUID(), title: title.trim(), url: url.trim() },
     ],
   };
-  await writeProjectMeta(projectStore.folder, projectStore.meta);
+  try {
+    await writeProjectMeta(projectStore.folder, nextMeta);
+    projectStore.meta = nextMeta;
+    projectStore.error = "";
+  } catch (error) {
+    projectStore.error = error instanceof Error ? error.message : "リンクの保存に失敗しました";
+  }
 }
 
 export async function removeProjectLink(id: string): Promise<void> {
   if (!projectStore.meta || !projectStore.folder) {
     return;
   }
-  projectStore.meta = {
+  const nextMeta = {
     ...projectStore.meta,
     links: projectStore.meta.links.filter((link) => link.id !== id),
   };
-  await writeProjectMeta(projectStore.folder, projectStore.meta);
+  try {
+    await writeProjectMeta(projectStore.folder, nextMeta);
+    projectStore.meta = nextMeta;
+    projectStore.error = "";
+  } catch (error) {
+    projectStore.error = error instanceof Error ? error.message : "リンクの保存に失敗しました";
+  }
 }
 
 export async function openProjectLink(url: string): Promise<void> {
@@ -178,15 +199,31 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     return;
   }
   if (!isProjectPdfBasename(fileName)) {
-    projectStore.error = "PDFファイル名が不正です";
+    setPdfOpenError("PDFファイル名が不正です");
     return;
   }
-  await persistCurrentAnnotations();
-  const bytes = await readBinaryFile(`${projectStore.folder}/${fileName}`);
-  annotationStore.importByPage(await readAnnotationFile(projectStore.folder, fileName));
-  await pdfStore.load(fileName, bytes);
-  projectStore.currentPdf = fileName;
-  projectStore.error = "";
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return;
+  }
+  try {
+    const bytes = await readBinaryFile(`${projectStore.folder}/${fileName}`);
+    let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>>;
+    try {
+      nextAnnotations = await readAnnotationFile(projectStore.folder, fileName);
+    } catch {
+      pdfStore.status = "注釈ファイルの読み込みに失敗しました";
+      return;
+    }
+    await pdfStore.load(fileName, bytes);
+    annotationStore.importByPage(nextAnnotations);
+    projectStore.currentPdf = fileName;
+    projectStore.error = "";
+    pdfStore.status = "";
+    sendCurrentPdf();
+  } catch (error) {
+    pdfStore.status = error instanceof Error ? error.message : "PDFを開けませんでした";
+  }
 }
 
 export async function importPdfIntoProject(): Promise<void> {
@@ -198,10 +235,13 @@ export async function importPdfIntoProject(): Promise<void> {
     return;
   }
   if (!isProjectPdfBasename(file.name)) {
-    projectStore.error = "PDFファイル名が不正です";
+    setPdfOpenError("PDFファイル名が不正です");
     return;
   }
-  await persistCurrentAnnotations();
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return;
+  }
   let name = file.name;
   try {
     if (file.path) {

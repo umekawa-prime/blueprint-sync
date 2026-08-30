@@ -7,7 +7,11 @@ import { embedAnnotationPngOnPdf, suggestedExportName } from "./pdfExport";
 import { importPdfIntoProject, persistCurrentAnnotations } from "./projectActions";
 
 export async function openPdfIntoCurrentProject(): Promise<void> {
-  await importPdfIntoProject();
+  try {
+    await importPdfIntoProject();
+  } catch (error) {
+    pdfStore.status = error instanceof Error ? error.message : "PDF を開けませんでした";
+  }
 }
 
 export async function exportCurrentPdfToDisk(): Promise<void> {

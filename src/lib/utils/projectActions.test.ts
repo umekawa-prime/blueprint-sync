@@ -20,6 +20,7 @@ const {
   mockWriteAnnotationFile,
   mockWriteProjectMeta,
   mockOpenUrl,
+  mockSendCurrentPdf,
 } = vi.hoisted(() => ({
   mockOpenPdfFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
@@ -36,6 +37,7 @@ const {
   mockWriteAnnotationFile: vi.fn(),
   mockWriteProjectMeta: vi.fn(),
   mockOpenUrl: vi.fn(),
+  mockSendCurrentPdf: vi.fn(),
 }));
 
 vi.mock("./fileAccess", () => ({
@@ -65,6 +67,10 @@ vi.mock("./projectIo", () => ({
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: mockOpenUrl,
+}));
+
+vi.mock("./connectionActions", () => ({
+  sendCurrentPdf: mockSendCurrentPdf,
 }));
 
 import {
@@ -97,15 +103,17 @@ function sampleRecent(path: string, name = "現場A"): RecentProject {
 
 describe("projectActions", () => {
   beforeEach(() => {
-    vi.clearAllMocks();
     projectStore.reset();
     projectStore.recents = [];
     annotationStore.clear();
     pdfStore.clear();
+    vi.clearAllMocks();
     mockIsTauriRuntime.mockReturnValue(true);
     mockListProjectPdfs.mockResolvedValue([]);
     mockReadAnnotationFile.mockResolvedValue({});
     mockReadBinaryFile.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mockWriteAnnotationFile.mockResolvedValue(undefined);
+    mockWriteProjectMeta.mockResolvedValue(undefined);
     vi.spyOn(pdfStore, "load").mockResolvedValue();
     vi.spyOn(pdfStore, "clear");
     vi.spyOn(annotationStore, "clear");
@@ -164,6 +172,7 @@ describe("projectActions", () => {
     expect(projectStore.meta).toEqual(meta);
     expect(projectStore.pdfs).toEqual(["A.pdf", "B.pdf"]);
     expect(projectStore.currentPdf).toBe("");
+    expect(mockInitProjectDir).toHaveBeenCalledWith("/projects/a");
     expect(pdfStore.clear).toHaveBeenCalled();
     expect(annotationStore.clear).toHaveBeenCalled();
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([
@@ -245,6 +254,44 @@ describe("projectActions", () => {
     expect(annotationStore.exportByPage()).toEqual({
       1: { next: { id: "next", type: "path" } },
     });
+    expect(mockSendCurrentPdf).toHaveBeenCalledTimes(1);
+  });
+
+  it("keeps the current drawing when annotation persistence fails before switching pdfs", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "Before.pdf";
+    annotationStore.importByPage({ 2: { prev: { id: "prev", type: "path" } } });
+    mockWriteAnnotationFile.mockRejectedValue(new Error("write failed"));
+
+    await openProjectPdf("After.pdf");
+
+    expect(mockReadBinaryFile).not.toHaveBeenCalled();
+    expect(mockReadAnnotationFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("Before.pdf");
+    expect(annotationStore.exportByPage()).toEqual({
+      2: { prev: { id: "prev", type: "path" } },
+    });
+    expect(pdfStore.status).toBe("write failed");
+    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
+  });
+
+  it("keeps the current drawing and shows a Japanese message when reading annotations fails", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "Before.pdf";
+    annotationStore.importByPage({ 2: { prev: { id: "prev", type: "path" } } });
+    mockReadAnnotationFile.mockRejectedValue(new Error("broken annotation"));
+
+    await openProjectPdf("After.pdf");
+
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/After.pdf");
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("Before.pdf");
+    expect(annotationStore.exportByPage()).toEqual({
+      2: { prev: { id: "prev", type: "path" } },
+    });
+    expect(pdfStore.status).toBe("注釈ファイルの読み込みに失敗しました");
+    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("rejects invalid pdf names before importing into a project", async () => {
@@ -258,10 +305,34 @@ describe("projectActions", () => {
     await importPdfIntoProject();
 
     expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
     expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(pdfStore.load).not.toHaveBeenCalled();
+  });
+
+  it("aborts project import when annotation persistence fails", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "Before.pdf";
+    annotationStore.importByPage({ 2: { prev: { id: "prev", type: "path" } } });
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: "After.pdf",
+      path: "/downloads/After.pdf",
+      bytes: new Uint8Array([9]),
+    });
+    mockWriteAnnotationFile.mockRejectedValue(new Error("write failed"));
+
+    await importPdfIntoProject();
+
+    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockListProjectPdfs).not.toHaveBeenCalled();
+    expect(mockReadBinaryFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("Before.pdf");
+    expect(annotationStore.exportByPage()).toEqual({
+      2: { prev: { id: "prev", type: "path" } },
+    });
   });
 
   it("surfaces duplicate-name import errors instead of swallowing them", async () => {
@@ -309,6 +380,35 @@ describe("projectActions", () => {
     );
   });
 
+  it("keeps project links unchanged when writing a new link fails", async () => {
+    vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
+      "00000000-0000-4000-8000-000000000001",
+    );
+    projectStore.folder = "/projects/a";
+    projectStore.meta = sampleMeta();
+    mockWriteProjectMeta.mockRejectedValue(new Error("write failed"));
+
+    await addProjectLink("https://example.com/share", "共有");
+
+    expect(projectStore.meta.links).toEqual([]);
+    expect(projectStore.error).toBe("write failed");
+  });
+
+  it("keeps project links unchanged when removing a link fails to persist", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.meta = sampleMeta({
+      links: [{ id: "link-1", title: "共有", url: "https://example.com/share" }],
+    });
+    mockWriteProjectMeta.mockRejectedValue(new Error("write failed"));
+
+    await removeProjectLink("link-1");
+
+    expect(projectStore.meta.links).toEqual([
+      { id: "link-1", title: "共有", url: "https://example.com/share" },
+    ]);
+    expect(projectStore.error).toBe("write failed");
+  });
+
   it("opens project links only in tauri runtime", async () => {
     mockIsTauriRuntime.mockReturnValue(false);
 
@@ -325,6 +425,7 @@ describe("projectActions", () => {
     await openProjectPdf(".hidden.pdf");
 
     expect(projectStore.error).toBe("PDFファイル名が不正です");
+    expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
     expect(mockReadBinaryFile).not.toHaveBeenCalled();
     expect(mockReadAnnotationFile).not.toHaveBeenCalled();
@@ -362,5 +463,22 @@ describe("projectActions", () => {
     expect(projectStore.meta).toBeNull();
     expect(pdfStore.clear).toHaveBeenCalled();
     expect(annotationStore.clear).toHaveBeenCalled();
+  });
+
+  it("keeps the project open when annotation persistence fails during close", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.meta = sampleMeta();
+    projectStore.currentPdf = "A.pdf";
+    annotationStore.importByPage({ 0: { a: { id: "a", type: "path" } } });
+    mockWriteAnnotationFile.mockRejectedValue(new Error("write failed"));
+
+    await closeProject();
+
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.meta).toEqual(sampleMeta());
+    expect(projectStore.currentPdf).toBe("A.pdf");
+    expect(pdfStore.clear).not.toHaveBeenCalled();
+    expect(annotationStore.clear).not.toHaveBeenCalled();
+    expect(pdfStore.status).toBe("write failed");
   });
 });

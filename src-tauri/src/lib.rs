@@ -15,7 +15,7 @@ struct PdfFile {
     bytes: Vec<u8>,
 }
 
-#[derive(Serialize, Deserialize, Clone)]
+#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
 struct RecentProject {
     name: String,
     path: String,
@@ -157,6 +157,10 @@ fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
     Ok(dir.join("recent-projects.json"))
 }
 
+fn parse_recent_projects_json(raw: &str) -> Vec<RecentProject> {
+    serde_json::from_str(raw).unwrap_or_default()
+}
+
 #[tauri::command]
 fn load_recent_projects(app: AppHandle) -> Result<Vec<RecentProject>, String> {
     let path = recent_path(&app)?;
@@ -164,7 +168,7 @@ fn load_recent_projects(app: AppHandle) -> Result<Vec<RecentProject>, String> {
         return Ok(Vec::new());
     }
     let raw = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
-    serde_json::from_str(&raw).map_err(|error| error.to_string())
+    Ok(parse_recent_projects_json(&raw))
 }
 
 #[tauri::command]
@@ -232,7 +236,8 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        decide_copy_into_folder, is_visible_pdf_name, CopyIntoFolderDecision,
+        decide_copy_into_folder, is_visible_pdf_name, parse_recent_projects_json,
+        CopyIntoFolderDecision, RecentProject,
     };
 
     #[test]
@@ -271,5 +276,10 @@ mod tests {
             decide_copy_into_folder(source, dest, false),
             CopyIntoFolderDecision::Proceed
         ));
+    }
+
+    #[test]
+    fn invalid_recent_projects_json_returns_empty_list() {
+        assert_eq!(parse_recent_projects_json("{not json}"), Vec::<RecentProject>::new());
     }
 }

@@ -40,24 +40,26 @@ describe("project.json", () => {
     ).toThrow(/invalid project/i);
   });
 
-  it("rejects disallowed link urls", () => {
-    const base = { id: "x", name: "n", createdAt: "t", links: [] as unknown[] };
-    expect(() =>
-      parseProjectJson(
-        JSON.stringify({
-          ...base,
-          links: [{ id: "1", title: "t", url: "javascript:alert(1)" }],
-        }),
-      ),
-    ).toThrow(/invalid project/i);
-    expect(() =>
-      parseProjectJson(
-        JSON.stringify({
-          ...base,
-          links: [{ id: "1", title: "t", url: "file:///C:/tmp/x.pdf" }],
-        }),
-      ),
-    ).toThrow(/invalid project/i);
+  it("skips disallowed link urls and keeps valid links", () => {
+    const parsed = parseProjectJson(
+      JSON.stringify({
+        id: "x",
+        name: "n",
+        createdAt: "t",
+        links: [
+          { id: "1", title: "ok", url: "https://1drv.ms/f/s!abc" },
+          { id: "2", title: "bad-js", url: "javascript:alert(1)" },
+          { id: "3", title: "bad-file", url: "file:///C:/tmp/x.pdf" },
+        ],
+      }),
+    );
+
+    expect(parsed).toEqual({
+      id: "x",
+      name: "n",
+      createdAt: "t",
+      links: [{ id: "1", title: "ok", url: "https://1drv.ms/f/s!abc" }],
+    });
   });
 });
 
@@ -107,7 +109,7 @@ describe("rememberRecent", () => {
     expect(next.filter((item) => item.path === "/p3")).toHaveLength(1);
   });
 
-  it("drops a missing path", () => {
+  it("drops a matching path", () => {
     expect(dropRecent([{ name: "a", path: "/a" }], "/a")).toEqual([]);
   });
 });
