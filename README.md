@@ -46,57 +46,24 @@ npm run tauri android dev
 
 ## iOS / iPadOS
 
-macOS と Xcode、CocoaPods、Apple Developer アカウントが必要です。Xcode プロジェクト（`src-tauri/gen/apple`）は gitignore 対象なので、初回は初期化します。
+有料の Apple Developer Program は不要です。CI が未署名の `.ipa` を作り、iPad では [SideStore](https://docs.sidestore.io/) が無料 Apple ID で再署名してインストールします。
 
-```bash
-rustup target add aarch64-apple-ios aarch64-apple-ios-sim x86_64-apple-ios
-brew install cocoapods
-npm run tauri ios init
-npm run tauri ios build
-```
-
-Team ID は `APPLE_DEVELOPMENT_TEAM` 環境変数、または `src-tauri/tauri.conf.json` の `bundle.iOS.developmentTeam` で指定します。Bundle ID は `identifier`（`com.mitra.blueprintsync`）です。iPhone / iPad 両対応（`UIDeviceFamily` 1,2）で、最低バージョンは iOS / iPadOS 14.0 です。
-
-生成された `.ipa` は `src-tauri/gen/apple/build/arm64/` 以下に出力されます。
+Bundle ID は `com.mitra.blueprintsync`。iPhone / iPad 両対応、最低バージョンは iOS / iPadOS 14.0 です。Xcode プロジェクト（`src-tauri/gen/apple`）は gitignore 対象です。
 
 ### GitHub Actions で IPA をビルドする
 
 ワークフロー: [`.github/workflows/build-ios.yml`](.github/workflows/build-ios.yml)
 
+**GitHub Secrets は不要です。** 証明書もプロビジョニングプロファイルも登録しません。
+
 - トリガー: `main` への push、および Actions タブからの手動実行（`workflow_dispatch`）
-- ランナー: `macos-14`
-- 成果物: Actions の Artifacts に `blueprint-sync-ios`（`.ipa`）が保存される（14 日）
+- ランナー: `macos-14`（Windows だけでは IPA を作れないため、クラウド上の Mac でビルドする）
+- 成果物: Artifacts の `blueprint-sync-ios`（`BlueprintSync.ipa`、14 日保存）
 
-手動実行時は export method を選べます。
-
-| 値 | 用途 |
-| --- | --- |
-| `app-store-connect`（既定） | App Store / TestFlight |
-| `release-testing` | Ad Hoc（登録済み端末へ直接インストール） |
-| `debugging` | Development |
-
-#### 必要な GitHub Secrets
-
-リポジトリの **Settings → Secrets and variables → Actions** に登録します。
-
-| Secret | 内容 |
-| --- | --- |
-| `BUILD_CERTIFICATE_BASE64` | Keychain Access から書き出した署名証明書（`.p12`）の Base64 |
-| `P12_PASSWORD` | 上記 `.p12` のパスワード |
-| `PROVISION_PROFILE_BASE64` | プロビジョニングプロファイル（`.mobileprovision`）の Base64 |
-| `APPLE_DEVELOPMENT_TEAM` | Apple Developer Team ID（10 文字） |
-| `KEYCHAIN_PASSWORD` | （任意）CI 用一時キーチェーンのパスワード。未設定ならジョブ内で生成 |
-
-macOS での Base64 化:
-
-```bash
-base64 -i Certificates.p12 | pbcopy
-base64 -i BlueprintSync.mobileprovision | pbcopy
-```
-
-証明書は Apple Developer の Certificates から発行し、Keychain Access で秘密鍵ごと `.p12` として書き出します。プロファイルの App ID は `com.mitra.blueprintsync` と一致させてください。App Store 配布なら Apple Distribution + App Store Connect プロファイル、登録 iPad 向けなら Ad Hoc プロファイルを使います。
-
-Tauri の手動署名用環境変数（`IOS_CERTIFICATE` / `IOS_CERTIFICATE_PASSWORD` / `IOS_MOBILE_PROVISION`）は、ワークフローが上記 Secrets から自動でセットします。
+1. Actions でジョブが成功したら Artifact をダウンロードする
+2. Windows の iLoader で SideStore を iPad に入れる（初回のみ）
+3. iPad の SideStore で `BlueprintSync.ipa` を開いてインストールする
+4. 7 日以内に LocalDevVPN を接続し、SideStore で Refresh する（無料アカウントの署名期限）
 
 ## 使い方
 
