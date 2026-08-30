@@ -34,7 +34,8 @@ function parseLink(value: unknown): ProjectLink {
     !isRecord(value) ||
     typeof value.id !== "string" ||
     typeof value.title !== "string" ||
-    typeof value.url !== "string"
+    typeof value.url !== "string" ||
+    !isAllowedLinkUrl(value.url)
   ) {
     throw new Error("Invalid project.json");
   }
@@ -93,7 +94,13 @@ export function annotationFileName(pdfName: string): string {
 
 export function listPdfFileNames(names: string[]): string[] {
   return names
-    .filter((name) => name.toLowerCase().endsWith(".pdf") && !name.startsWith("."))
+    .filter(
+      (name) =>
+        name.toLowerCase().endsWith(".pdf") &&
+        !name.startsWith(".") &&
+        !name.includes("/") &&
+        !name.includes("\\"),
+    )
     .sort((a, b) => a.localeCompare(b, "ja"));
 }
 

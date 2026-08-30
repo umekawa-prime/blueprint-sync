@@ -38,6 +38,26 @@ describe("project.json", () => {
       parseProjectJson(JSON.stringify({ id: "x", name: "n", createdAt: "t", links: "nope" })),
     ).toThrow(/invalid project/i);
   });
+
+  it("rejects disallowed link urls", () => {
+    const base = { id: "x", name: "n", createdAt: "t", links: [] as unknown[] };
+    expect(() =>
+      parseProjectJson(
+        JSON.stringify({
+          ...base,
+          links: [{ id: "1", title: "t", url: "javascript:alert(1)" }],
+        }),
+      ),
+    ).toThrow(/invalid project/i);
+    expect(() =>
+      parseProjectJson(
+        JSON.stringify({
+          ...base,
+          links: [{ id: "1", title: "t", url: "file:///C:/tmp/x.pdf" }],
+        }),
+      ),
+    ).toThrow(/invalid project/i);
+  });
 });
 
 describe("annotationFileName", () => {
@@ -57,6 +77,10 @@ describe("listPdfFileNames", () => {
     expect(
       listPdfFileNames([".blueprint-sync", "a.pdf", "notes.txt", "B.PDF", ".hidden.pdf"]),
     ).toEqual(["a.pdf", "B.PDF"]);
+  });
+
+  it("excludes names with path separators", () => {
+    expect(listPdfFileNames(["a.pdf", "subdir/a.pdf", "a\\b.pdf"])).toEqual(["a.pdf"]);
   });
 });
 
