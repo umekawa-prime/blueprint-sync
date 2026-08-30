@@ -10,10 +10,12 @@
   } from "fabric";
   import { annotationStore } from "$lib/stores/annotationStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
+  import { projectStore } from "$lib/stores/projectStore.svelte";
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import { broadcastAnnotation } from "$lib/utils/connectionActions";
   import { readFileAsBytes } from "$lib/utils/fileAccess";
   import { resizeImageFile } from "$lib/utils/imageResize";
+  import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
   import { viewerApi } from "$lib/stores/viewerApi";
@@ -332,6 +334,10 @@
       event.preventDefault();
       const file = event.dataTransfer?.files[0];
       if (file?.type === "application/pdf") {
+        if (projectStore.isOpen) {
+          await importBrowserPdfIntoProject(file);
+          return;
+        }
         annotationStore.clear();
         await pdfStore.load(file.name, await readFileAsBytes(file));
         sendCurrentPdf();
@@ -348,6 +354,10 @@
       }
       const path = event.payload.paths[0];
       if (!path?.toLowerCase().endsWith(".pdf")) {
+        return;
+      }
+      if (projectStore.isOpen) {
+        await importTauriPdfIntoProject(path);
         return;
       }
       const { invoke } = await import("@tauri-apps/api/core");

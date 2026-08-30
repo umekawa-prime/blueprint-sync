@@ -1,0 +1,114 @@
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { projectStore } from "$lib/stores/projectStore.svelte";
+
+const {
+  mockInvoke,
+  mockReadFileAsBytes,
+  mockSendCurrentPdf,
+  mockPersistCurrentAnnotations,
+  mockOpenProjectPdf,
+  mockCopyFileIntoFolder,
+  mockListProjectPdfs,
+} = vi.hoisted(() => ({
+  mockInvoke: vi.fn(),
+  mockReadFileAsBytes: vi.fn(),
+  mockSendCurrentPdf: vi.fn(),
+  mockPersistCurrentAnnotations: vi.fn(),
+  mockOpenProjectPdf: vi.fn(),
+  mockCopyFileIntoFolder: vi.fn(),
+  mockListProjectPdfs: vi.fn(),
+}));
+
+vi.mock("@tauri-apps/api/core", () => ({
+  invoke: mockInvoke,
+}));
+
+vi.mock("./fileAccess", () => ({
+  readFileAsBytes: mockReadFileAsBytes,
+}));
+
+vi.mock("./connectionActions", () => ({
+  sendCurrentPdf: mockSendCurrentPdf,
+}));
+
+vi.mock("./projectActions", async () => {
+  const actual = await vi.importActual<typeof import("./projectActions")>("./projectActions");
+  return {
+    ...actual,
+    persistCurrentAnnotations: mockPersistCurrentAnnotations,
+    openProjectPdf: mockOpenProjectPdf,
+  };
+});
+
+vi.mock("./projectIo", async () => {
+  const actual = await vi.importActual<typeof import("./projectIo")>("./projectIo");
+  return {
+    ...actual,
+    copyFileIntoFolder: mockCopyFileIntoFolder,
+    listProjectPdfs: mockListProjectPdfs,
+  };
+});
+
+import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "./projectDrop";
+
+describe("projectDrop", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    projectStore.reset();
+    projectStore.meta = {
+      id: "project-1",
+      name: "現場A",
+      createdAt: "2026-08-30T08:00:00.000Z",
+      links: [],
+    };
+    projectStore.folder = "/projects/a";
+    mockReadFileAsBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+  });
+
+  it("writes browser-dropped PDFs into the current project and opens them", async () => {
+    const file = new File([new Uint8Array([1, 2, 3])], "A.pdf", {
+      type: "application/pdf",
+    });
+
+    await expect(importBrowserPdfIntoProject(file)).resolves.toBe(true);
+
+    expect(mockPersistCurrentAnnotations).toHaveBeenCalled();
+    expect(mockInvoke).toHaveBeenCalledWith("write_file_bytes", {
+      path: "/projects/a/A.pdf",
+      bytes: [1, 2, 3],
+    });
+    expect(projectStore.pdfs).toEqual(["A.pdf"]);
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("A.pdf");
+    expect(mockSendCurrentPdf).toHaveBeenCalled();
+  });
+
+  it("copies tauri-dropped PDFs into the current project and opens them", async () => {
+    mockCopyFileIntoFolder.mockResolvedValue("/projects/a/B.pdf");
+    mockListProjectPdfs.mockResolvedValue(["A.pdf", "B.pdf"]);
+
+    await expect(importTauriPdfIntoProject("/downloads/B.pdf")).resolves.toBe(true);
+
+    expect(mockPersistCurrentAnnotations).toHaveBeenCalled();
+    expect(mockCopyFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a");
+    expect(projectStore.pdfs).toEqual(["A.pdf", "B.pdf"]);
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("B.pdf");
+    expect(mockSendCurrentPdf).toHaveBeenCalled();
+  });
+
+  it("ignores project imports when no project folder is open", async () => {
+    projectStore.reset();
+
+    await expect(
+      importBrowserPdfIntoProject(
+        new File([new Uint8Array([1])], "A.pdf", { type: "application/pdf" }),
+      ),
+    ).resolves.toBe(false);
+    await expect(importTauriPdfIntoProject("/downloads/A.pdf")).resolves.toBe(false);
+
+    expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
+    expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+  });
+});

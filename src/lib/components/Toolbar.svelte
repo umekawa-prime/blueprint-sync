@@ -1,13 +1,10 @@
 <script lang="ts">
-  import { annotationStore } from "$lib/stores/annotationStore.svelte";
   import { connectionStore } from "$lib/stores/connectionStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
   import { toolStore, type Tool } from "$lib/stores/toolStore.svelte";
-  import { openPdfFromDisk, savePdfToDisk } from "$lib/utils/fileAccess";
-  import { embedAnnotationPngOnPdf, suggestedExportName } from "$lib/utils/pdfExport";
   import { prefersCameraCapture } from "$lib/utils/platform";
-  import { broadcastPage, sendCurrentPdf } from "$lib/utils/connectionActions";
-  import { viewerApi } from "$lib/stores/viewerApi";
+  import { broadcastPage } from "$lib/utils/connectionActions";
+  import { exportCurrentPdfToDisk, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
 
   let {
     onToggleConnection,
@@ -25,25 +22,11 @@
   ];
 
   async function openPdf() {
-    const file = await openPdfFromDisk();
-    if (!file) {
-      return;
-    }
-    annotationStore.clear();
-    await pdfStore.load(file.name, file.bytes);
-    sendCurrentPdf();
+    await openPdfIntoCurrentProject();
   }
 
   async function exportPdf() {
-    if (!pdfStore.bytes) {
-      pdfStore.status = "先にPDFを開いてください";
-      return;
-    }
-    const overlays = await viewerApi.exportOverlays();
-    const output = await embedAnnotationPngOnPdf(pdfStore.bytes, overlays);
-    const saved = await savePdfToDisk(output, suggestedExportName(pdfStore.name));
-    pdfStore.status = saved ? "PDFを保存しました" : "保存をキャンセルしました";
-    annotationStore.dirty = false;
+    await exportCurrentPdfToDisk();
   }
 </script>
 
