@@ -63,6 +63,9 @@
     >
       リンクを追加
     </button>
+    {#if projectStore.error}
+      <p class="mb-3 text-sm text-rose-300">{projectStore.error}</p>
+    {/if}
     <ul class="space-y-1">
       {#each projectStore.meta?.links ?? [] as link (link.id)}
         <li class="flex items-center gap-1">
