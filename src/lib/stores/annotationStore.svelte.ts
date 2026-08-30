@@ -52,6 +52,16 @@ class AnnotationStore {
     this.dirty = false;
     this.remoteRevision += 1;
   }
+
+  exportByPage(): Record<number, PageObjects> {
+    return this.byPage;
+  }
+
+  importByPage(byPage: Record<number, PageObjects>) {
+    this.byPage = byPage;
+    this.dirty = false;
+    this.remoteRevision += 1;
+  }
 }
 
 export const annotationStore = new AnnotationStore();
