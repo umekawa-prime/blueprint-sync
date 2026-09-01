@@ -8,7 +8,62 @@ import {
   projectPdfKindDir,
   type ProjectPdfKind,
 } from "./projectFormat";
-import { listProjectPdfs, moveFileIntoFolder, pathExists } from "./projectIo";
+import {
+  deleteFile,
+  listProjectPdfs,
+  moveFileIntoFolder,
+  pathExists,
+  readBinaryFile,
+  writeBinaryFile,
+} from "./projectIo";
+import { importZipPdfsIntoFolder } from "./zipImport";
+import { isZipBasename } from "./zipPdf";
+
+function setDropError(message: string) {
+  projectStore.error = message;
+  pdfStore.status = message;
+}
+
+async function importZipIntoOpenProject(
+  zipBytes: Uint8Array,
+  kind: ProjectPdfKind,
+  sourcePath?: string,
+): Promise<boolean> {
+  const folder = projectStore.folder;
+  if (!folder) {
+    return false;
+  }
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return false;
+  }
+  try {
+    const result = await importZipPdfsIntoFolder({
+      zipBytes,
+      kind,
+      projectFolder: folder,
+      pathExists,
+      writeFile: writeBinaryFile,
+    });
+    if (result.imported.length === 0) {
+      setDropError("同じ名前のPDFが既にあります");
+      return false;
+    }
+    if (sourcePath) {
+      try {
+        await deleteFile(sourcePath);
+      } catch {
+        // PDFs already written; keep them even if the zip cannot be removed.
+      }
+    }
+    projectStore.pdfs = await listProjectPdfs(folder);
+    await openProjectPdf(result.imported[0]);
+    return true;
+  } catch (error) {
+    setDropError(error instanceof Error ? error.message : "PDF の取り込みに失敗しました");
+    return false;
+  }
+}
 
 export async function importBrowserPdfIntoProject(
   file: File,
@@ -17,16 +72,17 @@ export async function importBrowserPdfIntoProject(
   if (!projectStore.folder) {
     return false;
   }
+  if (isZipBasename(file.name)) {
+    return importZipIntoOpenProject(await readFileAsBytes(file), kind);
+  }
   if (!isProjectPdfBasename(file.name)) {
-    projectStore.error = "PDFファイル名が不正です";
-    pdfStore.status = "PDFファイル名が不正です";
+    setDropError("PDFファイル名が不正です");
     return false;
   }
   const relPath = joinProjectPdfRelPath(kind, file.name);
   const destPath = `${projectStore.folder}/${relPath}`;
   if (await pathExists(destPath)) {
-    projectStore.error = "同じ名前のPDFが既にあります";
-    pdfStore.status = "同じ名前のPDFが既にあります";
+    setDropError("同じ名前のPDFが既にあります");
     return false;
   }
   const persisted = await persistCurrentAnnotations();
@@ -52,9 +108,11 @@ export async function importTauriPdfIntoProject(
     return false;
   }
   const name = path.split(/[/\\]/).pop() ?? "";
+  if (isZipBasename(name)) {
+    return importZipIntoOpenProject(await readBinaryFile(path), kind, path);
+  }
   if (!isProjectPdfBasename(name)) {
-    projectStore.error = "PDFファイル名が不正です";
-    pdfStore.status = "PDFファイル名が不正です";
+    setDropError("PDFファイル名が不正です");
     return false;
   }
   const persisted = await persistCurrentAnnotations();

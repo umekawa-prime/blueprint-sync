@@ -5,6 +5,7 @@
     addProjectLink,
     closeProject,
     importPdfIntoProject,
+    importOneDriveLinkIntoProject,
     openProjectLink,
     openProjectPdf,
     removeProjectLink,
@@ -19,6 +20,7 @@
 
   let url = $state("");
   let title = $state("");
+  let importingLinkId = $state("");
 
   function message(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
@@ -52,9 +54,20 @@
     }
   }
 
-  async function onOpenLink(url: string) {
+  async function onImportLink(linkUrl: string, kind: ProjectPdfKind, linkId: string, linkTitle: string) {
+    importingLinkId = `${linkId}:${kind}`;
     try {
-      await openProjectLink(url);
+      await importOneDriveLinkIntoProject(linkUrl, kind, linkTitle);
+    } catch (error) {
+      projectStore.error = message(error, "OneDriveからの取り込みに失敗しました");
+    } finally {
+      importingLinkId = "";
+    }
+  }
+
+  async function onOpenLink(linkUrl: string) {
+    try {
+      await openProjectLink(linkUrl);
     } catch (error) {
       projectStore.error = message(error, "リンクを開けませんでした");
     }
@@ -92,7 +105,7 @@
       図面を追加
     </button>
     {#if listPdfsOfKind(projectStore.pdfs, "drawing").length === 0}
-      <p class="text-xs text-slate-500">フォルダまたは「図面を追加」から PDF を入れてください</p>
+      <p class="text-xs text-slate-500">フォルダまたは「図面を追加」から PDF / ZIP を入れてください</p>
     {:else}
       <ul class="space-y-1">
         {#each listPdfsOfKind(projectStore.pdfs, "drawing") as file (file)}
@@ -118,7 +131,7 @@
       工程表を追加
     </button>
     {#if listPdfsOfKind(projectStore.pdfs, "schedule").length === 0}
-      <p class="text-xs text-slate-500">「工程表を追加」から PDF を入れてください</p>
+      <p class="text-xs text-slate-500">「工程表を追加」から PDF / ZIP を入れてください</p>
     {:else}
       <ul class="space-y-1">
         {#each listPdfsOfKind(projectStore.pdfs, "schedule") as file (file)}
@@ -137,6 +150,9 @@
     {/if}
 
     <h2 class="mb-2 mt-5 text-xs text-slate-500">OneDrive リンク</h2>
+    <p class="mb-2 text-[11px] leading-4 text-slate-500">
+      公開リンクを追加し、「図面へ」「工程表へ」でプロジェクトにダウンロードします
+    </p>
     <input
       class="mb-2 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1 text-xs"
       placeholder="https://1drv.ms/..."
@@ -156,18 +172,34 @@
     {#if projectStore.error}
       <p class="mb-3 text-sm text-rose-300">{projectStore.error}</p>
     {/if}
-    <ul class="space-y-1">
+    <ul class="space-y-2">
       {#each projectStore.meta?.links ?? [] as link (link.id)}
-        <li class="flex items-center gap-1">
+        <li class="rounded border border-slate-800 px-2 py-1.5">
           <button
-            class="min-w-0 flex-1 truncate text-left text-xs text-cyan-300 underline"
+            class="w-full truncate text-left text-xs text-cyan-300 underline"
             onclick={() => onOpenLink(link.url)}
           >
             {displayLinkTitle(link)}
           </button>
-          <button class="text-[11px] text-slate-500" onclick={() => onRemoveLink(link.id)}>
-            削除
-          </button>
+          <div class="mt-1 flex items-center gap-1">
+            <button
+              class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200 disabled:opacity-40"
+              disabled={importingLinkId !== ""}
+              onclick={() => onImportLink(link.url, "drawing", link.id, link.title)}
+            >
+              {importingLinkId === `${link.id}:drawing` ? "取得中..." : "図面へ"}
+            </button>
+            <button
+              class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200 disabled:opacity-40"
+              disabled={importingLinkId !== ""}
+              onclick={() => onImportLink(link.url, "schedule", link.id, link.title)}
+            >
+              {importingLinkId === `${link.id}:schedule` ? "取得中..." : "工程表へ"}
+            </button>
+            <button class="ml-auto text-[11px] text-slate-500" onclick={() => onRemoveLink(link.id)}>
+              削除
+            </button>
+          </div>
         </li>
       {/each}
     </ul>

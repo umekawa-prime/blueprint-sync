@@ -20,6 +20,7 @@
     "@tauri-apps/plugin-fs": "^2.5.1",
     "@tauri-apps/plugin-opener": "^2",
     "fabric": "^7.4.0",
+    "fflate": "^0.8.3",
     "html5-qrcode": "^2.3.8",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.2.108",

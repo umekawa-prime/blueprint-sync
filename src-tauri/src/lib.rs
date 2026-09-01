@@ -78,7 +78,7 @@ fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
 #[tauri::command]
 fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
     let selected = rfd::FileDialog::new()
-        .add_filter("PDF", &["pdf"])
+        .add_filter("PDF / ZIP", &["pdf", "zip"])
         .pick_file();
 
     let Some(path) = selected else {
@@ -204,6 +204,52 @@ fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(path).map_err(|error| error.to_string())
 }
 
+#[derive(Serialize)]
+#[serde(rename_all = "camelCase")]
+struct HttpGetPayload {
+    status: u16,
+    content_type: String,
+    content_disposition: String,
+    bytes: Vec<u8>,
+}
+
+const MAX_DOWNLOAD_BYTES: usize = 80 * 1024 * 1024;
+
+#[tauri::command]
+async fn http_get(url: String) -> Result<HttpGetPayload, String> {
+    let parsed = reqwest::Url::parse(&url).map_err(|error| error.to_string())?;
+    if parsed.scheme() != "https" && parsed.scheme() != "http" {
+        return Err("http または https の URL だけダウンロードできます".to_string());
+    }
+    let client = reqwest::Client::builder()
+        .redirect(reqwest::redirect::Policy::limited(10))
+        .user_agent("BlueprintSync/0.1")
+        .build()
+        .map_err(|error| error.to_string())?;
+    let response = client.get(parsed).send().await.map_err(|error| error.to_string())?;
+    let status = response.status().as_u16();
+    let content_type = response
+        .headers()
+        .get(reqwest::header::CONTENT_TYPE)
+        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
+        .unwrap_or_default();
+    let content_disposition = response
+        .headers()
+        .get(reqwest::header::CONTENT_DISPOSITION)
+        .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
+        .unwrap_or_default();
+    let bytes = response.bytes().await.map_err(|error| error.to_string())?;
+    if bytes.len() > MAX_DOWNLOAD_BYTES {
+        return Err("ファイルが大きすぎます（80MBまで）".to_string());
+    }
+    Ok(HttpGetPayload {
+        status,
+        content_type,
+        content_disposition,
+        bytes: bytes.to_vec(),
+    })
+}
+
 fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
     let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
@@ -324,6 +370,7 @@ pub fn run() {
             list_project_pdfs,
             copy_file_into_folder,
             delete_file,
+            http_get,
             load_recent_projects,
             save_recent_projects,
             path_exists,

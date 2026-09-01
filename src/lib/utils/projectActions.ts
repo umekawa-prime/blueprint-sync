@@ -17,6 +17,8 @@ import {
   type ProjectPdfKind,
 } from "./projectFormat";
 import {
+  deleteFile,
+  httpGet,
   initProjectDir,
   listProjectPdfs,
   loadRecentProjects,
@@ -28,8 +30,12 @@ import {
   readProjectMeta,
   saveRecentProjects,
   writeAnnotationFile,
+  writeBinaryFile,
   writeProjectMeta,
 } from "./projectIo";
+import { importOneDrivePdfsIntoFolder } from "./oneDriveImport";
+import { importZipPdfsIntoFolder } from "./zipImport";
+import { isZipBasename } from "./zipPdf";
 
 function requireTauri() {
   if (!isTauriRuntime()) {
@@ -191,6 +197,49 @@ export async function openProjectLink(url: string): Promise<void> {
   await openUrl(url);
 }
 
+export async function importOneDriveLinkIntoProject(
+  url: string,
+  kind: ProjectPdfKind,
+  fallbackTitle = "",
+): Promise<void> {
+  requireTauri();
+  if (!projectStore.folder) {
+    return;
+  }
+  if (!isAllowedLinkUrl(url.trim())) {
+    setPdfOpenError("http または https の URL だけ取り込めます");
+    return;
+  }
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return;
+  }
+  try {
+    const result = await importOneDrivePdfsIntoFolder({
+      shareUrl: url.trim(),
+      kind,
+      projectFolder: projectStore.folder,
+      fallbackTitle,
+      httpGet,
+      pathExists,
+      writeFile: writeBinaryFile,
+    });
+    projectStore.error = "";
+    projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+    const messages: string[] = [];
+    if (result.imported.length > 0) {
+      messages.push(`${result.imported.length}件を取り込みました`);
+      await openProjectPdf(result.imported[0]);
+    }
+    if (result.skipped.length > 0) {
+      messages.push(`既存のためスキップ: ${result.skipped.join(", ")}`);
+    }
+    pdfStore.status = messages.join(" / ") || "取り込むPDFがありませんでした";
+  } catch (error) {
+    throw setProjectImportError(error);
+  }
+}
+
 export async function persistCurrentAnnotations(): Promise<boolean> {
   if (!projectStore.folder || !projectStore.currentPdf) {
     return true;
@@ -240,6 +289,35 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   }
 }
 
+async function importZipBytesIntoOpenProject(
+  zipBytes: Uint8Array,
+  kind: ProjectPdfKind,
+  sourcePath?: string,
+): Promise<string> {
+  const folder = projectStore.folder;
+  if (!folder) {
+    throw new Error("プロジェクトが開かれていません");
+  }
+  const result = await importZipPdfsIntoFolder({
+    zipBytes,
+    kind,
+    projectFolder: folder,
+    pathExists,
+    writeFile: writeBinaryFile,
+  });
+  if (result.imported.length === 0) {
+    throw new Error("同じ名前のPDFが既にあります");
+  }
+  if (sourcePath) {
+    try {
+      await deleteFile(sourcePath);
+    } catch {
+      // PDFs already written; keep them even if the zip cannot be removed.
+    }
+  }
+  return result.imported[0];
+}
+
 export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Promise<void> {
   if (!projectStore.folder) {
     return;
@@ -248,12 +326,25 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
   if (!file) {
     return;
   }
-  if (!isProjectPdfBasename(file.name)) {
+  const zip = isZipBasename(file.name);
+  if (!zip && !isProjectPdfBasename(file.name)) {
     setPdfOpenError("PDFファイル名が不正です");
     return;
   }
   const persisted = await persistCurrentAnnotations();
   if (!persisted) {
+    return;
+  }
+  if (zip) {
+    try {
+      const first = await importZipBytesIntoOpenProject(file.bytes, kind, file.path);
+      projectStore.error = "";
+      pdfStore.status = "";
+      projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+      await openProjectPdf(first);
+    } catch (error) {
+      throw setProjectImportError(error);
+    }
     return;
   }
   const relPath = joinProjectPdfRelPath(kind, file.name);

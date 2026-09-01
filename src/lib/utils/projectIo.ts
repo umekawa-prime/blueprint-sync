@@ -69,11 +69,35 @@ export async function readTextFile(path: string): Promise<string> {
   return new TextDecoder().decode(Uint8Array.from(bytes));
 }
 
-export async function writeTextFile(path: string, text: string): Promise<void> {
+export async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
   await invoke("write_file_bytes", {
     path,
-    bytes: Array.from(new TextEncoder().encode(text)),
+    bytes: Array.from(bytes),
   });
+}
+
+export async function writeTextFile(path: string, text: string): Promise<void> {
+  await writeBinaryFile(path, new TextEncoder().encode(text));
+}
+
+export async function httpGet(url: string): Promise<{
+  status: number;
+  contentType: string;
+  contentDisposition: string;
+  bytes: Uint8Array;
+}> {
+  const raw = await invoke<{
+    status: number;
+    contentType: string;
+    contentDisposition: string;
+    bytes: number[];
+  }>("http_get", { url });
+  return {
+    status: raw.status,
+    contentType: raw.contentType,
+    contentDisposition: raw.contentDisposition,
+    bytes: Uint8Array.from(raw.bytes),
+  };
 }
 
 export async function readBinaryFile(path: string): Promise<Uint8Array> {

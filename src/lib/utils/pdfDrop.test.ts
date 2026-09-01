@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstDroppedPdf, isDroppedPdfFile } from "./pdfDrop";
+import { firstDroppedPdf, firstDroppedPdfOrZip, isDroppedPdfFile, isDroppedZipFile } from "./pdfDrop";
 
 describe("isDroppedPdfFile", () => {
   it("accepts the application/pdf MIME type", () => {
@@ -26,5 +26,22 @@ describe("firstDroppedPdf", () => {
   it("returns null when nothing is a pdf", () => {
     expect(firstDroppedPdf(null)).toBeNull();
     expect(firstDroppedPdf([new File(["a"], "notes.txt")])).toBeNull();
+  });
+});
+
+describe("isDroppedZipFile", () => {
+  it("accepts zip mime types and a .zip filename", () => {
+    expect(isDroppedZipFile({ name: "plans.zip", type: "application/zip" })).toBe(true);
+    expect(isDroppedZipFile({ name: "図面.ZIP", type: "" })).toBe(true);
+    expect(isDroppedZipFile({ name: "A.pdf", type: "application/pdf" })).toBe(false);
+  });
+});
+
+describe("firstDroppedPdfOrZip", () => {
+  it("returns the first pdf or zip in a file list", () => {
+    const txt = new File(["a"], "notes.txt", { type: "text/plain" });
+    const zip = new File(["b"], "plans.zip", { type: "" });
+    expect(firstDroppedPdfOrZip([txt, zip])).toBe(zip);
+    expect(firstDroppedPdfOrZip([new File(["a"], "notes.txt")])).toBeNull();
   });
 });

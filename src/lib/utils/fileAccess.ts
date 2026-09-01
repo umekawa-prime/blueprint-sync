@@ -22,7 +22,7 @@ export async function openPdfFromDisk(): Promise<{
     };
   }
 
-  return pickFileInBrowser("application/pdf");
+  return pickFileInBrowser(".pdf,.zip,application/pdf,application/zip");
 }
 
 export async function savePdfToDisk(

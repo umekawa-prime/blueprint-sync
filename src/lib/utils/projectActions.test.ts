@@ -1,3 +1,4 @@
+import { zipSync } from "fflate";
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { annotationStore } from "$lib/stores/annotationStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
@@ -18,9 +19,12 @@ const {
   mockReadBinaryFile,
   mockReadProjectMeta,
   mockWriteAnnotationFile,
+  mockWriteBinaryFile,
   mockWriteProjectMeta,
+  mockDeleteFile,
   mockOpenUrl,
   mockSendCurrentPdf,
+  mockImportOneDrive,
 } = vi.hoisted(() => ({
   mockOpenPdfFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
@@ -35,9 +39,12 @@ const {
   mockReadBinaryFile: vi.fn(),
   mockReadProjectMeta: vi.fn(),
   mockWriteAnnotationFile: vi.fn(),
+  mockWriteBinaryFile: vi.fn(),
   mockWriteProjectMeta: vi.fn(),
+  mockDeleteFile: vi.fn(),
   mockOpenUrl: vi.fn(),
   mockSendCurrentPdf: vi.fn(),
+  mockImportOneDrive: vi.fn(),
 }));
 
 vi.mock("./fileAccess", () => ({
@@ -58,12 +65,19 @@ vi.mock("./projectIo", () => ({
   loadRecentProjects: mockLoadRecentProjects,
   pathExists: mockPathExists,
   pickFolder: mockPickFolder,
+  httpGet: vi.fn(),
+  writeBinaryFile: mockWriteBinaryFile,
+  deleteFile: mockDeleteFile,
   readAnnotationFile: mockReadAnnotationFile,
   readBinaryFile: mockReadBinaryFile,
   readProjectMeta: mockReadProjectMeta,
   saveRecentProjects: mockSaveRecentProjects,
   writeAnnotationFile: mockWriteAnnotationFile,
   writeProjectMeta: mockWriteProjectMeta,
+}));
+
+vi.mock("./oneDriveImport", () => ({
+  importOneDrivePdfsIntoFolder: mockImportOneDrive,
 }));
 
 vi.mock("@tauri-apps/plugin-opener", () => ({
@@ -79,6 +93,7 @@ import {
   closeProject,
   createProject,
   importPdfIntoProject,
+  importOneDriveLinkIntoProject,
   loadRecentsIntoStore,
   openProjectLink,
   openProject,
@@ -404,6 +419,66 @@ describe("projectActions", () => {
     expect(projectStore.currentPdf).toBe("工程表/週間工程.pdf");
   });
 
+  it("extracts pdfs from a picked zip into 図面, opens the first, then deletes the zip", async () => {
+    const pdfA = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
+    const pdfB = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x32]);
+    projectStore.folder = "/projects/a";
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: "plans.zip",
+      path: "/downloads/plans.zip",
+      bytes: zipSync({ "1F.pdf": pdfA, "nested/2F.pdf": pdfB }),
+    });
+    mockPathExists.mockResolvedValue(false);
+    mockWriteBinaryFile.mockResolvedValue(undefined);
+    mockDeleteFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf", "図面/2F.pdf"]);
+
+    await importPdfIntoProject();
+
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith("/projects/a/図面/1F.pdf", pdfA);
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith("/projects/a/図面/2F.pdf", pdfB);
+    expect(mockDeleteFile).toHaveBeenCalledWith("/downloads/plans.zip");
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+  });
+
+  it("extracts zip pdfs into 工程表 when adding a schedule", async () => {
+    const pdfA = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
+    projectStore.folder = "/projects/a";
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: "schedules.zip",
+      path: "/downloads/schedules.zip",
+      bytes: zipSync({ "週間工程.pdf": pdfA }),
+    });
+    mockPathExists.mockResolvedValue(false);
+    mockWriteBinaryFile.mockResolvedValue(undefined);
+    mockDeleteFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["工程表/週間工程.pdf"]);
+
+    await importPdfIntoProject("schedule");
+
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith("/projects/a/工程表/週間工程.pdf", pdfA);
+    expect(mockDeleteFile).toHaveBeenCalledWith("/downloads/schedules.zip");
+    expect(projectStore.currentPdf).toBe("工程表/週間工程.pdf");
+  });
+
+  it("keeps the original zip when it contains no pdfs", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: "empty.zip",
+      path: "/downloads/empty.zip",
+      bytes: zipSync({ "notes.txt": new Uint8Array([1, 2, 3]) }),
+    });
+
+    await expect(importPdfIntoProject()).rejects.toThrow(/PDF/);
+
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+  });
+
   it("adds and removes project links via project metadata persistence", async () => {
     vi.spyOn(globalThis.crypto, "randomUUID").mockReturnValue(
       "00000000-0000-4000-8000-000000000001",
@@ -471,6 +546,39 @@ describe("projectActions", () => {
     );
 
     expect(mockOpenUrl).not.toHaveBeenCalled();
+  });
+
+  it("imports onedrive files into 図面 and opens the first pdf", async () => {
+    projectStore.folder = "/projects/a";
+    mockImportOneDrive.mockResolvedValue({ imported: ["図面/1F.pdf"], skipped: [] });
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf"]);
+
+    await importOneDriveLinkIntoProject("https://1drv.ms/b/s!Abc", "drawing", "1F");
+
+    expect(mockImportOneDrive).toHaveBeenCalledWith(
+      expect.objectContaining({
+        shareUrl: "https://1drv.ms/b/s!Abc",
+        kind: "drawing",
+        projectFolder: "/projects/a",
+        fallbackTitle: "1F",
+      }),
+    );
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面/1F.pdf");
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+    expect(pdfStore.status).toBe("1件を取り込みました");
+  });
+
+  it("imports onedrive files into 工程表", async () => {
+    projectStore.folder = "/projects/a";
+    mockImportOneDrive.mockResolvedValue({ imported: ["工程表/週間工程.pdf"], skipped: [] });
+    mockListProjectPdfs.mockResolvedValue(["工程表/週間工程.pdf"]);
+
+    await importOneDriveLinkIntoProject("https://1drv.ms/f/s!Folder", "schedule");
+
+    expect(mockImportOneDrive).toHaveBeenCalledWith(
+      expect.objectContaining({ kind: "schedule", projectFolder: "/projects/a" }),
+    );
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/工程表/週間工程.pdf");
   });
 
   it("rejects invalid project pdf names before reading files", async () => {

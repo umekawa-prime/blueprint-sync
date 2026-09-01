@@ -17,7 +17,7 @@
   import { readFileAsBytes } from "$lib/utils/fileAccess";
   import { resizeImageFile } from "$lib/utils/imageResize";
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
-  import { firstDroppedPdf } from "$lib/utils/pdfDrop";
+  import { firstDroppedPdf, firstDroppedPdfOrZip } from "$lib/utils/pdfDrop";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
@@ -471,7 +471,9 @@
 
   async function onPdfFileDrop(event: DragEvent) {
     event.preventDefault();
-    const file = firstDroppedPdf(event.dataTransfer?.files);
+    const file = projectStore.isOpen
+      ? firstDroppedPdfOrZip(event.dataTransfer?.files)
+      : firstDroppedPdf(event.dataTransfer?.files);
     if (!file) {
       return;
     }
@@ -499,12 +501,18 @@
           return;
         }
         const path = event.payload.paths[0];
-        if (!path?.toLowerCase().endsWith(".pdf")) {
+        const lower = path?.toLowerCase() ?? "";
+        const isPdf = lower.endsWith(".pdf");
+        const isZip = lower.endsWith(".zip");
+        if (!path || (!isPdf && !isZip)) {
           return;
         }
         try {
           if (projectStore.isOpen) {
             await importTauriPdfIntoProject(path);
+            return;
+          }
+          if (isZip) {
             return;
           }
           const { invoke } = await import("@tauri-apps/api/core");
