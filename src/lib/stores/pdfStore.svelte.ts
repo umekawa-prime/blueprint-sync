@@ -1,7 +1,11 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
 
-function destroyDocument(document: PDFDocumentProxy | null) {
-  (document as PDFDocumentProxy & { destroy?: () => void } | null)?.destroy?.();
+async function destroyDocument(document: PDFDocumentProxy | null) {
+  try {
+    await (document as PDFDocumentProxy & { destroy?: () => Promise<void> } | null)?.destroy?.();
+  } catch {
+    // Ignore worker teardown races when switching PDFs.
+  }
 }
 
 class PdfStore {
@@ -23,7 +27,11 @@ class PdfStore {
 
   async load(name: string, bytes: Uint8Array) {
     const { loadPdfDocument } = await import("$lib/utils/pdfRenderer");
-    destroyDocument(this.document);
+    const previous = this.document;
+    this.document = null;
+    this.pageIndex = 0;
+    this.pageCount = 0;
+    await destroyDocument(previous);
     this.name = name;
     this.bytes = bytes;
     this.document = await loadPdfDocument(bytes);
@@ -33,13 +41,14 @@ class PdfStore {
   }
 
   clear() {
-    destroyDocument(this.document);
+    const previous = this.document;
+    this.document = null;
     this.name = "未読み込み";
     this.bytes = null;
-    this.document = null;
     this.pageCount = 0;
     this.pageIndex = 0;
     this.status = "";
+    void destroyDocument(previous);
   }
 
   async setPage(index: number) {

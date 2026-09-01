@@ -17,8 +17,9 @@
   import { readFileAsBytes } from "$lib/utils/fileAccess";
   import { resizeImageFile } from "$lib/utils/imageResize";
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
-  import { firstDroppedPdf, firstDroppedPdfOrZip } from "$lib/utils/pdfDrop";
+  import { firstDroppedPdf, firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
+  import { pdfPageNumber } from "$lib/utils/pdfCoords";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
   import { viewerApi } from "$lib/stores/viewerApi";
@@ -98,19 +99,26 @@
   }
 
   onMount(() => {
+    void setupDragDrop();
     if (!fabricCanvasEl) {
       return;
     }
 
-    fabricCanvas = new Canvas(fabricCanvasEl, {
-      selection: true,
-      preserveObjectStacking: true,
-      enableRetinaScaling: true,
-      fireRightClick: true,
-      stopContextMenu: true,
-    });
-    fabricCanvas.enablePointerEvents = true;
-    fabricCanvas.freeDrawingBrush = new PencilBrush(fabricCanvas);
+    try {
+      fabricCanvas = new Canvas(fabricCanvasEl, {
+        selection: true,
+        preserveObjectStacking: true,
+        enableRetinaScaling: true,
+        fireRightClick: true,
+        stopContextMenu: true,
+      });
+      fabricCanvas.enablePointerEvents = true;
+      fabricCanvas.freeDrawingBrush = new PencilBrush(fabricCanvas);
+    } catch (error) {
+      pdfStore.status =
+        error instanceof Error ? error.message : "キャンバスを初期化できませんでした";
+      return;
+    }
     viewerApi.exportOverlays = exportVisibleOverlays;
     viewerApi.addPhoto = addPhotoFromFile;
     viewerApi.undo = () => {
@@ -121,7 +129,6 @@
     };
     applyTool();
     bindFabricEvents();
-    void setupDragDrop();
     if (pdfStore.document) {
       void renderCurrentPage();
     }
@@ -315,37 +322,52 @@
   }
 
   async function renderCurrentPage() {
-    if (!pdfStore.document || !pdfCanvasEl || !fabricCanvas) {
+    if (!pdfStore.document || !pdfCanvasEl) {
+      return;
+    }
+    const pageNumber = pdfPageNumber(pdfStore.pageIndex, pdfStore.pageCount);
+    if (pageNumber < 1) {
       return;
     }
     const token = ++renderToken;
     persistCurrentPage();
     try {
-      const page = await pdfStore.document.getPage(pdfStore.pageIndex + 1);
+      const page = await pdfStore.document.getPage(pageNumber);
       if (token !== renderToken) {
         return;
       }
       const size = await renderPdfPage(page, pdfCanvasEl, pdfStore.zoom * 1.2);
-      fabricCanvas.setDimensions({
-        width: Math.floor(size.width),
-        height: Math.floor(size.height),
-      });
-      persistedPage = pdfStore.pageIndex;
-      await restorePageObjects();
+      if (token !== renderToken) {
+        return;
+      }
+      if (fabricCanvas) {
+        fabricCanvas.setDimensions({
+          width: Math.floor(size.width),
+          height: Math.floor(size.height),
+        });
+        persistedPage = pdfStore.pageIndex;
+        await restorePageObjects();
+      }
     } catch (error) {
+      if (token !== renderToken) {
+        return;
+      }
       pdfStore.status =
         error instanceof Error ? error.message : "PDFを表示できませんでした";
     }
   }
 
   function persistCurrentPage() {
-    if (!fabricCanvas) {
+    if (!fabricCanvas || applyingRemote || applyingHistory) {
+      return;
+    }
+    if (projectStore.currentPdf && pdfStore.name !== projectStore.currentPdf) {
       return;
     }
     const objects = fabricCanvas
       .getObjects()
       .map((object) => object.toObject(CUSTOM_PROPS) as Record<string, unknown>);
-    annotationStore.replacePage(persistedPage, objects);
+    annotationStore.replacePage(persistedPage, objects, false);
   }
 
   async function restorePageObjects() {
@@ -464,26 +486,61 @@
 
   function allowPdfDrop(event: DragEvent) {
     event.preventDefault();
+    event.stopPropagation();
     if (event.dataTransfer) {
       event.dataTransfer.dropEffect = "copy";
     }
   }
 
+  function droppedFileFromEvent(event: DragEvent): File | null {
+    const files = event.dataTransfer?.files;
+    return projectStore.isOpen ? firstDroppedPdfOrZip(files) : firstDroppedPdf(files);
+  }
+
+  function droppedPathFromEvent(event: DragEvent): string | null {
+    const uriList =
+      event.dataTransfer?.getData("text/uri-list") || event.dataTransfer?.getData("text/plain") || "";
+    const path = firstDroppedImportPath(filePathsFromUriList(uriList));
+    if (!path) {
+      return null;
+    }
+    if (!projectStore.isOpen && !path.toLowerCase().endsWith(".pdf")) {
+      return null;
+    }
+    return path;
+  }
+
   async function onPdfFileDrop(event: DragEvent) {
     event.preventDefault();
-    const file = projectStore.isOpen
-      ? firstDroppedPdfOrZip(event.dataTransfer?.files)
-      : firstDroppedPdf(event.dataTransfer?.files);
-    if (!file) {
+    event.stopPropagation();
+    const file = droppedFileFromEvent(event);
+    const path = file ? null : droppedPathFromEvent(event);
+    if (!file && !path) {
+      pdfStore.status = "PDF または ZIP をドロップしてください";
       return;
     }
     try {
       if (projectStore.isOpen) {
-        await importBrowserPdfIntoProject(file);
+        if (file) {
+          await importBrowserPdfIntoProject(file);
+          return;
+        }
+        await importTauriPdfIntoProject(path!);
+        return;
+      }
+      if (path) {
+        const { invoke } = await import("@tauri-apps/api/core");
+        const bytes = await invoke<number[]>("read_file_bytes", { path });
+        annotationStore.clear();
+        await pdfStore.load(
+          path.split(/[/\\]/).pop() ?? "document.pdf",
+          Uint8Array.from(bytes),
+        );
+        sendCurrentPdf();
         return;
       }
       annotationStore.clear();
-      await pdfStore.load(file.name, await readFileAsBytes(file));
+      await pdfStore.load(file!.name, await readFileAsBytes(file!));
       sendCurrentPdf();
     } catch (error) {
       pdfStore.status = error instanceof Error ? error.message : "PDFを開けませんでした";
@@ -495,16 +552,14 @@
       return;
     }
     try {
-      const { getCurrentWebview } = await import("@tauri-apps/api/webview");
-      const unlisten = await getCurrentWebview().onDragDropEvent(async (event) => {
+      const { getCurrentWindow } = await import("@tauri-apps/api/window");
+      const unlisten = await getCurrentWindow().onDragDropEvent(async (event) => {
         if (event.payload.type !== "drop") {
           return;
         }
-        const path = event.payload.paths[0];
-        const lower = path?.toLowerCase() ?? "";
-        const isPdf = lower.endsWith(".pdf");
-        const isZip = lower.endsWith(".zip");
-        if (!path || (!isPdf && !isZip)) {
+        const path = firstDroppedImportPath(event.payload.paths);
+        if (!path) {
+          pdfStore.status = "PDF または ZIP をドロップしてください";
           return;
         }
         try {
@@ -512,7 +567,8 @@
             await importTauriPdfIntoProject(path);
             return;
           }
-          if (isZip) {
+          if (path.toLowerCase().endsWith(".zip")) {
+            pdfStore.status = "ZIP はプロジェクトを開いてから取り込んでください";
             return;
           }
           const { invoke } = await import("@tauri-apps/api/core");
@@ -530,7 +586,7 @@
       });
       unlistenDrag = unlisten;
     } catch {
-      // HTML5 drop still works when native drag-drop is disabled.
+      // HTML5 drop still works when native drag-drop is unavailable.
     }
   }
 
@@ -605,16 +661,16 @@
   ondrop={onPdfFileDrop}
   role="application"
 >
-  {#if !pdfStore.document}
+  {#if !pdfStore.document && !pdfStore.bytes}
     <div
-      class="absolute inset-0 flex flex-col items-center justify-center gap-2 text-slate-400"
+      class="absolute inset-0 z-10 flex flex-col items-center justify-center gap-2 text-slate-400"
     >
       <p class="text-lg">図面または工程表のPDFを開くか、ここにドロップしてください</p>
       <p class="text-sm">Windows で接続待機し、Android から QR で同期できます</p>
     </div>
   {/if}
 
-  <div class="relative mx-auto w-fit">
+  <div class="relative mx-auto w-fit" class:pointer-events-none={!pdfStore.document && !pdfStore.bytes}>
     <canvas bind:this={pdfCanvasEl} class="block bg-white shadow-2xl"></canvas>
     <div class="absolute top-0 left-0 z-[1] touch-none">
       <canvas bind:this={fabricCanvasEl}></canvas>

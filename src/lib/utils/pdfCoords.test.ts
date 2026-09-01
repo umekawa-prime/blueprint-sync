@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { fabricToPdfRect, pdfPageSizeFromViewport } from "./pdfCoords";
+import { fabricToPdfRect, pdfPageSizeFromViewport, pdfPageNumber } from "./pdfCoords";
 
 describe("pdfCoords", () => {
   it("converts a top-left fabric rect into PDF bottom-left coordinates", () => {
@@ -24,5 +24,12 @@ describe("pdfCoords", () => {
     expect(
       pdfPageSizeFromViewport({ width: 1224, height: 1584, scale: 2 }),
     ).toEqual({ width: 612, height: 792 });
+  });
+
+  it("clamps a leftover drawing page index into a shorter schedule pdf", () => {
+    expect(pdfPageNumber(4, 1)).toBe(1);
+    expect(pdfPageNumber(0, 3)).toBe(1);
+    expect(pdfPageNumber(2, 3)).toBe(3);
+    expect(pdfPageNumber(0, 0)).toBe(0);
   });
 });

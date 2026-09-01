@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { firstDroppedPdf, firstDroppedPdfOrZip, isDroppedPdfFile, isDroppedZipFile } from "./pdfDrop";
+import { firstDroppedPdf, firstDroppedPdfOrZip, firstDroppedImportPath, filePathsFromUriList, isDroppedPdfFile, isDroppedZipFile } from "./pdfDrop";
 
 describe("isDroppedPdfFile", () => {
   it("accepts the application/pdf MIME type", () => {
@@ -43,5 +43,26 @@ describe("firstDroppedPdfOrZip", () => {
     const zip = new File(["b"], "plans.zip", { type: "" });
     expect(firstDroppedPdfOrZip([txt, zip])).toBe(zip);
     expect(firstDroppedPdfOrZip([new File(["a"], "notes.txt")])).toBeNull();
+  });
+});
+
+describe("filePathsFromUriList", () => {
+  it("decodes file:// URIs from Linux file managers", () => {
+    expect(
+      filePathsFromUriList("file:///home/me/図面.pdf\r\n#comment\nfile:///tmp/plans.zip"),
+    ).toEqual(["/home/me/図面.pdf", "/tmp/plans.zip"]);
+  });
+
+  it("strips the extra slash from Windows file URIs", () => {
+    expect(filePathsFromUriList("file:///C:/Users/me/A.pdf")).toEqual(["C:/Users/me/A.pdf"]);
+  });
+});
+
+describe("firstDroppedImportPath", () => {
+  it("picks the first pdf or zip path", () => {
+    expect(firstDroppedImportPath(["/tmp/notes.txt", "/tmp/A.pdf", "/tmp/b.zip"])).toBe(
+      "/tmp/A.pdf",
+    );
+    expect(firstDroppedImportPath(["/tmp/notes.txt"])).toBeNull();
   });
 });

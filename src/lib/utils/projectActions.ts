@@ -250,6 +250,7 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
       projectStore.currentPdf,
       annotationStore.exportByPage(),
     );
+    annotationStore.dirty = false;
     return true;
   } catch (error) {
     pdfStore.status = error instanceof Error ? error.message : "注釈の保存に失敗しました";
@@ -270,7 +271,9 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     return;
   }
   try {
-    const bytes = await readBinaryFile(`${projectStore.folder}/${fileName}`);
+    const bytes = await readBinaryFile(
+      `${projectStore.folder}/${fileName.replaceAll("\\", "/")}`,
+    );
     let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>>;
     try {
       nextAnnotations = await readAnnotationFile(projectStore.folder, fileName);
@@ -278,8 +281,8 @@ export async function openProjectPdf(fileName: string): Promise<void> {
       pdfStore.status = "注釈ファイルの読み込みに失敗しました";
       return;
     }
-    await pdfStore.load(fileName, bytes);
     annotationStore.importByPage(nextAnnotations);
+    await pdfStore.load(fileName, bytes);
     projectStore.currentPdf = fileName;
     projectStore.error = "";
     pdfStore.status = "";

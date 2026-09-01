@@ -29,3 +29,43 @@ export function firstDroppedPdfOrZip(
   }
   return Array.from(files).find((file) => isDroppedPdfFile(file) || isDroppedZipFile(file)) ?? null;
 }
+
+export function filePathsFromUriList(uriList: string): string[] {
+  const paths: string[] = [];
+  for (const raw of uriList.split(/\r?\n/)) {
+    const line = raw.trim();
+    if (!line || line.startsWith("#")) {
+      continue;
+    }
+    const path = pathFromDroppedUri(line);
+    if (path) {
+      paths.push(path);
+    }
+  }
+  return paths;
+}
+
+function pathFromDroppedUri(value: string): string | null {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== "file:") {
+      return null;
+    }
+    let path = decodeURIComponent(url.pathname);
+    if (/^\/[A-Za-z]:\//.test(path)) {
+      path = path.slice(1);
+    }
+    return path;
+  } catch {
+    return null;
+  }
+}
+
+export function isDroppedImportPath(path: string): boolean {
+  const name = path.split(/[/\\]/).pop() ?? "";
+  return isDroppedPdfFile({ name, type: "" }) || isDroppedZipFile({ name, type: "" });
+}
+
+export function firstDroppedImportPath(paths: string[]): string | null {
+  return paths.find(isDroppedImportPath) ?? null;
+}

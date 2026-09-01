@@ -1,4 +1,6 @@
 mod sync_server;
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+mod explorer_dialog;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
@@ -77,11 +79,7 @@ fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
 fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
-    let selected = rfd::FileDialog::new()
-        .add_filter("PDF / ZIP", &["pdf", "zip"])
-        .pick_file();
-
-    let Some(path) = selected else {
+    let Some(path) = explorer_dialog::pick_file_native() else {
         return Ok(None);
     };
 
@@ -107,9 +105,7 @@ fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
 fn pick_folder() -> Result<Option<String>, String> {
-    Ok(rfd::FileDialog::new()
-        .pick_folder()
-        .map(|path| path.to_string_lossy().into_owned()))
+    Ok(explorer_dialog::pick_folder_native().map(|path| path.to_string_lossy().into_owned()))
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
@@ -289,15 +285,7 @@ fn save_pdf_file(
     bytes: Vec<u8>,
     default_dir: Option<String>,
 ) -> Result<bool, String> {
-    let mut dialog = rfd::FileDialog::new()
-        .add_filter("PDF", &["pdf"])
-        .set_file_name(&default_name);
-    if let Some(dir) = default_dir {
-        dialog = dialog.set_directory(dir);
-    }
-    let selected = dialog.save_file();
-
-    let Some(path) = selected else {
+    let Some(path) = explorer_dialog::save_file_native(&default_name, default_dir.as_deref()) else {
         return Ok(false);
     };
 

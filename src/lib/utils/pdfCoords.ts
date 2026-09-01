@@ -48,3 +48,10 @@ export function pdfPageSizeFromViewport(viewport: PdfJsViewport): {
     height: viewport.height / viewport.scale,
   };
 }
+
+export function pdfPageNumber(pageIndex: number, pageCount: number): number {
+  if (pageCount <= 0) {
+    return 0;
+  }
+  return Math.min(Math.max(pageIndex, 0), pageCount - 1) + 1;
+}

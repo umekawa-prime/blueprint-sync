@@ -25,14 +25,16 @@ class AnnotationStore {
     this.dirty = true;
   }
 
-  replacePage(page: number, objects: Record<string, unknown>[]) {
+  replacePage(page: number, objects: Record<string, unknown>[], markDirty = true) {
     const mapped: PageObjects = {};
     for (const object of objects) {
       const id = String(object.id ?? crypto.randomUUID());
       mapped[id] = { ...object, id };
     }
     this.byPage = { ...this.byPage, [page]: mapped };
-    this.dirty = true;
+    if (markDirty) {
+      this.dirty = true;
+    }
   }
 
   applyRemote(

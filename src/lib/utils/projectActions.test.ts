@@ -236,11 +236,13 @@ describe("projectActions", () => {
     projectStore.folder = "/projects/a";
     projectStore.currentPdf = "A.pdf";
     annotationStore.importByPage({ 0: { a: { id: "a", type: "path" } } });
+    annotationStore.dirty = true;
     mockWriteAnnotationFile.mockResolvedValue(undefined);
 
     const persisted = await persistCurrentAnnotations();
 
     expect(persisted).toBe(true);
+    expect(annotationStore.dirty).toBe(false);
     expect(mockWriteAnnotationFile).toHaveBeenCalledWith("/projects/a", "A.pdf", {
       0: { a: { id: "a", type: "path" } },
     });
