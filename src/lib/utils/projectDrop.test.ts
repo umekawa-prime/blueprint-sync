@@ -8,7 +8,7 @@ const {
   mockSendCurrentPdf,
   mockPersistCurrentAnnotations,
   mockOpenProjectPdf,
-  mockCopyFileIntoFolder,
+  mockMoveFileIntoFolder,
   mockListProjectPdfs,
   mockPathExists,
 } = vi.hoisted(() => ({
@@ -17,7 +17,7 @@ const {
   mockSendCurrentPdf: vi.fn(),
   mockPersistCurrentAnnotations: vi.fn(),
   mockOpenProjectPdf: vi.fn(),
-  mockCopyFileIntoFolder: vi.fn(),
+  mockMoveFileIntoFolder: vi.fn(),
   mockListProjectPdfs: vi.fn(),
   mockPathExists: vi.fn(),
 }));
@@ -47,7 +47,8 @@ vi.mock("./projectIo", async () => {
   const actual = await vi.importActual<typeof import("./projectIo")>("./projectIo");
   return {
     ...actual,
-    copyFileIntoFolder: mockCopyFileIntoFolder,
+    copyFileIntoFolder: vi.fn(),
+    moveFileIntoFolder: mockMoveFileIntoFolder,
     listProjectPdfs: mockListProjectPdfs,
     pathExists: mockPathExists,
   };
@@ -69,7 +70,7 @@ describe("projectDrop", () => {
     projectStore.folder = "/projects/a";
     mockPersistCurrentAnnotations.mockResolvedValue(true);
     mockReadFileAsBytes.mockResolvedValue(new Uint8Array([1, 2, 3]));
-    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    mockListProjectPdfs.mockResolvedValue(["図面/A.pdf"]);
     mockPathExists.mockResolvedValue(false);
   });
 
@@ -82,11 +83,11 @@ describe("projectDrop", () => {
 
     expect(mockPersistCurrentAnnotations).toHaveBeenCalled();
     expect(mockInvoke).toHaveBeenCalledWith("write_file_bytes", {
-      path: "/projects/a/A.pdf",
+      path: "/projects/a/図面/A.pdf",
       bytes: [1, 2, 3],
     });
-    expect(projectStore.pdfs).toEqual(["A.pdf"]);
-    expect(mockOpenProjectPdf).toHaveBeenCalledWith("A.pdf");
+    expect(projectStore.pdfs).toEqual(["図面/A.pdf"]);
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/A.pdf");
     expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
@@ -104,17 +105,27 @@ describe("projectDrop", () => {
     expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
-  it("copies tauri-dropped PDFs into the current project and opens them", async () => {
-    mockCopyFileIntoFolder.mockResolvedValue("/projects/a/B.pdf");
-    mockListProjectPdfs.mockResolvedValue(["A.pdf", "B.pdf"]);
+  it("moves tauri-dropped PDFs into the drawing folder and opens them", async () => {
+    mockMoveFileIntoFolder.mockResolvedValue("/projects/a/図面/B.pdf");
+    mockListProjectPdfs.mockResolvedValue(["図面/A.pdf", "図面/B.pdf"]);
 
     await expect(importTauriPdfIntoProject("/downloads/B.pdf")).resolves.toBe(true);
 
     expect(mockPersistCurrentAnnotations).toHaveBeenCalled();
-    expect(mockCopyFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a");
-    expect(projectStore.pdfs).toEqual(["A.pdf", "B.pdf"]);
-    expect(mockOpenProjectPdf).toHaveBeenCalledWith("B.pdf");
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a/図面");
+    expect(projectStore.pdfs).toEqual(["図面/A.pdf", "図面/B.pdf"]);
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/B.pdf");
     expect(mockSendCurrentPdf).not.toHaveBeenCalled();
+  });
+
+  it("moves tauri-dropped PDFs into the schedule folder when requested", async () => {
+    mockMoveFileIntoFolder.mockResolvedValue("/projects/a/工程表/工程.pdf");
+    mockListProjectPdfs.mockResolvedValue(["工程表/工程.pdf"]);
+
+    await expect(importTauriPdfIntoProject("/downloads/工程.pdf", "schedule")).resolves.toBe(true);
+
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/工程.pdf", "/projects/a/工程表");
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("工程表/工程.pdf");
   });
 
   it("keeps the current drawing when tauri-drop persistence fails", async () => {
@@ -122,7 +133,7 @@ describe("projectDrop", () => {
 
     await expect(importTauriPdfIntoProject("/downloads/B.pdf")).resolves.toBe(false);
 
-    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
     expect(mockSendCurrentPdf).not.toHaveBeenCalled();
@@ -140,7 +151,7 @@ describe("projectDrop", () => {
 
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
-    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
 
@@ -167,7 +178,7 @@ describe("projectDrop", () => {
     expect(projectStore.error).toBe("PDFファイル名が不正です");
     expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
-    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
 
@@ -181,7 +192,7 @@ describe("projectDrop", () => {
 
     expect(projectStore.error).toBe("同じ名前のPDFが既にあります");
     expect(pdfStore.status).toBe("同じ名前のPDFが既にあります");
-    expect(mockPathExists).toHaveBeenCalledWith("/projects/a/A.pdf");
+    expect(mockPathExists).toHaveBeenCalledWith("/projects/a/図面/A.pdf");
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();

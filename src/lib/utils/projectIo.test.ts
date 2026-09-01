@@ -12,9 +12,11 @@ vi.mock("@tauri-apps/api/core", () => ({
 import {
   annotationPath,
   copyFileIntoFolder,
+  deleteFile,
   initProjectDir,
   listProjectPdfs,
   loadRecentProjects,
+  moveFileIntoFolder,
   pathExists,
   pickFolder,
   projectJsonPath,
@@ -46,6 +48,9 @@ describe("projectIo", () => {
     expect(projectJsonPath("C:\\work\\proj")).toBe("C:\\work\\proj/.blueprint-sync/project.json");
     expect(annotationPath("/work/proj", "A.pdf")).toBe(
       "/work/proj/.blueprint-sync/annotations/A.pdf.json",
+    );
+    expect(annotationPath("/work/proj", "図面/A.pdf")).toBe(
+      "/work/proj/.blueprint-sync/annotations/図面/A.pdf.json",
     );
   });
 
@@ -81,6 +86,58 @@ describe("projectIo", () => {
       path: "/tmp/project.json",
       bytes: Array.from(new TextEncoder().encode("現場A")),
     });
+  });
+
+  it("moves a file by copying first and deleting the source only after copy succeeds", async () => {
+    mockInvoke
+      .mockResolvedValueOnce("/projects/a/工程表/工程.pdf")
+      .mockResolvedValueOnce(undefined);
+
+    await expect(
+      moveFileIntoFolder("/downloads/工程.pdf", "/projects/a/工程表"),
+    ).resolves.toBe("/projects/a/工程表/工程.pdf");
+
+    expect(mockInvoke).toHaveBeenNthCalledWith(1, "copy_file_into_folder", {
+      source: "/downloads/工程.pdf",
+      folder: "/projects/a/工程表",
+    });
+    expect(mockInvoke).toHaveBeenNthCalledWith(2, "delete_file", {
+      path: "/downloads/工程.pdf",
+    });
+  });
+
+  it("does not delete the source when copy reports the same path", async () => {
+    mockInvoke.mockResolvedValueOnce("/projects/a/図面/A.pdf");
+
+    await expect(
+      moveFileIntoFolder("/projects/a/図面/A.pdf", "/projects/a/図面"),
+    ).resolves.toBe("/projects/a/図面/A.pdf");
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("copy_file_into_folder", {
+      source: "/projects/a/図面/A.pdf",
+      folder: "/projects/a/図面",
+    });
+  });
+
+  it("does not delete the source when copy fails", async () => {
+    mockInvoke.mockRejectedValueOnce(new Error("同じ名前のPDFが既にあります"));
+
+    await expect(
+      moveFileIntoFolder("/downloads/A.pdf", "/projects/a/図面"),
+    ).rejects.toThrow("同じ名前のPDFが既にあります");
+
+    expect(mockInvoke).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("copy_file_into_folder", {
+      source: "/downloads/A.pdf",
+      folder: "/projects/a/図面",
+    });
+  });
+
+  it("forwards delete_file", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await expect(deleteFile("/tmp/A.pdf")).resolves.toBeUndefined();
+    expect(mockInvoke).toHaveBeenCalledWith("delete_file", { path: "/tmp/A.pdf" });
   });
 
   it("reads binary bytes without decoding", async () => {

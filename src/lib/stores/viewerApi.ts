@@ -9,6 +9,8 @@ class ViewerApi {
   > = async () => [];
 
   addPhoto: (file: Blob) => Promise<void> = async () => undefined;
+  undo: () => void = () => undefined;
+  redo: () => void = () => undefined;
 }
 
 export const viewerApi = new ViewerApi();

@@ -4,10 +4,16 @@ import {
   createProjectMeta,
   displayLinkTitle,
   dropRecent,
+  folderDisplayName,
   isAllowedLinkUrl,
   isProjectPdfBasename,
+  isProjectPdfRelPath,
+  joinProjectPdfRelPath,
   listPdfFileNames,
+  listPdfsOfKind,
   parseProjectJson,
+  PROJECT_PDF_DIRS,
+  projectPdfKind,
   rememberRecent,
   serializeProjectJson,
 } from "./projectFormat";
@@ -63,15 +69,36 @@ describe("project.json", () => {
   });
 });
 
+describe("folderDisplayName", () => {
+  it("uses the last path segment on unix and windows paths", () => {
+    expect(folderDisplayName("/projects/現場A")).toBe("現場A");
+    expect(folderDisplayName("C:\\data\\現場A")).toBe("現場A");
+    expect(folderDisplayName("C:/Users/me/現場A")).toBe("現場A");
+    expect(folderDisplayName("\\\\?\\C:\\Users\\me\\現場A")).toBe("現場A");
+  });
+
+  it("ignores a trailing separator", () => {
+    expect(folderDisplayName("/projects/現場A/")).toBe("現場A");
+    expect(folderDisplayName("C:\\data\\現場A\\")).toBe("現場A");
+  });
+
+  it("falls back when the path is empty", () => {
+    expect(folderDisplayName("")).toBe("無題プロジェクト");
+    expect(folderDisplayName("/")).toBe("無題プロジェクト");
+  });
+});
+
 describe("annotationFileName", () => {
   it("appends .json to a pdf basename", () => {
     expect(annotationFileName("1F平面図.pdf")).toBe("1F平面図.pdf.json");
   });
 
-  it("rejects hidden names, path separators, and parent segments", () => {
+  it("accepts kind-prefixed annotation names and still rejects other nested paths", () => {
+    expect(annotationFileName("図面/1F.pdf")).toBe("図面/1F.pdf.json");
+    expect(annotationFileName("工程表/週間工程.pdf")).toBe("工程表/週間工程.pdf.json");
+    expect(() => annotationFileName("nested/A.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName(".hidden.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("../x.pdf")).toThrow(/invalid/i);
-    expect(() => annotationFileName("a/b.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("a\\b.pdf")).toThrow(/invalid/i);
   });
 });
@@ -82,6 +109,36 @@ describe("isProjectPdfBasename", () => {
     expect(isProjectPdfBasename(".hidden.pdf")).toBe(false);
     expect(isProjectPdfBasename("nested/A.pdf")).toBe(false);
     expect(isProjectPdfBasename("A.txt")).toBe(false);
+  });
+});
+
+describe("project pdf kinds", () => {
+  it("treats root and 図面 paths as drawings, 工程表 as schedules", () => {
+    expect(projectPdfKind("A.pdf")).toBe("drawing");
+    expect(projectPdfKind("図面/1F.pdf")).toBe("drawing");
+    expect(projectPdfKind("工程表/週間工程.pdf")).toBe("schedule");
+    expect(joinProjectPdfRelPath("drawing", "1F.pdf")).toBe("図面/1F.pdf");
+    expect(joinProjectPdfRelPath("schedule", "週間工程.pdf")).toBe("工程表/週間工程.pdf");
+    expect(PROJECT_PDF_DIRS.drawing).toBe("図面");
+    expect(PROJECT_PDF_DIRS.schedule).toBe("工程表");
+  });
+
+  it("accepts legacy root pdfs and kind subfolder pdfs", () => {
+    expect(isProjectPdfRelPath("A.pdf")).toBe(true);
+    expect(isProjectPdfRelPath("図面/A.pdf")).toBe(true);
+    expect(isProjectPdfRelPath("工程表/A.pdf")).toBe(true);
+    expect(isProjectPdfRelPath("other/A.pdf")).toBe(false);
+    expect(isProjectPdfRelPath("図面/../A.pdf")).toBe(false);
+    expect(isProjectPdfRelPath(".hidden.pdf")).toBe(false);
+  });
+
+  it("splits a mixed list into drawings and schedules", () => {
+    expect(
+      listPdfsOfKind(["A.pdf", "図面/B.pdf", "工程表/C.pdf", "工程表/D.pdf"], "drawing"),
+    ).toEqual(["A.pdf", "図面/B.pdf"]);
+    expect(listPdfsOfKind(["A.pdf", "図面/B.pdf", "工程表/C.pdf"], "schedule")).toEqual([
+      "工程表/C.pdf",
+    ]);
   });
 });
 

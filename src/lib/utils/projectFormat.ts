@@ -70,6 +70,13 @@ export function serializeProjectJson(meta: ProjectMeta): string {
   return JSON.stringify(meta, null, 2);
 }
 
+export function folderDisplayName(path: string): string {
+  const trimmed = path.replace(/[/\\]+$/, "");
+  const parts = trimmed.split(/[/\\]/).filter(Boolean);
+  const last = parts.at(-1) ?? "";
+  return last || "無題プロジェクト";
+}
+
 export function createProjectMeta(name: string, now = new Date()): ProjectMeta {
   return {
     id: crypto.randomUUID(),
@@ -77,6 +84,17 @@ export function createProjectMeta(name: string, now = new Date()): ProjectMeta {
     createdAt: now.toISOString(),
     links: [],
   };
+}
+
+export type ProjectPdfKind = "drawing" | "schedule";
+
+export const PROJECT_PDF_DIRS: Record<ProjectPdfKind, string> = {
+  drawing: "図面",
+  schedule: "工程表",
+};
+
+function normalizeRelPath(relPath: string): string {
+  return relPath.replaceAll("\\", "/");
 }
 
 export function isProjectPdfBasename(pdfName: string): boolean {
@@ -90,11 +108,54 @@ export function isProjectPdfBasename(pdfName: string): boolean {
   );
 }
 
+export function isProjectPdfRelPath(relPath: string): boolean {
+  const normalized = normalizeRelPath(relPath);
+  if (!normalized || normalized.startsWith("/") || normalized.includes("..")) {
+    return false;
+  }
+  const parts = normalized.split("/").filter(Boolean);
+  if (parts.length === 1) {
+    return isProjectPdfBasename(parts[0]);
+  }
+  if (parts.length === 2) {
+    return (
+      (parts[0] === PROJECT_PDF_DIRS.drawing || parts[0] === PROJECT_PDF_DIRS.schedule) &&
+      isProjectPdfBasename(parts[1])
+    );
+  }
+  return false;
+}
+
+export function projectPdfKind(relPath: string): ProjectPdfKind {
+  const normalized = normalizeRelPath(relPath);
+  if (normalized.startsWith(`${PROJECT_PDF_DIRS.schedule}/`)) {
+    return "schedule";
+  }
+  return "drawing";
+}
+
+export function joinProjectPdfRelPath(kind: ProjectPdfKind, basename: string): string {
+  return `${PROJECT_PDF_DIRS[kind]}/${basename}`;
+}
+
+export function projectPdfKindDir(projectFolder: string, kind: ProjectPdfKind): string {
+  return `${projectFolder}/${PROJECT_PDF_DIRS[kind]}`;
+}
+
+export function projectPdfDisplayName(relPath: string): string {
+  const parts = normalizeRelPath(relPath).split("/").filter(Boolean);
+  return parts.at(-1) ?? relPath;
+}
+
+export function listPdfsOfKind(names: string[], kind: ProjectPdfKind): string[] {
+  return names.filter((name) => isProjectPdfRelPath(name) && projectPdfKind(name) === kind);
+}
+
 export function annotationFileName(pdfName: string): string {
-  if (!isProjectPdfBasename(pdfName)) {
+  if (!isProjectPdfRelPath(pdfName)) {
     throw new Error("Invalid annotation file name");
   }
-  return `${pdfName}.json`;
+  return `${normalizeRelPath(pdfName)}.json`;
 }
 
 export function listPdfFileNames(names: string[]): string[] {

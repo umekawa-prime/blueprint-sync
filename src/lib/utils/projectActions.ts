@@ -7,15 +7,20 @@ import { isTauriRuntime } from "./platform";
 import {
   createProjectMeta,
   dropRecent,
+  folderDisplayName,
   isAllowedLinkUrl,
   isProjectPdfBasename,
+  isProjectPdfRelPath,
+  joinProjectPdfRelPath,
+  projectPdfKindDir,
   rememberRecent,
+  type ProjectPdfKind,
 } from "./projectFormat";
 import {
-  copyFileIntoFolder,
   initProjectDir,
   listProjectPdfs,
   loadRecentProjects,
+  moveFileIntoFolder,
   pathExists,
   pickFolder,
   readAnnotationFile,
@@ -50,6 +55,13 @@ function setPdfOpenError(message: string) {
   pdfStore.status = message;
 }
 
+async function openFirstProjectPdf(): Promise<void> {
+  const first = projectStore.pdfs[0];
+  if (first) {
+    await openProjectPdf(first);
+  }
+}
+
 export async function loadRecentsIntoStore(): Promise<void> {
   if (!isTauriRuntime()) {
     return;
@@ -68,21 +80,22 @@ export async function loadRecentsIntoStore(): Promise<void> {
   }
 }
 
-export async function createProject(name: string): Promise<void> {
+export async function createProject(): Promise<void> {
   requireTauri();
   const folder = await pickFolder();
   if (!folder) {
     return;
   }
   await initProjectDir(folder);
-  const meta = createProjectMeta(name);
+  const meta = createProjectMeta(folderDisplayName(folder));
   await writeProjectMeta(folder, meta);
   projectStore.folder = folder;
   projectStore.meta = meta;
   projectStore.pdfs = await listProjectPdfs(folder);
   projectStore.currentPdf = "";
   projectStore.error = "";
-  await remember(meta.name, folder);
+  await remember(folderDisplayName(folder), folder);
+  await openFirstProjectPdf();
 }
 
 export async function openProject(folder?: string): Promise<void> {
@@ -101,7 +114,8 @@ export async function openProject(folder?: string): Promise<void> {
     projectStore.error = "";
     pdfStore.clear();
     annotationStore.clear();
-    await remember(meta.name, selected);
+    await remember(folderDisplayName(selected), selected);
+    await openFirstProjectPdf();
   } catch (error) {
     const message = error instanceof Error ? error.message : "プロジェクトを開けませんでした";
     const friendly = message.includes("Invalid project")
@@ -198,7 +212,7 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   if (!projectStore.folder) {
     return;
   }
-  if (!isProjectPdfBasename(fileName)) {
+  if (!isProjectPdfRelPath(fileName)) {
     setPdfOpenError("PDFファイル名が不正です");
     return;
   }
@@ -226,7 +240,7 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   }
 }
 
-export async function importPdfIntoProject(): Promise<void> {
+export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Promise<void> {
   if (!projectStore.folder) {
     return;
   }
@@ -242,15 +256,18 @@ export async function importPdfIntoProject(): Promise<void> {
   if (!persisted) {
     return;
   }
-  let name = file.name;
+  const relPath = joinProjectPdfRelPath(kind, file.name);
   try {
     if (file.path) {
-      const dest = await copyFileIntoFolder(file.path, projectStore.folder);
-      name = dest.split(/[/\\]/).pop() ?? file.name;
+      await moveFileIntoFolder(file.path, projectPdfKindDir(projectStore.folder, kind));
     } else {
+      const destPath = `${projectStore.folder}/${relPath}`;
+      if (await pathExists(destPath)) {
+        throw new Error("同じ名前のPDFが既にあります");
+      }
       const { invoke } = await import("@tauri-apps/api/core");
       await invoke("write_file_bytes", {
-        path: `${projectStore.folder}/${file.name}`,
+        path: destPath,
         bytes: Array.from(file.bytes),
       });
     }
@@ -260,7 +277,7 @@ export async function importPdfIntoProject(): Promise<void> {
   projectStore.error = "";
   pdfStore.status = "";
   projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-  await openProjectPdf(name);
+  await openProjectPdf(relPath);
 }
 
 export async function refreshProjectPdfs(): Promise<void> {

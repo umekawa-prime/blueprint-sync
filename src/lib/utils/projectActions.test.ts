@@ -10,7 +10,7 @@ const {
   mockPickFolder,
   mockInitProjectDir,
   mockListProjectPdfs,
-  mockCopyFileIntoFolder,
+  mockMoveFileIntoFolder,
   mockLoadRecentProjects,
   mockSaveRecentProjects,
   mockPathExists,
@@ -27,7 +27,7 @@ const {
   mockPickFolder: vi.fn(),
   mockInitProjectDir: vi.fn(),
   mockListProjectPdfs: vi.fn(),
-  mockCopyFileIntoFolder: vi.fn(),
+  mockMoveFileIntoFolder: vi.fn(),
   mockLoadRecentProjects: vi.fn(),
   mockSaveRecentProjects: vi.fn(),
   mockPathExists: vi.fn(),
@@ -51,7 +51,8 @@ vi.mock("./platform", () => ({
 vi.mock("./projectIo", () => ({
   annotationPath: (folder: string, pdfName: string) =>
     `${folder}/.blueprint-sync/annotations/${pdfName}.json`,
-  copyFileIntoFolder: mockCopyFileIntoFolder,
+  copyFileIntoFolder: vi.fn(),
+  moveFileIntoFolder: mockMoveFileIntoFolder,
   initProjectDir: mockInitProjectDir,
   listProjectPdfs: mockListProjectPdfs,
   loadRecentProjects: mockLoadRecentProjects,
@@ -149,14 +150,16 @@ describe("projectActions", () => {
     mockPickFolder.mockResolvedValue("/projects/a");
     mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
 
-    await createProject("現場A");
+    await createProject();
 
     expect(mockInitProjectDir).toHaveBeenCalledWith("/projects/a");
     expect(projectStore.folder).toBe("/projects/a");
-    expect(projectStore.meta?.name).toBe("現場A");
+    expect(projectStore.meta?.name).toBe("a");
     expect(projectStore.pdfs).toEqual(["A.pdf"]);
+    expect(projectStore.currentPdf).toBe("A.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("A.pdf", new Uint8Array([1, 2, 3]));
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([
-      { name: "現場A", path: "/projects/a" },
+      { name: "a", path: "/projects/a" },
     ]);
   });
 
@@ -171,12 +174,13 @@ describe("projectActions", () => {
     expect(projectStore.folder).toBe("/projects/a");
     expect(projectStore.meta).toEqual(meta);
     expect(projectStore.pdfs).toEqual(["A.pdf", "B.pdf"]);
-    expect(projectStore.currentPdf).toBe("");
+    expect(projectStore.currentPdf).toBe("A.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("A.pdf", new Uint8Array([1, 2, 3]));
     expect(mockInitProjectDir).toHaveBeenCalledWith("/projects/a");
     expect(pdfStore.clear).toHaveBeenCalled();
     expect(annotationStore.clear).toHaveBeenCalled();
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([
-      { name: "現場A", path: "/projects/a" },
+      { name: "a", path: "/projects/a" },
     ]);
   });
 
@@ -257,6 +261,17 @@ describe("projectActions", () => {
     expect(mockSendCurrentPdf).toHaveBeenCalledTimes(1);
   });
 
+  it("opens a schedule pdf from the 工程表 subfolder", async () => {
+    projectStore.folder = "/projects/a";
+    mockReadAnnotationFile.mockResolvedValue({});
+
+    await openProjectPdf("工程表/週間工程.pdf");
+
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/工程表/週間工程.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("工程表/週間工程.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("工程表/週間工程.pdf");
+  });
+
   it("keeps the current drawing when annotation persistence fails before switching pdfs", async () => {
     projectStore.folder = "/projects/a";
     projectStore.currentPdf = "Before.pdf";
@@ -307,7 +322,7 @@ describe("projectActions", () => {
     expect(projectStore.error).toBe("PDFファイル名が不正です");
     expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
-    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(pdfStore.load).not.toHaveBeenCalled();
   });
@@ -325,7 +340,7 @@ describe("projectActions", () => {
 
     await importPdfIntoProject();
 
-    expect(mockCopyFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(mockReadBinaryFile).not.toHaveBeenCalled();
     expect(pdfStore.load).not.toHaveBeenCalled();
@@ -342,12 +357,51 @@ describe("projectActions", () => {
       path: "/downloads/A.pdf",
       bytes: new Uint8Array([9]),
     });
-    mockCopyFileIntoFolder.mockRejectedValue(new Error("同じ名前のPDFが既にあります"));
+    mockMoveFileIntoFolder.mockRejectedValue(new Error("同じ名前のPDFが既にあります"));
 
     await expect(importPdfIntoProject()).rejects.toThrow("同じ名前のPDFが既にあります");
 
     expect(projectStore.error).toBe("同じ名前のPDFが既にあります");
     expect(pdfStore.status).toBe("同じ名前のPDFが既にあります");
+  });
+
+  it("moves a picked drawing pdf into 図面 and opens it", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: "A.pdf",
+      path: "/downloads/A.pdf",
+      bytes: new Uint8Array([9]),
+    });
+    mockMoveFileIntoFolder.mockResolvedValue("/projects/a/図面/A.pdf");
+    mockListProjectPdfs.mockResolvedValue(["図面/A.pdf"]);
+
+    await importPdfIntoProject();
+
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/A.pdf", "/projects/a/図面");
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面/A.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/A.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/A.pdf");
+  });
+
+  it("moves a picked schedule pdf into 工程表 and opens it", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfFromDisk.mockResolvedValue({
+      name: "週間工程.pdf",
+      path: "/downloads/週間工程.pdf",
+      bytes: new Uint8Array([9]),
+    });
+    mockMoveFileIntoFolder.mockResolvedValue("/projects/a/工程表/週間工程.pdf");
+    mockListProjectPdfs.mockResolvedValue(["工程表/週間工程.pdf"]);
+
+    await importPdfIntoProject("schedule");
+
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith(
+      "/downloads/週間工程.pdf",
+      "/projects/a/工程表",
+    );
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/工程表/週間工程.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("工程表/週間工程.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("工程表/週間工程.pdf");
   });
 
   it("adds and removes project links via project metadata persistence", async () => {

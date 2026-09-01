@@ -1,10 +1,13 @@
 <script lang="ts">
   import { connectionStore } from "$lib/stores/connectionStore.svelte";
+  import { historyStore } from "$lib/stores/historyStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
   import { toolStore, type Tool } from "$lib/stores/toolStore.svelte";
-  import { prefersCameraCapture } from "$lib/utils/platform";
+  import { viewerApi } from "$lib/stores/viewerApi";
+  import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
   import { broadcastPage } from "$lib/utils/connectionActions";
   import { exportCurrentPdfToDisk, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
+  import PenPalette from "$lib/components/PenPalette.svelte";
 
   let {
     onToggleConnection,
@@ -43,6 +46,27 @@
   <div class="mx-1 h-6 w-px bg-slate-700"></div>
 
   <button
+    type="button"
+    class="toolbar-btn"
+    title="戻る (Ctrl+Z)"
+    onclick={() => viewerApi.undo()}
+    disabled={!historyStore.canUndo}
+  >
+    戻る
+  </button>
+  <button
+    type="button"
+    class="toolbar-btn"
+    title="やり直す (Ctrl+Y)"
+    onclick={() => viewerApi.redo()}
+    disabled={!historyStore.canRedo}
+  >
+    やり直す
+  </button>
+
+  <div class="mx-1 h-6 w-px bg-slate-700"></div>
+
+  <button
     class="toolbar-btn"
     onclick={() => {
       pdfStore.prevPage();
@@ -68,34 +92,28 @@
 
   {#each tools as tool (tool.id)}
     <button
+      type="button"
       class="toolbar-btn"
       class:active={toolStore.current === tool.id}
+      aria-pressed={toolStore.current === tool.id}
+      onpointerdown={(event) => {
+        if (shouldCommitToolOnPointerDown(event.pointerType)) {
+          event.preventDefault();
+          toolStore.setTool(tool.id);
+        }
+      }}
       onclick={() => toolStore.setTool(tool.id)}
     >
       {tool.label}
     </button>
+    {#if tool.id === "pen"}
+      <PenPalette />
+    {/if}
   {/each}
 
-  <label class="flex items-center gap-1 text-xs text-slate-300">
-    色
-    <input class="h-7 w-8 rounded border-0 bg-transparent" type="color" bind:value={toolStore.penColor} />
-  </label>
-  <label class="flex items-center gap-1 text-xs text-slate-300">
-    太さ
-    <input
-      class="w-20 accent-cyan-400"
-      type="range"
-      min="1"
-      max="16"
-      bind:value={toolStore.penWidth}
-    />
-  </label>
-
-  {#if prefersCameraCapture() || true}
-    <button class="toolbar-btn" onclick={onRequestPhoto} disabled={!pdfStore.bytes}>
-      カメラ
-    </button>
-  {/if}
+  <button class="toolbar-btn" onclick={onRequestPhoto} disabled={!pdfStore.bytes}>
+    カメラ
+  </button>
 
   <label class="flex items-center gap-1 text-xs text-slate-300">
     ズーム
@@ -125,15 +143,21 @@
     color: rgb(226 232 240);
     padding: 0.35rem 0.7rem;
     font-size: 0.75rem;
+    touch-action: manipulation;
   }
 
   .toolbar-btn:disabled {
     opacity: 0.4;
   }
 
-  .toolbar-btn.active,
   .toolbar-btn:hover:not(:disabled) {
     border-color: rgb(34 211 238);
+    color: rgb(165 243 252);
+  }
+
+  .toolbar-btn.active {
+    border-color: rgb(34 211 238);
+    background: rgb(8 51 68);
     color: rgb(165 243 252);
   }
 </style>

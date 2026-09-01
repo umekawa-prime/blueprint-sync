@@ -2,7 +2,7 @@ export type Tool = "select" | "pen" | "text" | "pan";
 
 class ToolStore {
   current = $state<Tool>("select");
-  penColor = $state("#e11d48");
+  penColor = $state("#E81123");
   penWidth = $state(3);
   stylusActive = $state(false);
 

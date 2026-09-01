@@ -4,17 +4,32 @@
   import {
     addProjectLink,
     closeProject,
+    importPdfIntoProject,
     openProjectLink,
     openProjectPdf,
     removeProjectLink,
   } from "$lib/utils/projectActions";
-  import { displayLinkTitle } from "$lib/utils/projectFormat";
+  import {
+    displayLinkTitle,
+    folderDisplayName,
+    listPdfsOfKind,
+    projectPdfDisplayName,
+    type ProjectPdfKind,
+  } from "$lib/utils/projectFormat";
 
   let url = $state("");
   let title = $state("");
 
   function message(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
+  }
+
+  async function onAddPdf(kind: ProjectPdfKind) {
+    try {
+      await importPdfIntoProject(kind);
+    } catch (error) {
+      pdfStore.status = message(error, "PDF の取り込みに失敗しました");
+    }
   }
 
   async function onOpenPdf(file: string) {
@@ -64,17 +79,23 @@
 
 <aside class="flex w-72 shrink-0 flex-col border-r border-slate-700 bg-slate-900">
   <div class="border-b border-slate-800 px-3 py-3">
-    <div class="text-sm font-semibold text-cyan-300">{projectStore.meta?.name}</div>
+    <div class="text-sm font-semibold text-cyan-300">{folderDisplayName(projectStore.folder)}</div>
     <div class="truncate text-[11px] text-slate-500">{projectStore.folder}</div>
   </div>
 
   <section class="min-h-0 flex-1 overflow-auto px-3 py-3">
     <h2 class="mb-2 text-xs text-slate-500">図面 PDF</h2>
-    {#if projectStore.pdfs.length === 0}
-      <p class="text-xs text-slate-500">「開く」で PDF をこのフォルダに追加してください</p>
+    <button
+      class="mb-2 w-full rounded bg-slate-800 px-2 py-1 text-xs"
+      onclick={() => onAddPdf("drawing")}
+    >
+      図面を追加
+    </button>
+    {#if listPdfsOfKind(projectStore.pdfs, "drawing").length === 0}
+      <p class="text-xs text-slate-500">フォルダまたは「図面を追加」から PDF を入れてください</p>
     {:else}
       <ul class="space-y-1">
-        {#each projectStore.pdfs as file (file)}
+        {#each listPdfsOfKind(projectStore.pdfs, "drawing") as file (file)}
           <li>
             <button
               class="w-full truncate rounded px-2 py-1 text-left text-sm {projectStore.currentPdf === file
@@ -82,7 +103,33 @@
                 : 'hover:bg-slate-800'}"
               onclick={() => onOpenPdf(file)}
             >
-              {file}
+              {projectPdfDisplayName(file)}
+            </button>
+          </li>
+        {/each}
+      </ul>
+    {/if}
+
+    <h2 class="mb-2 mt-5 text-xs text-slate-500">工程表 PDF</h2>
+    <button
+      class="mb-2 w-full rounded bg-slate-800 px-2 py-1 text-xs"
+      onclick={() => onAddPdf("schedule")}
+    >
+      工程表を追加
+    </button>
+    {#if listPdfsOfKind(projectStore.pdfs, "schedule").length === 0}
+      <p class="text-xs text-slate-500">「工程表を追加」から PDF を入れてください</p>
+    {:else}
+      <ul class="space-y-1">
+        {#each listPdfsOfKind(projectStore.pdfs, "schedule") as file (file)}
+          <li>
+            <button
+              class="w-full truncate rounded px-2 py-1 text-left text-sm {projectStore.currentPdf === file
+                ? 'bg-cyan-900 text-cyan-100'
+                : 'hover:bg-slate-800'}"
+              onclick={() => onOpenPdf(file)}
+            >
+              {projectPdfDisplayName(file)}
             </button>
           </li>
         {/each}

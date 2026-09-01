@@ -9,6 +9,7 @@ import {
 import { parseAnnotations, serializeAnnotations } from "./annotationPersist";
 import type { PageObjects } from "./annotationPersist";
 import { isTauriRuntime, usesRfdFileDialog } from "./platform";
+import { shouldDeleteSourceAfterCopy } from "./projectMove";
 
 export async function pickFolder(): Promise<string | null> {
   if (isTauriRuntime() && !usesRfdFileDialog()) {
@@ -33,6 +34,22 @@ export async function listProjectPdfs(folder: string): Promise<string[]> {
 
 export async function copyFileIntoFolder(source: string, folder: string): Promise<string> {
   return invoke<string>("copy_file_into_folder", { source, folder });
+}
+
+export async function deleteFile(path: string): Promise<void> {
+  await invoke("delete_file", { path });
+}
+
+export async function moveFileIntoFolder(source: string, folder: string): Promise<string> {
+  const dest = await copyFileIntoFolder(source, folder);
+  if (shouldDeleteSourceAfterCopy(source, dest)) {
+    try {
+      await deleteFile(source);
+    } catch {
+      // Copy already succeeded; keep the project file even if the original cannot be removed.
+    }
+  }
+  return dest;
 }
 
 export async function loadRecentProjects(): Promise<RecentProject[]> {

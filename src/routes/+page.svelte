@@ -1,4 +1,5 @@
 <script lang="ts">
+  import CameraCapture from "$lib/components/CameraCapture.svelte";
   import ConnectionPanel from "$lib/components/ConnectionPanel.svelte";
   import PdfViewer from "$lib/components/PdfViewer.svelte";
   import ProjectHome from "$lib/components/ProjectHome.svelte";
@@ -9,9 +10,19 @@
   import { viewerApi } from "$lib/stores/viewerApi";
 
   let connectionOpen = $state(false);
+  let cameraOpen = $state(false);
   let cameraInput: HTMLInputElement | undefined = $state();
 
   function requestPhoto() {
+    cameraOpen = true;
+  }
+
+  async function onPhotoCaptured(file: Blob) {
+    cameraOpen = false;
+    await viewerApi.addPhoto(file);
+  }
+
+  function pickPhotoFile() {
     cameraInput?.click();
   }
 
@@ -19,6 +30,7 @@
     const input = event.currentTarget as HTMLInputElement;
     const file = input.files?.[0];
     if (file) {
+      cameraOpen = false;
       await viewerApi.addPhoto(file);
     }
     input.value = "";
@@ -39,6 +51,13 @@
       <div class="relative flex min-h-0 flex-1 flex-col">
         <PdfViewer />
         <ConnectionPanel bind:open={connectionOpen} />
+        {#if cameraOpen}
+          <CameraCapture
+            onCaptured={onPhotoCaptured}
+            onCancel={() => (cameraOpen = false)}
+            onPickFile={pickPhotoFile}
+          />
+        {/if}
       </div>
 
       <StatusBar />

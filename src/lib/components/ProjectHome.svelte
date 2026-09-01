@@ -3,8 +3,8 @@
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { createProject, loadRecentsIntoStore, openProject } from "$lib/utils/projectActions";
   import { isTauriRuntime } from "$lib/utils/platform";
+  import { folderDisplayName } from "$lib/utils/projectFormat";
 
-  let name = $state("");
   let busy = $state(false);
 
   onMount(() => {
@@ -31,18 +31,10 @@
     {#if !isTauriRuntime()}
       <p class="text-sm text-amber-300">プロジェクト機能は Tauri アプリ上でのみ利用できます。</p>
     {:else}
-      <label class="mb-3 block text-xs text-slate-400">
-        新しいプロジェクト名
-        <input
-          class="mt-1 w-full rounded border border-slate-600 bg-slate-950 px-3 py-2 text-sm"
-          bind:value={name}
-          placeholder="現場A"
-        />
-      </label>
       <button
         class="mb-3 w-full rounded bg-cyan-700 px-3 py-2 text-sm"
         disabled={busy}
-        onclick={() => run(() => createProject(name))}
+        onclick={() => run(() => createProject())}
       >
         フォルダを選んで作成
       </button>
@@ -64,7 +56,7 @@
                 disabled={busy}
                 onclick={() => run(() => openProject(recent.path))}
               >
-                <div>{recent.name}</div>
+                <div>{folderDisplayName(recent.path)}</div>
                 <div class="truncate text-[11px] text-slate-500">{recent.path}</div>
               </button>
             </li>

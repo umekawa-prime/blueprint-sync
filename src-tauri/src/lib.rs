@@ -67,7 +67,11 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 
 #[tauri::command]
 fn write_file_bytes(path: String, bytes: Vec<u8>) -> Result<(), String> {
-    std::fs::write(path, bytes).map_err(|error| error.to_string())
+    let dest = Path::new(&path);
+    if let Some(parent) = dest.parent() {
+        std::fs::create_dir_all(parent).map_err(|error| error.to_string())?;
+    }
+    std::fs::write(dest, bytes).map_err(|error| error.to_string())
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -116,16 +120,24 @@ fn pick_folder() -> Result<Option<String>, String> {
 
 #[tauri::command]
 fn init_project_dir(folder: String) -> Result<(), String> {
-    let annotations = Path::new(&folder)
-        .join(".blueprint-sync")
-        .join("annotations");
-    std::fs::create_dir_all(annotations).map_err(|error| error.to_string())
+    let root = Path::new(&folder);
+    let annotations = root.join(".blueprint-sync").join("annotations");
+    std::fs::create_dir_all(annotations).map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(root.join("図面")).map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(root.join("工程表")).map_err(|error| error.to_string())?;
+    Ok(())
 }
 
-#[tauri::command]
-fn list_project_pdfs(folder: String) -> Result<Vec<String>, String> {
-    let mut names = Vec::new();
-    let entries = std::fs::read_dir(&folder).map_err(|error| error.to_string())?;
+fn collect_visible_pdfs(
+    dir: &Path,
+    prefix: Option<&str>,
+    names: &mut Vec<String>,
+) -> Result<(), String> {
+    let entries = match std::fs::read_dir(dir) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.to_string()),
+    };
     for entry in entries {
         let entry = entry.map_err(|error| error.to_string())?;
         let file_type = entry.file_type().map_err(|error| error.to_string())?;
@@ -133,10 +145,31 @@ fn list_project_pdfs(folder: String) -> Result<Vec<String>, String> {
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if is_visible_pdf_name(&name) {
-            names.push(name);
+        if let Some(rel) = project_pdf_rel_name(prefix, &name) {
+            names.push(rel);
         }
     }
+    Ok(())
+}
+
+fn project_pdf_rel_name(prefix: Option<&str>, name: &str) -> Option<String> {
+    if !is_visible_pdf_name(name) {
+        return None;
+    }
+    match prefix {
+        Some(dir) if dir == "図面" || dir == "工程表" => Some(format!("{dir}/{name}")),
+        None => Some(name.to_string()),
+        _ => None,
+    }
+}
+
+#[tauri::command]
+fn list_project_pdfs(folder: String) -> Result<Vec<String>, String> {
+    let root = Path::new(&folder);
+    let mut names = Vec::new();
+    collect_visible_pdfs(root, None, &mut names)?;
+    collect_visible_pdfs(&root.join("図面"), Some("図面"), &mut names)?;
+    collect_visible_pdfs(&root.join("工程表"), Some("工程表"), &mut names)?;
     names.sort();
     Ok(names)
 }
@@ -159,10 +192,16 @@ fn copy_file_into_folder(source: String, folder: String) -> Result<String, Strin
             Err("同じ名前のPDFが既にあります".to_string())
         }
         CopyIntoFolderDecision::Proceed => {
+            std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
             std::fs::copy(&source_path, &dest).map_err(|error| error.to_string())?;
             Ok(dest.to_string_lossy().into_owned())
         }
     }
+}
+
+#[tauri::command]
+fn delete_file(path: String) -> Result<(), String> {
+    std::fs::remove_file(path).map_err(|error| error.to_string())
 }
 
 fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
@@ -230,12 +269,49 @@ fn save_pdf_file(
     Err("モバイルでは HTML のダウンロードを使ってください".to_string())
 }
 
+#[cfg(windows)]
+fn allow_webview_camera(window: &tauri::WebviewWindow) {
+    let _ = window.with_webview(|platform| {
+        unsafe {
+            let Ok(webview) = platform.controller().CoreWebView2() else {
+                return;
+            };
+            let mut token = 0_i64;
+            let handler = webview2_com::PermissionRequestedEventHandler::create(Box::new(
+                |_, args| {
+                    let Some(args) = args else {
+                        return Ok(());
+                    };
+                    let mut kind = webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_KIND::default();
+                    args.PermissionKind(&mut kind)?;
+                    if kind
+                        == webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_KIND_CAMERA
+                    {
+                        args.SetState(
+                            webview2_com::Microsoft::Web::WebView2::Win32::COREWEBVIEW2_PERMISSION_STATE_ALLOW,
+                        )?;
+                    }
+                    Ok(())
+                },
+            ));
+            let _ = webview.add_PermissionRequested(&handler, &mut token);
+        }
+    });
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
+        .setup(|_app| {
+            #[cfg(windows)]
+            if let Some(window) = _app.get_webview_window("main") {
+                allow_webview_camera(&window);
+            }
+            Ok(())
+        })
         .manage(Arc::new(SyncServer::default()))
         .invoke_handler(tauri::generate_handler![
             start_sync_server,
@@ -247,6 +323,7 @@ pub fn run() {
             init_project_dir,
             list_project_pdfs,
             copy_file_into_folder,
+            delete_file,
             load_recent_projects,
             save_recent_projects,
             path_exists,
@@ -262,7 +339,7 @@ mod tests {
 
     use super::{
         decide_copy_into_folder, is_visible_pdf_name, parse_recent_projects_json,
-        CopyIntoFolderDecision, RecentProject,
+        project_pdf_rel_name, CopyIntoFolderDecision, RecentProject,
     };
 
     #[test]
@@ -291,6 +368,21 @@ mod tests {
             decide_copy_into_folder(source, dest, true),
             CopyIntoFolderDecision::NameCollision
         ));
+    }
+
+    #[test]
+    fn lists_root_and_kind_prefixed_pdf_names() {
+        assert_eq!(project_pdf_rel_name(None, "A.pdf").as_deref(), Some("A.pdf"));
+        assert_eq!(
+            project_pdf_rel_name(Some("図面"), "1F.pdf").as_deref(),
+            Some("図面/1F.pdf")
+        );
+        assert_eq!(
+            project_pdf_rel_name(Some("工程表"), "週間工程.pdf").as_deref(),
+            Some("工程表/週間工程.pdf")
+        );
+        assert_eq!(project_pdf_rel_name(Some("other"), "A.pdf"), None);
+        assert_eq!(project_pdf_rel_name(None, ".hidden.pdf"), None);
     }
 
     #[test]

@@ -346,6 +346,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "tokio-tungstenite",
+ "webview2-com",
 ]
 
 [[package]]

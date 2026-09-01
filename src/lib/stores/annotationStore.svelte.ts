@@ -1,3 +1,5 @@
+import { historyStore } from "$lib/stores/historyStore.svelte";
+
 type PageObjects = Record<string, Record<string, unknown>>;
 
 class AnnotationStore {
@@ -51,6 +53,7 @@ class AnnotationStore {
     this.byPage = {};
     this.dirty = false;
     this.remoteRevision += 1;
+    historyStore.clear();
   }
 
   exportByPage(): Record<number, PageObjects> {
@@ -61,6 +64,7 @@ class AnnotationStore {
     this.byPage = byPage;
     this.dirty = false;
     this.remoteRevision += 1;
+    historyStore.clear();
   }
 }
 
