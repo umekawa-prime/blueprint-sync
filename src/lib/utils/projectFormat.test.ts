@@ -94,8 +94,8 @@ describe("annotationFileName", () => {
   });
 
   it("accepts kind-prefixed annotation names and still rejects other nested paths", () => {
-    expect(annotationFileName("図面/1F.pdf")).toBe("図面/1F.pdf.json");
-    expect(annotationFileName("工程表/週間工程.pdf")).toBe("工程表/週間工程.pdf.json");
+    expect(annotationFileName("図面/1F.pdf")).toBe("図面__1F.pdf.json");
+    expect(annotationFileName("工程表/週間工程.pdf")).toBe("工程表__週間工程.pdf.json");
     expect(() => annotationFileName("nested/A.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName(".hidden.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("../x.pdf")).toThrow(/invalid/i);

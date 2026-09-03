@@ -1,14 +1,21 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
-  import { createProject, loadRecentsIntoStore, openProject } from "$lib/utils/projectActions";
-  import { isTauriRuntime } from "$lib/utils/platform";
+  import { createProject, loadRecentsIntoStore, openProject, startWebDemo } from "$lib/utils/projectActions";
+  import { isTauriRuntime, shouldAutoStartWebDemo, shouldOfferBrowserDemo } from "$lib/utils/platform";
   import { folderDisplayName } from "$lib/utils/projectFormat";
 
   let busy = $state(false);
+  let ready = $state(false);
+  let tauri = $state(false);
 
   onMount(() => {
+    tauri = isTauriRuntime();
+    ready = true;
     void loadRecentsIntoStore();
+    if (shouldAutoStartWebDemo(window.location.search, tauri)) {
+      void run(() => startWebDemo());
+    }
   });
 
   async function run(action: () => Promise<void>) {
@@ -28,8 +35,19 @@
     <h1 class="mb-1 text-xl font-semibold text-cyan-300">Blueprint Sync</h1>
     <p class="mb-6 text-sm text-slate-400">先にローカルのプロジェクトフォルダを開いてください</p>
 
-    {#if !isTauriRuntime()}
-      <p class="text-sm text-amber-300">プロジェクト機能は Tauri アプリ上でのみ利用できます。</p>
+    {#if !ready}
+      <p class="mb-3 text-sm text-slate-400">起動しています…</p>
+    {:else if shouldOfferBrowserDemo(tauri)}
+      <p class="mb-3 text-sm text-amber-300">
+        フォルダ選択は Tauri アプリ上のみです。ブラウザではデモで操作確認できます。
+      </p>
+      <button
+        class="mb-3 w-full rounded bg-cyan-700 px-3 py-2 text-sm"
+        disabled={busy}
+        onclick={() => run(() => startWebDemo())}
+      >
+        ブラウザで操作確認
+      </button>
     {:else}
       <button
         class="mb-3 w-full rounded bg-cyan-700 px-3 py-2 text-sm"

@@ -308,22 +308,20 @@ describe("projectActions", () => {
     expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
-  it("keeps the current drawing and shows a Japanese message when reading annotations fails", async () => {
+  it("still opens the next drawing when its annotation file cannot be read", async () => {
     projectStore.folder = "/projects/a";
     projectStore.currentPdf = "Before.pdf";
     annotationStore.importByPage({ 2: { prev: { id: "prev", type: "path" } } });
     mockReadAnnotationFile.mockRejectedValue(new Error("broken annotation"));
 
-    await openProjectPdf("After.pdf");
+    await openProjectPdf("図面/After.pdf");
 
-    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/After.pdf");
-    expect(pdfStore.load).not.toHaveBeenCalled();
-    expect(projectStore.currentPdf).toBe("Before.pdf");
-    expect(annotationStore.exportByPage()).toEqual({
-      2: { prev: { id: "prev", type: "path" } },
-    });
-    expect(pdfStore.status).toBe("注釈ファイルの読み込みに失敗しました");
-    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面/After.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/After.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/After.pdf");
+    expect(annotationStore.exportByPage()).toEqual({});
+    expect(pdfStore.status).toBe("注釈を読み込めなかったため、空の注釈で開きました");
+    expect(mockSendCurrentPdf).toHaveBeenCalledTimes(1);
   });
 
   it("rejects invalid pdf names before importing into a project", async () => {

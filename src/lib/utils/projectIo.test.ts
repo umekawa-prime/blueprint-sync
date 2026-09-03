@@ -1,12 +1,18 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectMeta } from "./projectFormat";
 
-const { mockInvoke } = vi.hoisted(() => ({
+const { mockInvoke, mockIsTauriRuntime } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
+  mockIsTauriRuntime: vi.fn(() => false),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
   invoke: mockInvoke,
+}));
+
+vi.mock("./platform", () => ({
+  isTauriRuntime: () => mockIsTauriRuntime(),
+  usesRfdFileDialog: () => mockIsTauriRuntime(),
 }));
 
 import {
@@ -29,6 +35,7 @@ import {
   writeProjectMeta,
   writeTextFile,
 } from "./projectIo";
+import { enableWebDemo, resetWebDemo } from "./webDemoFs";
 
 function sampleMeta(): ProjectMeta {
   return {
@@ -42,6 +49,17 @@ function sampleMeta(): ProjectMeta {
 describe("projectIo", () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockIsTauriRuntime.mockReturnValue(false);
+    resetWebDemo();
+  });
+
+  it("keeps using Tauri file commands even if the web demo flag was left on", async () => {
+    mockIsTauriRuntime.mockReturnValue(true);
+    enableWebDemo();
+    mockInvoke.mockResolvedValueOnce("/picked");
+
+    await expect(pickFolder()).resolves.toBe("/picked");
+    expect(mockInvoke).toHaveBeenCalledWith("pick_folder");
   });
 
   it("uses the documented project paths", () => {
@@ -50,7 +68,7 @@ describe("projectIo", () => {
       "/work/proj/.blueprint-sync/annotations/A.pdf.json",
     );
     expect(annotationPath("/work/proj", "図面/A.pdf")).toBe(
-      "/work/proj/.blueprint-sync/annotations/図面/A.pdf.json",
+      "/work/proj/.blueprint-sync/annotations/図面__A.pdf.json",
     );
   });
 

@@ -4,6 +4,17 @@ export function isTauriRuntime(): boolean {
   return typeof window !== "undefined" && "__TAURI_INTERNALS__" in window;
 }
 
+export function shouldOfferBrowserDemo(isTauri = isTauriRuntime()): boolean {
+  return !isTauri;
+}
+
+export function shouldAutoStartWebDemo(
+  search = typeof window === "undefined" ? "" : window.location.search,
+  isTauri = isTauriRuntime(),
+): boolean {
+  return !isTauri && new URLSearchParams(search).get("demo") === "1";
+}
+
 export function isIosLike(): boolean {
   if (typeof navigator === "undefined") {
     return false;

@@ -36,9 +36,17 @@ import {
 import { importOneDrivePdfsIntoFolder } from "./oneDriveImport";
 import { importZipPdfsIntoFolder } from "./zipImport";
 import { isZipBasename } from "./zipPdf";
+import {
+  WEB_DEMO_FOLDER,
+  enableWebDemo,
+  isWebDemo,
+  resetWebDemo,
+  webListPdfs,
+  webPut,
+} from "./webDemoFs";
 
 function requireTauri() {
-  if (!isTauriRuntime()) {
+  if (!isTauriRuntime() && !isWebDemo()) {
     throw new Error("プロジェクト機能は Tauri アプリ上でのみ利用できます");
   }
 }
@@ -258,6 +266,8 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
   }
 }
 
+let openPdfSeq = 0;
+
 export async function openProjectPdf(fileName: string): Promise<void> {
   if (!projectStore.folder) {
     return;
@@ -266,30 +276,84 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     setPdfOpenError("PDFファイル名が不正です");
     return;
   }
+  if (
+    projectStore.currentPdf === fileName &&
+    pdfStore.name === fileName &&
+    pdfStore.document
+  ) {
+    return;
+  }
+  const seq = ++openPdfSeq;
   const persisted = await persistCurrentAnnotations();
   if (!persisted) {
+    return;
+  }
+  if (seq !== openPdfSeq) {
     return;
   }
   try {
     const bytes = await readBinaryFile(
       `${projectStore.folder}/${fileName.replaceAll("\\", "/")}`,
     );
-    let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>>;
+    let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {};
+    let annotationWarning = "";
     try {
       nextAnnotations = await readAnnotationFile(projectStore.folder, fileName);
     } catch {
-      pdfStore.status = "注釈ファイルの読み込みに失敗しました";
+      annotationWarning = "注釈を読み込めなかったため、空の注釈で開きました";
+    }
+    if (seq !== openPdfSeq) {
       return;
     }
     annotationStore.importByPage(nextAnnotations);
     await pdfStore.load(fileName, bytes);
+    if (seq !== openPdfSeq) {
+      return;
+    }
     projectStore.currentPdf = fileName;
     projectStore.error = "";
-    pdfStore.status = "";
+    pdfStore.status = annotationWarning;
     sendCurrentPdf();
   } catch (error) {
-    pdfStore.status = error instanceof Error ? error.message : "PDFを開けませんでした";
+    const message = error instanceof Error ? error.message : "PDFを開けませんでした";
+    pdfStore.status = message;
+    projectStore.error = message;
   }
+}
+
+async function makeDemoPdf(title: string): Promise<Uint8Array> {
+  const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
+  const document = await PDFDocument.create();
+  const page = document.addPage([720, 1020]);
+  const font = await document.embedFont(StandardFonts.Helvetica);
+  page.drawText(title, {
+    x: 64,
+    y: 920,
+    size: 28,
+    font,
+    color: rgb(0.1, 0.15, 0.2),
+  });
+  return new Uint8Array(await document.save());
+}
+
+export async function startWebDemo(): Promise<void> {
+  if (isTauriRuntime()) {
+    throw new Error("デモモードはブラウザ専用です");
+  }
+  resetWebDemo();
+  enableWebDemo();
+  const folder = WEB_DEMO_FOLDER;
+  webPut(`${folder}/図面/既存図.pdf`, await makeDemoPdf("Drawing A"));
+  webPut(`${folder}/図面/追加図.pdf`, await makeDemoPdf("Drawing B"));
+  webPut(`${folder}/工程表/週間工程.pdf`, await makeDemoPdf("Schedule"));
+  const meta = createProjectMeta("デモプロジェクト");
+  projectStore.folder = folder;
+  projectStore.meta = meta;
+  projectStore.pdfs = webListPdfs(folder);
+  projectStore.currentPdf = "";
+  projectStore.error = "";
+  pdfStore.status = "ブラウザデモ: 図面名をクリックして切り替えてください";
+  await openProjectPdf("図面/既存図.pdf");
 }
 
 async function importZipBytesIntoOpenProject(

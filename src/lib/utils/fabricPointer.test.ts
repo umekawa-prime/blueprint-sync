@@ -43,13 +43,10 @@ describe("toolForPointerType", () => {
 });
 
 describe("shouldCommitToolOnPointerDown", () => {
-  it("selects toolbar tools on stylus or finger down because click may never fire", () => {
+  it("selects toolbar tools on mouse, stylus, or finger down because click may never fire", () => {
+    expect(shouldCommitToolOnPointerDown("mouse")).toBe(true);
     expect(shouldCommitToolOnPointerDown("pen")).toBe(true);
     expect(shouldCommitToolOnPointerDown("touch")).toBe(true);
-  });
-
-  it("leaves mouse clicks to the click handler", () => {
-    expect(shouldCommitToolOnPointerDown("mouse")).toBe(false);
   });
 });
 

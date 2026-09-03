@@ -22,6 +22,6 @@ export function toolForPointerType(pointerType: string, current: Tool): Tool {
   return current;
 }
 
-export function shouldCommitToolOnPointerDown(pointerType: string): boolean {
-  return pointerType === "pen" || pointerType === "touch";
+export function shouldCommitToolOnPointerDown(_pointerType: string): boolean {
+  return true;
 }

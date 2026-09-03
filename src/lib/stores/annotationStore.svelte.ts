@@ -28,8 +28,18 @@ class AnnotationStore {
   replacePage(page: number, objects: Record<string, unknown>[], markDirty = true) {
     const mapped: PageObjects = {};
     for (const object of objects) {
-      const id = String(object.id ?? crypto.randomUUID());
+      const id = typeof object.id === "string" && object.id ? object.id : "";
+      if (!id) {
+        continue;
+      }
       mapped[id] = { ...object, id };
+    }
+    const previous = this.byPage[page] ?? {};
+    if (JSON.stringify(previous) === JSON.stringify(mapped)) {
+      if (markDirty) {
+        this.dirty = true;
+      }
+      return;
     }
     this.byPage = { ...this.byPage, [page]: mapped };
     if (markDirty) {

@@ -7,6 +7,8 @@
   import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
   import { broadcastPage } from "$lib/utils/connectionActions";
   import { exportCurrentPdfToDisk, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
+  import { toolbarToolClass } from "$lib/utils/toolbarUi";
+  import { zoomStep } from "$lib/utils/viewerMenu";
   import PenPalette from "$lib/components/PenPalette.svelte";
 
   let {
@@ -23,6 +25,8 @@
     { id: "text", label: "テキスト" },
     { id: "pan", label: "移動" },
   ];
+
+  const currentTool = $derived(toolStore.current);
 
   async function openPdf() {
     await openPdfIntoCurrentProject();
@@ -91,24 +95,30 @@
   <div class="mx-1 h-6 w-px bg-slate-700"></div>
 
   {#each tools as tool (tool.id)}
-    <button
-      type="button"
-      class="toolbar-btn"
-      class:active={toolStore.current === tool.id}
-      aria-pressed={toolStore.current === tool.id}
-      onpointerdown={(event) => {
-        if (shouldCommitToolOnPointerDown(event.pointerType)) {
-          event.preventDefault();
-          toolStore.setTool(tool.id);
-        }
-      }}
-      onclick={() => toolStore.setTool(tool.id)}
+    {@const active = currentTool === tool.id}
+    <div
+      class={tool.id === "pen"
+        ? `flex items-center gap-0.5 rounded-md ${active ? "bg-cyan-950/70 ring-1 ring-cyan-400" : ""}`
+        : "contents"}
     >
-      {tool.label}
-    </button>
-    {#if tool.id === "pen"}
-      <PenPalette />
-    {/if}
+      <button
+        type="button"
+        class={toolbarToolClass(active)}
+        aria-pressed={active}
+        onpointerdowncapture={(event) => {
+          if (shouldCommitToolOnPointerDown(event.pointerType)) {
+            event.preventDefault();
+            toolStore.setTool(tool.id);
+          }
+        }}
+        onclick={() => toolStore.setTool(tool.id)}
+      >
+        {tool.label}
+      </button>
+      {#if tool.id === "pen"}
+        <PenPalette />
+      {/if}
+    </div>
   {/each}
 
   <button class="toolbar-btn" onclick={onRequestPhoto} disabled={!pdfStore.bytes}>
@@ -117,6 +127,14 @@
 
   <label class="flex items-center gap-1 text-xs text-slate-300">
     ズーム
+    <button
+      type="button"
+      class="toolbar-btn"
+      disabled={!pdfStore.bytes}
+      onclick={() => pdfStore.setZoom(zoomStep(pdfStore.zoom, -1))}
+    >
+      −
+    </button>
     <input
       class="w-24 accent-cyan-400"
       type="range"
@@ -124,9 +142,18 @@
       max="3"
       step="0.1"
       value={pdfStore.zoom}
+      disabled={!pdfStore.bytes}
       oninput={(event) =>
         pdfStore.setZoom(Number((event.currentTarget as HTMLInputElement).value))}
     />
+    <button
+      type="button"
+      class="toolbar-btn"
+      disabled={!pdfStore.bytes}
+      onclick={() => pdfStore.setZoom(zoomStep(pdfStore.zoom, 1))}
+    >
+      ＋
+    </button>
     <span class="w-10">{Math.round(pdfStore.zoom * 100)}%</span>
   </label>
 

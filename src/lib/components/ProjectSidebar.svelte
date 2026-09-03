@@ -97,6 +97,9 @@
   </div>
 
   <section class="min-h-0 flex-1 overflow-auto px-3 py-3">
+    {#if projectStore.error}
+      <p class="mb-3 text-xs text-rose-300">{projectStore.error}</p>
+    {/if}
     <h2 class="mb-2 text-xs text-slate-500">図面 PDF</h2>
     <button
       class="mb-2 w-full rounded bg-slate-800 px-2 py-1 text-xs"
@@ -111,10 +114,11 @@
         {#each listPdfsOfKind(projectStore.pdfs, "drawing") as file (file)}
           <li>
             <button
+              type="button"
               class="w-full truncate rounded px-2 py-1 text-left text-sm {projectStore.currentPdf === file
                 ? 'bg-cyan-900 text-cyan-100'
                 : 'hover:bg-slate-800'}"
-              onclick={() => onOpenPdf(file)}
+              onclick={() => void onOpenPdf(file)}
             >
               {projectPdfDisplayName(file)}
             </button>
@@ -137,10 +141,11 @@
         {#each listPdfsOfKind(projectStore.pdfs, "schedule") as file (file)}
           <li>
             <button
+              type="button"
               class="w-full truncate rounded px-2 py-1 text-left text-sm {projectStore.currentPdf === file
                 ? 'bg-cyan-900 text-cyan-100'
                 : 'hover:bg-slate-800'}"
-              onclick={() => onOpenPdf(file)}
+              onclick={() => void onOpenPdf(file)}
             >
               {projectPdfDisplayName(file)}
             </button>

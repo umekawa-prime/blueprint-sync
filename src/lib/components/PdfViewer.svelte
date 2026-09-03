@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onDestroy, onMount } from "svelte";
+  import { onDestroy, onMount, untrack } from "svelte";
   import {
     Canvas,
     FabricImage,
@@ -19,6 +19,12 @@
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { firstDroppedPdf, firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
+  import {
+    LONG_PRESS_MS,
+    menuPosition,
+    shouldOpenViewerMenu,
+    shouldStartLongPress,
+  } from "$lib/utils/viewerMenu";
   import { pdfPageNumber } from "$lib/utils/pdfCoords";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
@@ -38,6 +44,11 @@
   let unlistenDrag: (() => void) | undefined;
   let lastTap = { x: 120, y: 120 };
   let renderToken = 0;
+  let menu = $state({ open: false, x: 0, y: 0 });
+  let menuEl: HTMLDivElement | undefined = $state();
+  let imageInput: HTMLInputElement | undefined = $state();
+  let longPressTimer: ReturnType<typeof setTimeout> | undefined;
+  let longPressAt = { x: 0, y: 0 };
 
   const CUSTOM_PROPS = ["id"];
   let persistedPage = 0;
@@ -96,6 +107,39 @@
     fabricCanvas.add(image);
     fabricCanvas.setActiveObject(image);
     emitObject("add", image);
+  }
+
+  function openViewerMenu(clientX: number, clientY: number) {
+    if (!pdfStore.document) {
+      return;
+    }
+    const pos = menuPosition(clientX, clientY, 180, 44, window.innerWidth, window.innerHeight);
+    menu = { open: true, x: pos.x, y: pos.y };
+  }
+
+  function closeViewerMenu() {
+    menu = { open: false, x: menu.x, y: menu.y };
+  }
+
+  function requestInsertImage() {
+    closeViewerMenu();
+    imageInput?.click();
+  }
+
+  function onImagePicked(event: Event) {
+    const input = event.currentTarget as HTMLInputElement;
+    const file = input.files?.[0];
+    input.value = "";
+    if (file) {
+      void addPhotoFromFile(file);
+    }
+  }
+
+  function clearLongPress() {
+    if (longPressTimer) {
+      clearTimeout(longPressTimer);
+      longPressTimer = undefined;
+    }
   }
 
   onMount(() => {
@@ -168,16 +212,27 @@
         void redoLast();
       }
     };
+    const onWindowPointerDown = (event: PointerEvent) => {
+      if (menuEl?.contains(event.target as Node)) {
+        return;
+      }
+      if (event.button === 0) {
+        closeViewerMenu();
+      }
+    };
     window.addEventListener("keydown", onKey);
+    window.addEventListener("pointerdown", onWindowPointerDown);
     viewportEl?.addEventListener("pointerdown", onPointerDownCapture, true);
 
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("pointerdown", onWindowPointerDown);
       viewportEl?.removeEventListener("pointerdown", onPointerDownCapture, true);
     };
   });
 
   onDestroy(() => {
+    clearLongPress();
     persistCurrentPage();
     fabricCanvas?.dispose();
     unlistenDrag?.();
@@ -233,6 +288,11 @@
       }
       const pointer = pointerFromEvent(fabricCanvas!, event);
       lastTap = { x: pointer.x, y: pointer.y };
+
+      if (shouldOpenViewerMenu({ type: event.type, button: event.button, pointerType: event.pointerType })) {
+        openViewerMenu(event.clientX, event.clientY);
+        return;
+      }
 
       if (opt.target) {
         const id = getId(opt.target);
@@ -330,7 +390,7 @@
       return;
     }
     const token = ++renderToken;
-    persistCurrentPage();
+    untrack(() => persistCurrentPage());
     try {
       const page = await pdfStore.document.getPage(pageNumber);
       if (token !== renderToken) {
@@ -612,10 +672,44 @@
   }
 
   function onPointerDown(event: PointerEvent) {
+    if (menuEl?.contains(event.target as Node)) {
+      return;
+    }
+    if (event.button === 0) {
+      closeViewerMenu();
+    }
+    if (shouldStartLongPress(event) && pdfStore.document) {
+      longPressAt = { x: event.clientX, y: event.clientY };
+      clearLongPress();
+      longPressTimer = setTimeout(() => {
+        openViewerMenu(longPressAt.x, longPressAt.y);
+      }, LONG_PRESS_MS);
+    }
     if (!shouldCaptureViewportPointer(toolStore.current)) {
       return;
     }
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+  }
+
+  function onPointerMove(event: PointerEvent) {
+    if (!longPressTimer) {
+      return;
+    }
+    if (Math.hypot(event.clientX - longPressAt.x, event.clientY - longPressAt.y) > 8) {
+      clearLongPress();
+    }
+  }
+
+  function onPointerUp() {
+    clearLongPress();
+  }
+
+  function onContextMenu(event: MouseEvent) {
+    event.preventDefault();
+    if (!pdfStore.document) {
+      return;
+    }
+    openViewerMenu(event.clientX, event.clientY);
   }
 
   function onTouchStart(event: TouchEvent) {
@@ -654,6 +748,10 @@
   class:cursor-grab={toolStore.current === "pan"}
   onwheel={onWheel}
   onpointerdown={onPointerDown}
+  onpointermove={onPointerMove}
+  onpointerup={onPointerUp}
+  onpointercancel={onPointerUp}
+  oncontextmenu={onContextMenu}
   ontouchstart={onTouchStart}
   ontouchmove={onTouchMove}
   ondragenter={allowPdfDrop}
@@ -677,3 +775,35 @@
     </div>
   </div>
 </div>
+
+{#if menu.open}
+  <div
+    bind:this={menuEl}
+    class="fixed z-50 min-w-44 rounded-md border border-slate-600 bg-slate-900 py-1 shadow-2xl"
+    style="left: {menu.x}px; top: {menu.y}px"
+  >
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800"
+      onpointerdowncapture={(event) => {
+        event.preventDefault();
+        requestInsertImage();
+      }}
+    >
+      <svg class="h-4 w-4 shrink-0 text-cyan-300" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <rect x="3" y="5" width="18" height="14" rx="2" stroke="currentColor" stroke-width="1.8"></rect>
+        <circle cx="8.5" cy="10" r="1.6" fill="currentColor"></circle>
+        <path d="M7 16h10l-3.2-4.2-2.3 3-1.5-2z" fill="currentColor"></path>
+      </svg>
+      画像を挿入
+    </button>
+  </div>
+{/if}
+
+<input
+  bind:this={imageInput}
+  class="hidden"
+  type="file"
+  accept="image/*"
+  onchange={onImagePicked}
+/>

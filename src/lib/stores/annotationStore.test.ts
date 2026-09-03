@@ -12,6 +12,16 @@ describe("annotationStore.replacePage", () => {
     expect(annotationStore.dirty).toBe(false);
   });
 
+  it("does not rewrite page state when a render snapshot is unchanged", () => {
+    annotationStore.importByPage({ 0: { a: { id: "a", type: "path" } } });
+    const before = annotationStore.byPage;
+
+    annotationStore.replacePage(0, [{ id: "a", type: "path" }], false);
+
+    expect(annotationStore.byPage).toBe(before);
+    expect(annotationStore.dirty).toBe(false);
+  });
+
   it("marks annotations dirty when the user changes a page", () => {
     annotationStore.importByPage({});
     annotationStore.replacePage(0, [{ id: "a", type: "path" }]);

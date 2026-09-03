@@ -155,6 +155,13 @@ export function annotationFileName(pdfName: string): string {
   if (!isProjectPdfRelPath(pdfName)) {
     throw new Error("Invalid annotation file name");
   }
+  return `${normalizeRelPath(pdfName).replaceAll("/", "__")}.json`;
+}
+
+export function legacyAnnotationFileName(pdfName: string): string {
+  if (!isProjectPdfRelPath(pdfName)) {
+    throw new Error("Invalid annotation file name");
+  }
   return `${normalizeRelPath(pdfName)}.json`;
 }
 

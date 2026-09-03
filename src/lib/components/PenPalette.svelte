@@ -6,6 +6,7 @@
     PEN_WIDTHS,
     thicknessDotSize,
   } from "$lib/utils/penPalette";
+  import { toolbarToolClass } from "$lib/utils/toolbarUi";
 
   let open = $state(false);
   let rootEl: HTMLDivElement | undefined = $state();
@@ -38,11 +39,11 @@
 <div bind:this={rootEl} class="relative">
   <button
     type="button"
-    class="toolbar-btn flex h-[1.9rem] items-center gap-1 px-2"
-    class:active={open || toolStore.current === "pen"}
+    class="{toolbarToolClass(open || toolStore.current === 'pen')} flex h-[1.9rem] items-center gap-1 px-2"
     aria-expanded={open}
     aria-label="ペンの色と太さ"
-    onclick={() => {
+    onpointerdowncapture={(event) => {
+      event.preventDefault();
       open = !open;
       toolStore.setTool("pen");
     }}
@@ -106,19 +107,6 @@
 </div>
 
 <style>
-  .toolbar-btn {
-    border-radius: 0.375rem;
-    border: 1px solid rgb(51 65 85);
-    background: rgb(30 41 59);
-    color: rgb(226 232 240);
-    touch-action: manipulation;
-  }
-
-  .toolbar-btn.active {
-    border-color: rgb(34 211 238);
-    background: rgb(8 51 68);
-  }
-
   .ring-selected {
     box-shadow: 0 0 0 2px rgb(34 211 238);
   }
