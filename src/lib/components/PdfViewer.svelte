@@ -327,7 +327,7 @@
           top: pointer.y,
           fill: toolStore.penColor,
           fontSize: 22,
-          fontFamily: "sans-serif",
+          fontFamily: "Noto Sans JP Variable",
         });
         assignId(text);
         fabricCanvas!.add(text);
