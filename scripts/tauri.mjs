@@ -1,24 +1,23 @@
 import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
+import path from "node:path";
+import { fileURLToPath } from "node:url";
+import { applyWslGraphicsEnv } from "./wslGraphicsEnv.mjs";
 
-const env = { ...process.env };
 const isWsl =
   Boolean(process.env.WSL_DISTRO_NAME) ||
   (existsSync("/proc/version") &&
     readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft"));
 
-if (isWsl) {
-  // WSLg + WebKitGTK often fails GPU compositing (MESA/ZINK) and the window
-  // then shows a blank/500-like page. Force software rendering.
-  env.WEBKIT_DISABLE_COMPOSITING_MODE ??= "1";
-  env.WEBKIT_DISABLE_DMABUF_RENDERER ??= "1";
-  env.LIBGL_ALWAYS_SOFTWARE ??= "1";
-}
+const env = applyWslGraphicsEnv({ ...process.env }, isWsl);
+const tauriCli = path.resolve(
+  path.dirname(fileURLToPath(import.meta.url)),
+  "../node_modules/@tauri-apps/cli/tauri.js",
+);
 
-const child = spawn("tauri", process.argv.slice(2), {
+const child = spawn(process.execPath, [tauriCli, ...process.argv.slice(2)], {
   env,
   stdio: "inherit",
-  shell: true,
 });
 
 child.on("exit", (code, signal) => {
