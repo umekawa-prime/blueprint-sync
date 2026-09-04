@@ -8,14 +8,16 @@ const {
   mockImportPdfIntoProject,
   mockPersistCurrentAnnotations,
   mockSavePdfToDisk,
+  mockWriteBinaryFile,
   mockEmbedAnnotationPngOnPdf,
-  mockSuggestedExportName,
+  mockLoadPdfDocument,
 } = vi.hoisted(() => ({
   mockImportPdfIntoProject: vi.fn(),
   mockPersistCurrentAnnotations: vi.fn(),
   mockSavePdfToDisk: vi.fn(),
+  mockWriteBinaryFile: vi.fn(),
   mockEmbedAnnotationPngOnPdf: vi.fn(),
-  mockSuggestedExportName: vi.fn(),
+  mockLoadPdfDocument: vi.fn(),
 }));
 
 vi.mock("./projectActions", async () => {
@@ -31,12 +33,24 @@ vi.mock("./fileAccess", () => ({
   savePdfToDisk: mockSavePdfToDisk,
 }));
 
+vi.mock("./projectIo", async () => {
+  const actual = await vi.importActual<typeof import("./projectIo")>("./projectIo");
+  return {
+    ...actual,
+    writeBinaryFile: mockWriteBinaryFile,
+  };
+});
+
 vi.mock("./pdfExport", () => ({
   embedAnnotationPngOnPdf: mockEmbedAnnotationPngOnPdf,
-  suggestedExportName: mockSuggestedExportName,
+  suggestedExportName: vi.fn(),
 }));
 
-import { exportCurrentPdfToDisk, openPdfIntoCurrentProject } from "./toolbarActions";
+vi.mock("$lib/utils/pdfRenderer", () => ({
+  loadPdfDocument: mockLoadPdfDocument,
+}));
+
+import { saveCurrentPdf, openPdfIntoCurrentProject } from "./toolbarActions";
 
 describe("toolbarActions", () => {
   beforeEach(() => {
@@ -45,7 +59,8 @@ describe("toolbarActions", () => {
     annotationStore.clear();
     pdfStore.clear();
     projectStore.folder = "/projects/a";
-    pdfStore.name = "A.pdf";
+    projectStore.currentPdf = "図面/A.pdf";
+    pdfStore.name = "図面/A.pdf";
     pdfStore.bytes = new Uint8Array([9, 8, 7]);
     annotationStore.dirty = true;
     viewerApi.exportOverlays = vi.fn().mockResolvedValue([
@@ -56,8 +71,9 @@ describe("toolbarActions", () => {
         canvasHeight: 200,
       },
     ]);
-    mockSuggestedExportName.mockReturnValue("A-annotated.pdf");
     mockEmbedAnnotationPngOnPdf.mockResolvedValue(new Uint8Array([4, 5, 6]));
+    mockLoadPdfDocument.mockResolvedValue({ numPages: 2, destroy: vi.fn() });
+    mockPersistCurrentAnnotations.mockResolvedValue(true);
   });
 
   it("opens PDFs by importing them into the current project", async () => {
@@ -74,58 +90,65 @@ describe("toolbarActions", () => {
     expect(pdfStore.status).toBe("read failed");
   });
 
-  it("saves exported PDFs into the project folder and persists annotations", async () => {
-    mockSavePdfToDisk.mockResolvedValue(true);
-    mockPersistCurrentAnnotations.mockResolvedValue(true);
+  it("overwrites the open project PDF without a file dialog", async () => {
+    mockWriteBinaryFile.mockResolvedValue(undefined);
 
-    await exportCurrentPdfToDisk();
+    const saved = await saveCurrentPdf();
 
-    expect(mockSavePdfToDisk).toHaveBeenCalledWith(
+    expect(mockSavePdfToDisk).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面/A.pdf",
       new Uint8Array([4, 5, 6]),
-      "A-annotated.pdf",
-      "/projects/a",
     );
     expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
     expect(annotationStore.dirty).toBe(false);
-    expect(pdfStore.status).toBe("PDFを保存しました");
+    expect(pdfStore.status).toBe("");
+    expect(saved).toBe(true);
   });
 
-  it("keeps dirty annotations when PDF export is canceled", async () => {
-    mockSavePdfToDisk.mockResolvedValue(false);
-    mockPersistCurrentAnnotations.mockResolvedValue(true);
+  it("does not write when no PDF is open", async () => {
+    pdfStore.bytes = null;
 
-    await exportCurrentPdfToDisk();
+    const saved = await saveCurrentPdf();
 
-    expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+    expect(pdfStore.status).toBe("先にPDFを開いてください");
+    expect(saved).toBe(false);
+  });
+
+  it("does not write when the open PDF has no project path", async () => {
+    projectStore.currentPdf = "";
+
+    const saved = await saveCurrentPdf();
+
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+    expect(pdfStore.status).toBe("上書き先のPDFがありません");
+    expect(saved).toBe(false);
+  });
+
+  it("keeps dirty annotations when overwrite fails", async () => {
+    mockWriteBinaryFile.mockRejectedValue(new Error("disk full"));
+
+    const saved = await saveCurrentPdf();
+
+    expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(annotationStore.dirty).toBe(true);
-    expect(pdfStore.status).toBe("保存をキャンセルしました");
+    expect(pdfStore.status).toBe("disk full");
+    expect(saved).toBe(false);
   });
 
-  it("keeps dirty annotations and persist error when export succeeds but persist fails", async () => {
-    mockSavePdfToDisk.mockResolvedValue(true);
+  it("keeps dirty annotations and persist error when overwrite succeeds but persist fails", async () => {
+    mockWriteBinaryFile.mockResolvedValue(undefined);
     mockPersistCurrentAnnotations.mockImplementation(async () => {
       pdfStore.status = "write failed";
       return false;
     });
 
-    await exportCurrentPdfToDisk();
+    const saved = await saveCurrentPdf();
 
     expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
     expect(annotationStore.dirty).toBe(true);
     expect(pdfStore.status).toBe("write failed");
-  });
-
-  it("keeps persist error when export is canceled and persist fails", async () => {
-    mockSavePdfToDisk.mockResolvedValue(false);
-    mockPersistCurrentAnnotations.mockImplementation(async () => {
-      pdfStore.status = "write failed";
-      return false;
-    });
-
-    await exportCurrentPdfToDisk();
-
-    expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
-    expect(annotationStore.dirty).toBe(true);
-    expect(pdfStore.status).toBe("write failed");
+    expect(saved).toBe(false);
   });
 });

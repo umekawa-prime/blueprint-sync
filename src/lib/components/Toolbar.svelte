@@ -6,9 +6,10 @@
   import { viewerApi } from "$lib/stores/viewerApi";
   import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
   import { broadcastPage } from "$lib/utils/connectionActions";
-  import { exportCurrentPdfToDisk, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
+  import { saveCurrentPdf, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
   import { zoomStep } from "$lib/utils/viewerMenu";
+  import { toast } from "svelte-sonner";
   import PenPalette from "$lib/components/PenPalette.svelte";
 
   let {
@@ -28,12 +29,25 @@
 
   const currentTool = $derived(toolStore.current);
 
+  let saving = $state(false);
+
   async function openPdf() {
     await openPdfIntoCurrentProject();
   }
 
-  async function exportPdf() {
-    await exportCurrentPdfToDisk();
+  async function savePdf() {
+    if (saving) {
+      return;
+    }
+    saving = true;
+    try {
+      const saved = await saveCurrentPdf();
+      if (saved) {
+        toast.success("保存しました");
+      }
+    } finally {
+      saving = false;
+    }
   }
 </script>
 
@@ -45,7 +59,20 @@
   </div>
 
   <button class="toolbar-btn" onclick={openPdf}>開く</button>
-  <button class="toolbar-btn" onclick={exportPdf} disabled={!pdfStore.bytes}>保存</button>
+  <button
+    class="toolbar-btn"
+    onclick={savePdf}
+    disabled={!pdfStore.bytes || saving}
+    aria-busy={saving}
+  >
+    保存
+  </button>
+  {#if saving}
+    <span
+      class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-cyan-300"
+      aria-label="保存中"
+    ></span>
+  {/if}
 
   <div class="mx-1 h-6 w-px bg-slate-700"></div>
 

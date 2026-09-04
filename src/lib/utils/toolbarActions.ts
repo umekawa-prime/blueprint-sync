@@ -2,9 +2,9 @@ import { annotationStore } from "$lib/stores/annotationStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
-import { savePdfToDisk } from "./fileAccess";
-import { embedAnnotationPngOnPdf, suggestedExportName } from "./pdfExport";
-import { importPdfIntoProject, persistCurrentAnnotations } from "./projectActions";
+import { embedAnnotationPngOnPdf } from "./pdfExport";
+import { persistCurrentAnnotations, importPdfIntoProject } from "./projectActions";
+import { writeBinaryFile } from "./projectIo";
 
 export async function openPdfIntoCurrentProject(): Promise<void> {
   try {
@@ -14,23 +14,30 @@ export async function openPdfIntoCurrentProject(): Promise<void> {
   }
 }
 
-export async function exportCurrentPdfToDisk(): Promise<void> {
+export async function saveCurrentPdf(): Promise<boolean> {
   if (!pdfStore.bytes) {
     pdfStore.status = "先にPDFを開いてください";
-    return;
+    return false;
   }
-  const overlays = await viewerApi.exportOverlays();
-  const output = await embedAnnotationPngOnPdf(pdfStore.bytes, overlays);
-  const saved = await savePdfToDisk(
-    output,
-    suggestedExportName(pdfStore.name),
-    projectStore.folder || undefined,
-  );
-  const persisted = await persistCurrentAnnotations();
-  if (saved && persisted) {
-    pdfStore.status = "PDFを保存しました";
-    annotationStore.dirty = false;
-  } else if (!saved && persisted) {
-    pdfStore.status = "保存をキャンセルしました";
+  if (!projectStore.folder || !projectStore.currentPdf) {
+    pdfStore.status = "上書き先のPDFがありません";
+    return false;
+  }
+
+  try {
+    const overlays = await viewerApi.exportOverlays();
+    const output = await embedAnnotationPngOnPdf(pdfStore.bytes, overlays);
+    const path = `${projectStore.folder}/${projectStore.currentPdf.replaceAll("\\", "/")}`;
+    await writeBinaryFile(path, output);
+    const persisted = await persistCurrentAnnotations();
+    if (persisted) {
+      pdfStore.status = "";
+      annotationStore.dirty = false;
+      return true;
+    }
+    return false;
+  } catch (error) {
+    pdfStore.status = error instanceof Error ? error.message : "PDFの保存に失敗しました";
+    return false;
   }
 }
