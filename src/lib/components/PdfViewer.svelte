@@ -2,7 +2,6 @@
   import { onDestroy, onMount, untrack } from "svelte";
   import {
     Canvas,
-    FabricImage,
     IText,
     PencilBrush,
     util,
@@ -15,7 +14,7 @@
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import { broadcastAnnotation } from "$lib/utils/connectionActions";
   import { readFileAsBytes } from "$lib/utils/fileAccess";
-  import { resizeImageFile } from "$lib/utils/imageResize";
+  import { createPhotoPinAssets } from "$lib/utils/imageResize";
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { firstDroppedPdf, firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
@@ -24,13 +23,15 @@
     menuPosition,
     shouldOpenViewerMenu,
     shouldStartLongPress,
+    viewerMenuSize,
   } from "$lib/utils/viewerMenu";
-  import { pdfPageNumber } from "$lib/utils/pdfCoords";
+  import { fabricToNormalized, pdfPageNumber } from "$lib/utils/pdfCoords";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
   import { viewerApi } from "$lib/stores/viewerApi";
   import { sendCurrentPdf } from "$lib/utils/connectionActions";
   import type { EditCommand } from "$lib/utils/editHistory";
+  import PhotoPinLayer from "$lib/components/PhotoPinLayer.svelte";
 
   let viewportEl: HTMLDivElement | undefined = $state();
   let pdfCanvasEl: HTMLCanvasElement | undefined = $state();
@@ -95,25 +96,28 @@
     if (!fabricCanvas) {
       return;
     }
-    const resized = await resizeImageFile(file);
-    const image = await FabricImage.fromURL(resized.dataUrl);
-    image.set({
-      left: lastTap.x,
-      top: lastTap.y,
-      scaleX: Math.min(1, 280 / resized.width),
-      scaleY: Math.min(1, 280 / resized.width),
+    const width = fabricCanvas.getWidth();
+    const height = fabricCanvas.getHeight();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const assets = await createPhotoPinAssets(file);
+    const { nx, ny } = fabricToNormalized(lastTap.x, lastTap.y, width, height);
+    annotationStore.addPhotoPin(pdfStore.pageIndex, {
+      id: crypto.randomUUID(),
+      nx,
+      ny,
+      thumbnailDataUrl: assets.thumbnailDataUrl,
+      imageDataUrl: assets.imageDataUrl,
     });
-    assignId(image);
-    fabricCanvas.add(image);
-    fabricCanvas.setActiveObject(image);
-    emitObject("add", image);
   }
 
   function openViewerMenu(clientX: number, clientY: number) {
     if (!pdfStore.document) {
       return;
     }
-    const pos = menuPosition(clientX, clientY, 180, 44, window.innerWidth, window.innerHeight);
+    const size = viewerMenuSize(2);
+    const pos = menuPosition(clientX, clientY, size.width, size.height, window.innerWidth, window.innerHeight);
     menu = { open: true, x: pos.x, y: pos.y };
   }
 
@@ -124,6 +128,11 @@
   function requestInsertImage() {
     closeViewerMenu();
     imageInput?.click();
+  }
+
+  function requestCaptureImage() {
+    closeViewerMenu();
+    viewerApi.openCamera();
   }
 
   function onImagePicked(event: Event) {
@@ -773,6 +782,7 @@
     <div class="absolute top-0 left-0 z-[1] touch-none">
       <canvas bind:this={fabricCanvasEl}></canvas>
     </div>
+    <PhotoPinLayer pins={Object.values(annotationStore.photoPins[pdfStore.pageIndex] ?? {})} />
   </div>
 </div>
 
@@ -796,6 +806,25 @@
         <path d="M7 16h10l-3.2-4.2-2.3 3-1.5-2z" fill="currentColor"></path>
       </svg>
       画像を挿入
+    </button>
+    <button
+      type="button"
+      class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800"
+      onpointerdowncapture={(event) => {
+        event.preventDefault();
+        requestCaptureImage();
+      }}
+    >
+      <svg class="h-4 w-4 shrink-0 text-cyan-300" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path
+          d="M4 8h3l1.2-2h7.6L17 8h3v11H4V8z"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linejoin="round"
+        ></path>
+        <circle cx="12" cy="13.5" r="3.2" stroke="currentColor" stroke-width="1.8"></circle>
+      </svg>
+      画像を撮影
     </button>
   </div>
 {/if}

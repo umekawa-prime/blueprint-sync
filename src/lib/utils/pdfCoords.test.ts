@@ -1,5 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { fabricToPdfRect, pdfPageSizeFromViewport, pdfPageNumber } from "./pdfCoords";
+import {
+  fabricToNormalized,
+  fabricToPdfRect,
+  normalizedToFabric,
+  pdfPageNumber,
+  pdfPageSizeFromViewport,
+} from "./pdfCoords";
 
 describe("pdfCoords", () => {
   it("converts a top-left fabric rect into PDF bottom-left coordinates", () => {
@@ -24,6 +30,11 @@ describe("pdfCoords", () => {
     expect(
       pdfPageSizeFromViewport({ width: 1224, height: 1584, scale: 2 }),
     ).toEqual({ width: 612, height: 792 });
+  });
+
+  it("stores a fabric click as a zoom-independent 0-1 pin position", () => {
+    expect(fabricToNormalized(100, 50, 400, 200)).toEqual({ nx: 0.25, ny: 0.25 });
+    expect(normalizedToFabric(0.25, 0.25, 800, 400)).toEqual({ x: 200, y: 100 });
   });
 
   it("clamps a leftover drawing page index into a shorter schedule pdf", () => {

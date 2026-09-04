@@ -55,3 +55,27 @@ export function pdfPageNumber(pageIndex: number, pageCount: number): number {
   }
   return Math.min(Math.max(pageIndex, 0), pageCount - 1) + 1;
 }
+
+export function fabricToNormalized(
+  x: number,
+  y: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): { nx: number; ny: number } {
+  return {
+    nx: canvasWidth === 0 ? 0 : x / canvasWidth,
+    ny: canvasHeight === 0 ? 0 : y / canvasHeight,
+  };
+}
+
+export function normalizedToFabric(
+  nx: number,
+  ny: number,
+  canvasWidth: number,
+  canvasHeight: number,
+): { x: number; y: number } {
+  return {
+    x: nx * canvasWidth,
+    y: ny * canvasHeight,
+  };
+}

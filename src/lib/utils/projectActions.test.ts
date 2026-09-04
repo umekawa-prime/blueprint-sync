@@ -126,7 +126,7 @@ describe("projectActions", () => {
     vi.clearAllMocks();
     mockIsTauriRuntime.mockReturnValue(true);
     mockListProjectPdfs.mockResolvedValue([]);
-    mockReadAnnotationFile.mockResolvedValue({});
+    mockReadAnnotationFile.mockResolvedValue({ byPage: {}, photoPins: {} });
     mockReadBinaryFile.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockWriteAnnotationFile.mockResolvedValue(undefined);
     mockWriteProjectMeta.mockResolvedValue(undefined);
@@ -226,9 +226,14 @@ describe("projectActions", () => {
     const persisted = await persistCurrentAnnotations();
 
     expect(persisted).toBe(false);
-    expect(mockWriteAnnotationFile).toHaveBeenCalledWith("/projects/a", "A.pdf", {
-      0: { a: { id: "a", type: "path" } },
-    });
+    expect(mockWriteAnnotationFile).toHaveBeenCalledWith(
+      "/projects/a",
+      "A.pdf",
+      {
+        0: { a: { id: "a", type: "path" } },
+      },
+      {},
+    );
     expect(pdfStore.status).toBe("write failed");
   });
 
@@ -243,9 +248,14 @@ describe("projectActions", () => {
 
     expect(persisted).toBe(true);
     expect(annotationStore.dirty).toBe(false);
-    expect(mockWriteAnnotationFile).toHaveBeenCalledWith("/projects/a", "A.pdf", {
-      0: { a: { id: "a", type: "path" } },
-    });
+    expect(mockWriteAnnotationFile).toHaveBeenCalledWith(
+      "/projects/a",
+      "A.pdf",
+      {
+        0: { a: { id: "a", type: "path" } },
+      },
+      {},
+    );
   });
 
   it("returns true when there is nothing to persist", async () => {
@@ -262,13 +272,21 @@ describe("projectActions", () => {
     projectStore.folder = "/projects/a";
     projectStore.currentPdf = "Before.pdf";
     annotationStore.importByPage({ 2: { prev: { id: "prev", type: "path" } } });
-    mockReadAnnotationFile.mockResolvedValue({ 1: { next: { id: "next", type: "path" } } });
+    mockReadAnnotationFile.mockResolvedValue({
+      byPage: { 1: { next: { id: "next", type: "path" } } },
+      photoPins: {},
+    });
 
     await openProjectPdf("After.pdf");
 
-    expect(mockWriteAnnotationFile).toHaveBeenCalledWith("/projects/a", "Before.pdf", {
-      2: { prev: { id: "prev", type: "path" } },
-    });
+    expect(mockWriteAnnotationFile).toHaveBeenCalledWith(
+      "/projects/a",
+      "Before.pdf",
+      {
+        2: { prev: { id: "prev", type: "path" } },
+      },
+      {},
+    );
     expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/After.pdf");
     expect(pdfStore.load).toHaveBeenCalledWith("After.pdf", new Uint8Array([1, 2, 3]));
     expect(projectStore.currentPdf).toBe("After.pdf");
@@ -280,7 +298,7 @@ describe("projectActions", () => {
 
   it("opens a schedule pdf from the 工程表 subfolder", async () => {
     projectStore.folder = "/projects/a";
-    mockReadAnnotationFile.mockResolvedValue({});
+    mockReadAnnotationFile.mockResolvedValue({ byPage: {}, photoPins: {} });
 
     await openProjectPdf("工程表/週間工程.pdf");
 

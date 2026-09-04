@@ -4,6 +4,7 @@ import {
   menuPosition,
   shouldOpenViewerMenu,
   shouldStartLongPress,
+  viewerMenuSize,
   zoomStep,
 } from "./viewerMenu";
 
@@ -30,6 +31,12 @@ describe("menuPosition", () => {
   it("keeps the menu inside the viewport", () => {
     expect(menuPosition(10, 20, 160, 80, 800, 600)).toEqual({ x: 10, y: 20 });
     expect(menuPosition(780, 590, 160, 80, 800, 600)).toEqual({ x: 640, y: 520 });
+  });
+});
+
+describe("viewerMenuSize", () => {
+  it("sizes the context menu for insert and capture actions", () => {
+    expect(viewerMenuSize(2)).toEqual({ width: 180, height: 88 });
   });
 });
 

@@ -257,6 +257,7 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
       projectStore.folder,
       projectStore.currentPdf,
       annotationStore.exportByPage(),
+      annotationStore.exportPhotoPins(),
     );
     annotationStore.dirty = false;
     return true;
@@ -295,7 +296,10 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     const bytes = await readBinaryFile(
       `${projectStore.folder}/${fileName.replaceAll("\\", "/")}`,
     );
-    let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {};
+    let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {
+      byPage: {},
+      photoPins: {},
+    };
     let annotationWarning = "";
     try {
       nextAnnotations = await readAnnotationFile(projectStore.folder, fileName);
@@ -305,7 +309,7 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     if (seq !== openPdfSeq) {
       return;
     }
-    annotationStore.importByPage(nextAnnotations);
+    annotationStore.importByPage(nextAnnotations.byPage, nextAnnotations.photoPins);
     await pdfStore.load(fileName, bytes);
     if (seq !== openPdfSeq) {
       return;

@@ -8,7 +8,7 @@ import {
   type RecentProject,
 } from "./projectFormat";
 import { parseAnnotations, serializeAnnotations } from "./annotationPersist";
-import type { PageObjects } from "./annotationPersist";
+import type { AnnotationFile, PageObjects, PhotoPinRecord } from "./annotationPersist";
 import { isTauriRuntime, usesRfdFileDialog } from "./platform";
 import { shouldDeleteSourceAfterCopy } from "./projectMove";
 import {
@@ -179,7 +179,7 @@ export async function writeProjectMeta(folder: string, meta: ProjectMeta): Promi
 export async function readAnnotationFile(
   folder: string,
   pdfName: string,
-): Promise<Record<number, PageObjects>> {
+): Promise<AnnotationFile> {
   const path = annotationPath(folder, pdfName);
   const legacy = legacyAnnotationPath(folder, pdfName);
   if (await pathExists(path)) {
@@ -188,13 +188,14 @@ export async function readAnnotationFile(
   if (legacy !== path && (await pathExists(legacy))) {
     return parseAnnotations(await readTextFile(legacy));
   }
-  return {};
+  return { byPage: {}, photoPins: {} };
 }
 
 export async function writeAnnotationFile(
   folder: string,
   pdfName: string,
   byPage: Record<number, PageObjects>,
+  photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
 ): Promise<void> {
-  await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage));
+  await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage, photoPins));
 }

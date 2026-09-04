@@ -5,6 +5,7 @@ export type Size = {
 
 export const DEFAULT_PHOTO_MAX_EDGE = 1600;
 export const DEFAULT_PHOTO_QUALITY = 0.72;
+export const DEFAULT_PIN_THUMB_EDGE = 96;
 
 export function fitImageSize(
   width: number,
@@ -46,6 +47,28 @@ export async function resizeImageFile(
     dataUrl: canvas.toDataURL("image/jpeg", quality),
     width,
     height,
+  };
+}
+
+export function photoPinSizes(width: number, height: number): {
+  image: Size;
+  thumbnail: Size;
+} {
+  return {
+    image: fitImageSize(width, height, DEFAULT_PHOTO_MAX_EDGE),
+    thumbnail: fitImageSize(width, height, DEFAULT_PIN_THUMB_EDGE),
+  };
+}
+
+export async function createPhotoPinAssets(file: Blob): Promise<{
+  imageDataUrl: string;
+  thumbnailDataUrl: string;
+}> {
+  const image = await resizeImageFile(file, DEFAULT_PHOTO_MAX_EDGE, DEFAULT_PHOTO_QUALITY);
+  const thumbnail = await resizeImageFile(file, DEFAULT_PIN_THUMB_EDGE, DEFAULT_PHOTO_QUALITY);
+  return {
+    imageDataUrl: image.dataUrl,
+    thumbnailDataUrl: thumbnail.dataUrl,
   };
 }
 

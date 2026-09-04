@@ -1,9 +1,9 @@
 import { historyStore } from "$lib/stores/historyStore.svelte";
-
-type PageObjects = Record<string, Record<string, unknown>>;
+import type { PageObjects, PhotoPinRecord } from "$lib/utils/annotationPersist";
 
 class AnnotationStore {
   byPage = $state<Record<number, PageObjects>>({});
+  photoPins = $state<Record<number, Record<string, PhotoPinRecord>>>({});
   dirty = $state(false);
   remoteRevision = $state(0);
 
@@ -11,10 +11,28 @@ class AnnotationStore {
     return Object.values(this.byPage[page] ?? {});
   }
 
+  pinsFor(page: number): PhotoPinRecord[] {
+    return Object.values(this.photoPins[page] ?? {});
+  }
+
   upsert(page: number, id: string, object: Record<string, unknown>) {
     const current = { ...(this.byPage[page] ?? {}) };
     current[id] = { ...object, id };
     this.byPage = { ...this.byPage, [page]: current };
+    this.dirty = true;
+  }
+
+  addPhotoPin(page: number, pin: PhotoPinRecord) {
+    const current = { ...(this.photoPins[page] ?? {}) };
+    current[pin.id] = pin;
+    this.photoPins = { ...this.photoPins, [page]: current };
+    this.dirty = true;
+  }
+
+  removePhotoPin(page: number, id: string) {
+    const current = { ...(this.photoPins[page] ?? {}) };
+    delete current[id];
+    this.photoPins = { ...this.photoPins, [page]: current };
     this.dirty = true;
   }
 
@@ -63,6 +81,7 @@ class AnnotationStore {
 
   clear() {
     this.byPage = {};
+    this.photoPins = {};
     this.dirty = false;
     this.remoteRevision += 1;
     historyStore.clear();
@@ -72,8 +91,16 @@ class AnnotationStore {
     return this.byPage;
   }
 
-  importByPage(byPage: Record<number, PageObjects>) {
+  exportPhotoPins(): Record<number, Record<string, PhotoPinRecord>> {
+    return this.photoPins;
+  }
+
+  importByPage(
+    byPage: Record<number, PageObjects>,
+    photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
+  ) {
     this.byPage = byPage;
+    this.photoPins = photoPins;
     this.dirty = false;
     this.remoteRevision += 1;
     historyStore.clear();

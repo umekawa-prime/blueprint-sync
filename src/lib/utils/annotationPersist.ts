@@ -1,5 +1,18 @@
 export type PageObjects = Record<string, Record<string, unknown>>;
 
+export type PhotoPinRecord = {
+  id: string;
+  nx: number;
+  ny: number;
+  thumbnailDataUrl: string;
+  imageDataUrl: string;
+};
+
+export type AnnotationFile = {
+  byPage: Record<number, PageObjects>;
+  photoPins: Record<number, Record<string, PhotoPinRecord>>;
+};
+
 function isPageObjects(value: unknown): value is PageObjects {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
@@ -12,11 +25,52 @@ function isPageObjects(value: unknown): value is PageObjects {
   return true;
 }
 
-export function serializeAnnotations(byPage: Record<number, PageObjects>): string {
-  return JSON.stringify({ byPage });
+function isPhotoPinRecord(value: unknown): value is PhotoPinRecord {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return false;
+  }
+  const record = value as Record<string, unknown>;
+  return (
+    typeof record.id === "string" &&
+    typeof record.nx === "number" &&
+    typeof record.ny === "number" &&
+    typeof record.thumbnailDataUrl === "string" &&
+    typeof record.imageDataUrl === "string"
+  );
 }
 
-export function parseAnnotations(raw: string): Record<number, PageObjects> {
+function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinRecord>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const output: Record<number, Record<string, PhotoPinRecord>> = {};
+  for (const [key, pageValue] of Object.entries(value)) {
+    const page = Number(key);
+    if (!Number.isInteger(page) || typeof pageValue !== "object" || pageValue === null || Array.isArray(pageValue)) {
+      continue;
+    }
+    const pins: Record<string, PhotoPinRecord> = {};
+    for (const [id, pin] of Object.entries(pageValue)) {
+      if (isPhotoPinRecord(pin)) {
+        pins[id] = pin;
+      }
+    }
+    output[page] = pins;
+  }
+  return output;
+}
+
+export function serializeAnnotations(
+  byPage: Record<number, PageObjects>,
+  photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
+): string {
+  return JSON.stringify({ byPage, photoPins });
+}
+
+export function parseAnnotations(raw: string): AnnotationFile {
   let parsed: unknown;
   try {
     parsed = JSON.parse(raw);
@@ -38,5 +92,8 @@ export function parseAnnotations(raw: string): Record<number, PageObjects> {
     }
     output[page] = value;
   }
-  return output;
+  return {
+    byPage: output,
+    photoPins: parsePhotoPins((parsed as { photoPins?: unknown }).photoPins),
+  };
 }

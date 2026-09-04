@@ -28,3 +28,40 @@ describe("annotationStore.replacePage", () => {
     expect(annotationStore.dirty).toBe(true);
   });
 });
+
+describe("annotationStore photo pins", () => {
+  it("adds a pin at the click position without placing a full image object", () => {
+    annotationStore.importByPage({});
+    annotationStore.addPhotoPin(1, {
+      id: "pin-1",
+      nx: 0.3,
+      ny: 0.7,
+      thumbnailDataUrl: "data:image/jpeg;base64,thumb",
+      imageDataUrl: "data:image/jpeg;base64,full",
+    });
+
+    expect(annotationStore.objectsFor(1)).toEqual([]);
+    expect(annotationStore.pinsFor(1)).toEqual([
+      {
+        id: "pin-1",
+        nx: 0.3,
+        ny: 0.7,
+        thumbnailDataUrl: "data:image/jpeg;base64,thumb",
+        imageDataUrl: "data:image/jpeg;base64,full",
+      },
+    ]);
+    expect(annotationStore.dirty).toBe(true);
+  });
+
+  it("clears photo pins with the rest of the annotations", () => {
+    annotationStore.addPhotoPin(0, {
+      id: "pin-1",
+      nx: 0.1,
+      ny: 0.2,
+      thumbnailDataUrl: "t",
+      imageDataUrl: "f",
+    });
+    annotationStore.clear();
+    expect(annotationStore.pinsFor(0)).toEqual([]);
+  });
+});

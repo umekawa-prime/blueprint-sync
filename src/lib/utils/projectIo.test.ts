@@ -185,7 +185,10 @@ describe("projectIo", () => {
   it("returns empty annotations when the persisted file is missing", async () => {
     mockInvoke.mockResolvedValueOnce(false);
 
-    await expect(readAnnotationFile("/work/proj", "A.pdf")).resolves.toEqual({});
+    await expect(readAnnotationFile("/work/proj", "A.pdf")).resolves.toEqual({
+      byPage: {},
+      photoPins: {},
+    });
   });
 
   it("parses and writes annotation payloads", async () => {
@@ -203,7 +206,10 @@ describe("projectIo", () => {
       .mockResolvedValueOnce(undefined);
 
     await expect(readAnnotationFile("/work/proj", "A.pdf")).resolves.toEqual({
-      1: { a: { id: "a", type: "path" } },
+      byPage: {
+        1: { a: { id: "a", type: "path" } },
+      },
+      photoPins: {},
     });
 
     await expect(
@@ -224,6 +230,7 @@ describe("projectIo", () => {
         new TextEncoder().encode(
           JSON.stringify({
             byPage: { 2: { b: { id: "b", type: "i-text" } } },
+            photoPins: {},
           }),
         ),
       ),

@@ -36,3 +36,10 @@ export function zoomStep(current: number, direction: 1 | -1): number {
   const next = Number((current + direction * ZOOM_STEP).toFixed(2));
   return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, next));
 }
+
+export function viewerMenuSize(itemCount: number): { width: number; height: number } {
+  return {
+    width: 180,
+    height: 8 + itemCount * 40,
+  };
+}

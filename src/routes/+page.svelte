@@ -13,6 +13,10 @@
   let cameraOpen = $state(false);
   let cameraInput: HTMLInputElement | undefined = $state();
 
+  viewerApi.openCamera = () => {
+    cameraOpen = true;
+  };
+
   function requestPhoto() {
     cameraOpen = true;
   }
