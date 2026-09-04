@@ -13,7 +13,7 @@
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import { broadcastAnnotation } from "$lib/utils/connectionActions";
-  import { readFileAsBytes } from "$lib/utils/fileAccess";
+  import { imageBlobFromPicked, pickImageFromDisk, readFileAsBytes } from "$lib/utils/fileAccess";
   import { createPhotoPinAssets } from "$lib/utils/imageResize";
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { firstDroppedPdf, firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
@@ -47,7 +47,6 @@
   let renderToken = 0;
   let menu = $state({ open: false, x: 0, y: 0 });
   let menuEl: HTMLDivElement | undefined = $state();
-  let imageInput: HTMLInputElement | undefined = $state();
   let longPressTimer: ReturnType<typeof setTimeout> | undefined;
   let longPressAt = { x: 0, y: 0 };
 
@@ -125,23 +124,17 @@
     menu = { open: false, x: menu.x, y: menu.y };
   }
 
-  function requestInsertImage() {
+  async function requestInsertImage() {
     closeViewerMenu();
-    imageInput?.click();
+    const picked = await pickImageFromDisk();
+    if (picked) {
+      await addPhotoFromFile(imageBlobFromPicked(picked));
+    }
   }
 
   function requestCaptureImage() {
     closeViewerMenu();
     viewerApi.openCamera();
-  }
-
-  function onImagePicked(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    input.value = "";
-    if (file) {
-      void addPhotoFromFile(file);
-    }
   }
 
   function clearLongPress() {
@@ -797,7 +790,7 @@
       class="flex w-full items-center gap-2 px-3 py-2 text-left text-sm text-slate-100 hover:bg-slate-800"
       onpointerdowncapture={(event) => {
         event.preventDefault();
-        requestInsertImage();
+        void requestInsertImage();
       }}
     >
       <svg class="h-4 w-4 shrink-0 text-cyan-300" viewBox="0 0 24 24" fill="none" aria-hidden="true">
@@ -828,11 +821,3 @@
     </button>
   </div>
 {/if}
-
-<input
-  bind:this={imageInput}
-  class="hidden"
-  type="file"
-  accept="image/*"
-  onchange={onImagePicked}
-/>

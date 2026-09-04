@@ -49,6 +49,52 @@ export async function savePdfToDisk(
   return true;
 }
 
+export async function pickImageFromDisk(): Promise<{
+  name: string;
+  bytes: Uint8Array;
+  path?: string;
+} | null> {
+  if (usesRfdFileDialog()) {
+    const { invoke } = await import("@tauri-apps/api/core");
+    const selected = await invoke<{
+      name: string;
+      path: string;
+      bytes: number[];
+    } | null>("pick_image_file");
+    if (!selected) {
+      return null;
+    }
+    return {
+      name: selected.name,
+      path: selected.path,
+      bytes: Uint8Array.from(selected.bytes),
+    };
+  }
+
+  return pickFileInBrowser("image/png,image/jpeg,image/webp,image/gif,image/bmp,.png,.jpg,.jpeg,.webp,.gif,.bmp");
+}
+
+export function imageMimeFromName(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".png")) {
+    return "image/png";
+  }
+  if (lower.endsWith(".webp")) {
+    return "image/webp";
+  }
+  if (lower.endsWith(".gif")) {
+    return "image/gif";
+  }
+  if (lower.endsWith(".bmp")) {
+    return "image/bmp";
+  }
+  return "image/jpeg";
+}
+
+export function imageBlobFromPicked(picked: { name: string; bytes: Uint8Array }): Blob {
+  return new Blob([picked.bytes], { type: imageMimeFromName(picked.name) });
+}
+
 export function readFileAsBytes(file: File): Promise<Uint8Array> {
   return file.arrayBuffer().then((buffer) => new Uint8Array(buffer));
 }

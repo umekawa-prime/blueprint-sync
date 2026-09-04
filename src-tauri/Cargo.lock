@@ -335,6 +335,7 @@ name = "blueprint-sync"
 version = "0.1.0"
 dependencies = [
  "futures-util",
+ "gtk",
  "local-ip-address",
  "reqwest 0.12.28",
  "rfd 0.15.4",
@@ -347,6 +348,7 @@ dependencies = [
  "tauri-plugin-opener",
  "tokio",
  "tokio-tungstenite",
+ "webkit2gtk",
  "webview2-com",
 ]
 

@@ -2,8 +2,12 @@ import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_CAMERA_CONSTRAINTS,
   blobFromCanvas,
+  cameraConstraints,
   drawVideoFrame,
+  isExternalCameraLabel,
+  listVideoCameras,
   mapCameraError,
+  pickPreferredCamera,
   startCameraStream,
   stopMediaStream,
 } from "./cameraCapture";
@@ -90,13 +94,91 @@ describe("stopMediaStream", () => {
   });
 });
 
+describe("cameraConstraints", () => {
+  it("does not require a phone facingMode so USB cameras can be used", () => {
+    expect(cameraConstraints()).toEqual({
+      audio: false,
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+      },
+    });
+  });
+
+  it("pins an exact device id for an external camera", () => {
+    expect(cameraConstraints("usb-cam")).toEqual({
+      audio: false,
+      video: {
+        width: { ideal: 1920 },
+        height: { ideal: 1080 },
+        deviceId: { exact: "usb-cam" },
+      },
+    });
+  });
+});
+
+describe("pickPreferredCamera", () => {
+  it("prefers an external USB camera over a built-in one", () => {
+    expect(
+      pickPreferredCamera([
+        { deviceId: "front", label: "Integrated Camera" },
+        { deviceId: "usb", label: "USB Camera" },
+      ]),
+    ).toBe("usb");
+  });
+
+  it("keeps an already chosen camera", () => {
+    expect(
+      pickPreferredCamera(
+        [
+          { deviceId: "front", label: "Integrated Camera" },
+          { deviceId: "usb", label: "USB Camera" },
+        ],
+        "front",
+      ),
+    ).toBe("front");
+  });
+});
+
+describe("isExternalCameraLabel", () => {
+  it("treats USB and capture devices as external", () => {
+    expect(isExternalCameraLabel("Logitech USB Webcam")).toBe(true);
+    expect(isExternalCameraLabel("外付けカメラ")).toBe(true);
+    expect(isExternalCameraLabel("Integrated Camera")).toBe(false);
+    expect(isExternalCameraLabel("内蔵カメラ")).toBe(false);
+  });
+});
+
+describe("listVideoCameras", () => {
+  it("returns only video inputs", async () => {
+    const cameras = await listVideoCameras(async () => [
+      { kind: "audioinput", deviceId: "mic", label: "Mic" },
+      { kind: "videoinput", deviceId: "cam", label: "USB Camera" },
+    ] as MediaDeviceInfo[]);
+
+    expect(cameras).toEqual([{ deviceId: "cam", label: "USB Camera" }]);
+  });
+});
+
 describe("startCameraStream", () => {
-  it("requests a video-only stream with environment facing preferred", async () => {
+  it("requests a video-only stream without locking to a phone camera", async () => {
     const stream = { id: "cam" } as unknown as MediaStream;
     const getUserMedia = vi.fn().mockResolvedValue(stream);
 
     await expect(startCameraStream(getUserMedia)).resolves.toBe(stream);
     expect(getUserMedia).toHaveBeenCalledWith(DEFAULT_CAMERA_CONSTRAINTS);
+  });
+
+  it("tries the selected device before falling back to any camera", async () => {
+    const stream = { id: "cam" } as unknown as MediaStream;
+    const getUserMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("missing", "OverconstrainedError"))
+      .mockResolvedValueOnce(stream);
+
+    await expect(startCameraStream(getUserMedia, "usb-1")).resolves.toBe(stream);
+    expect(getUserMedia).toHaveBeenNthCalledWith(1, cameraConstraints("usb-1"));
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, cameraConstraints());
   });
 
   it("wraps permission denial in a Japanese error", async () => {

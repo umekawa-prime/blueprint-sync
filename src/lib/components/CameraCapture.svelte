@@ -2,9 +2,17 @@
   import { onDestroy, onMount } from "svelte";
   import {
     capturePhotoFromVideo,
+    currentVideoDeviceId,
+    defaultEnumerateDevices,
+    defaultGetUserMedia,
+    listVideoCameras,
+    pickPreferredCamera,
     startCameraStream,
     stopMediaStream,
+    type CameraDevice,
   } from "$lib/utils/cameraCapture";
+
+  const STORAGE_KEY = "blueprint-sync.cameraDeviceId";
 
   let {
     onCaptured,
@@ -21,22 +29,55 @@
   let error = $state("");
   let ready = $state(false);
   let capturing = $state(false);
+  let cameras = $state<CameraDevice[]>([]);
+  let selectedId = $state("");
 
-  async function start() {
+  async function attachStream(next: MediaStream) {
+    stopMediaStream(stream);
+    stream = next;
+    if (!videoEl) {
+      stopMediaStream(stream);
+      stream = null;
+      return;
+    }
+    videoEl.srcObject = stream;
+    await videoEl.play();
+  }
+
+  async function refreshCameras() {
+    cameras = await listVideoCameras(defaultEnumerateDevices);
+    selectedId = currentVideoDeviceId(stream) ?? cameras[0]?.deviceId ?? "";
+  }
+
+  async function start(deviceId?: string, autoPrefer = false) {
     error = "";
     ready = false;
     try {
-      stream = await startCameraStream();
-      if (!videoEl) {
-        stopMediaStream(stream);
-        stream = null;
-        return;
+      const next = await startCameraStream(defaultGetUserMedia, deviceId);
+      await attachStream(next);
+      await refreshCameras();
+      if (autoPrefer) {
+        const preferred = pickPreferredCamera(cameras, deviceId);
+        const current = currentVideoDeviceId(stream);
+        if (preferred && preferred !== current) {
+          await start(preferred, false);
+          return;
+        }
       }
-      videoEl.srcObject = stream;
-      await videoEl.play();
+      if (selectedId) {
+        localStorage.setItem(STORAGE_KEY, selectedId);
+      }
     } catch (err) {
       error = err instanceof Error ? err.message : "カメラを起動できませんでした";
     }
+  }
+
+  async function onCameraChange() {
+    if (!selectedId) {
+      return;
+    }
+    localStorage.setItem(STORAGE_KEY, selectedId);
+    await start(selectedId, false);
   }
 
   function markReady() {
@@ -66,7 +107,8 @@
   }
 
   onMount(() => {
-    void start();
+    const stored = localStorage.getItem(STORAGE_KEY) ?? undefined;
+    void start(stored, !stored);
   });
 
   onDestroy(() => {
@@ -81,6 +123,20 @@
       <h2 class="text-base font-semibold">カメラ撮影</h2>
       <button class="text-slate-400" onclick={close}>閉じる</button>
     </div>
+
+    <label class="mb-3 flex items-center gap-2 text-sm text-slate-300">
+      カメラ
+      <select
+        class="min-w-0 flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1"
+        bind:value={selectedId}
+        onchange={() => void onCameraChange()}
+        disabled={cameras.length === 0}
+      >
+        {#each cameras as camera (camera.deviceId)}
+          <option value={camera.deviceId}>{camera.label}</option>
+        {/each}
+      </select>
+    </label>
 
     <video
       bind:this={videoEl}

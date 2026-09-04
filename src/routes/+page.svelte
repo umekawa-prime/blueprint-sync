@@ -8,10 +8,10 @@
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
+  import { imageBlobFromPicked, pickImageFromDisk } from "$lib/utils/fileAccess";
 
   let connectionOpen = $state(false);
   let cameraOpen = $state(false);
-  let cameraInput: HTMLInputElement | undefined = $state();
 
   viewerApi.openCamera = () => {
     cameraOpen = true;
@@ -26,18 +26,12 @@
     await viewerApi.addPhoto(file);
   }
 
-  function pickPhotoFile() {
-    cameraInput?.click();
-  }
-
-  async function onPhotoSelected(event: Event) {
-    const input = event.currentTarget as HTMLInputElement;
-    const file = input.files?.[0];
-    if (file) {
+  async function pickPhotoFile() {
+    const picked = await pickImageFromDisk();
+    if (picked) {
       cameraOpen = false;
-      await viewerApi.addPhoto(file);
+      await viewerApi.addPhoto(imageBlobFromPicked(picked));
     }
-    input.value = "";
   }
 </script>
 
@@ -68,12 +62,3 @@
     </div>
   </div>
 {/if}
-
-<input
-  bind:this={cameraInput}
-  class="hidden"
-  type="file"
-  accept="image/*"
-  capture="environment"
-  onchange={onPhotoSelected}
-/>

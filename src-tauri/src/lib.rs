@@ -114,6 +114,32 @@ fn pick_folder() -> Result<Option<String>, String> {
     Err("モバイルではフォルダ選択ダイアログを使えません".to_string())
 }
 
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[tauri::command]
+fn pick_image_file() -> Result<Option<PdfFile>, String> {
+    let Some(path) = explorer_dialog::pick_image_native() else {
+        return Ok(None);
+    };
+
+    let name = path
+        .file_name()
+        .and_then(|value| value.to_str())
+        .unwrap_or("image.jpg")
+        .to_string();
+    let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
+    Ok(Some(PdfFile {
+        name,
+        path: path.to_string_lossy().into_owned(),
+        bytes,
+    }))
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn pick_image_file() -> Result<Option<PdfFile>, String> {
+    Err("モバイルでは HTML のファイル選択を使ってください".to_string())
+}
+
 #[tauri::command]
 fn init_project_dir(folder: String) -> Result<(), String> {
     let root = Path::new(&folder);
@@ -333,6 +359,38 @@ fn allow_webview_camera(window: &tauri::WebviewWindow) {
     });
 }
 
+#[cfg(any(
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+))]
+fn allow_webview_camera(window: &tauri::WebviewWindow) {
+    use webkit2gtk::{PermissionRequestExt, SettingsExt, WebViewExt};
+
+    let _ = window.with_webview(|platform| {
+        let webview = platform.inner();
+        if let Some(settings) = webview.settings() {
+            settings.set_enable_media_stream(true);
+        }
+        webview.connect_permission_request(|_, request| {
+            request.allow();
+            true
+        });
+    });
+}
+
+#[cfg(not(any(
+    windows,
+    target_os = "linux",
+    target_os = "dragonfly",
+    target_os = "freebsd",
+    target_os = "netbsd",
+    target_os = "openbsd"
+)))]
+fn allow_webview_camera(_window: &tauri::WebviewWindow) {}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
@@ -345,7 +403,6 @@ pub fn run() {
                 let _ = window.unminimize();
                 let _ = window.center();
                 let _ = window.set_focus();
-                #[cfg(windows)]
                 allow_webview_camera(&window);
             }
             Ok(())
@@ -358,6 +415,7 @@ pub fn run() {
             write_file_bytes,
             pick_pdf_file,
             pick_folder,
+            pick_image_file,
             init_project_dir,
             list_project_pdfs,
             copy_file_into_folder,

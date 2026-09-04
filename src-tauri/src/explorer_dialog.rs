@@ -92,25 +92,42 @@ fn powershell_single_quote(value: &str) -> String {
     format!("'{}'", value.replace('\'', "''"))
 }
 
+fn powershell_binaries() -> Vec<&'static str> {
+    vec![
+        "powershell.exe",
+        "/mnt/c/Windows/System32/WindowsPowerShell/v1.0/powershell.exe",
+        "/mnt/c/Windows/Sysnative/WindowsPowerShell/v1.0/powershell.exe",
+    ]
+}
+
 fn run_powershell(script: &str) -> ExplorerDialogResult {
-    let output = Command::new("powershell.exe")
-        .args([
-            "-NoProfile",
-            "-STA",
-            "-ExecutionPolicy",
-            "Bypass",
-            "-Command",
-            script,
-        ])
-        .output();
-    match output {
-        Ok(output) => parse_dialog_output(
-            output.status.success(),
-            &String::from_utf8_lossy(&output.stdout),
-            &String::from_utf8_lossy(&output.stderr),
-        ),
-        Err(_) => ExplorerDialogResult::Failed,
+    let mut last = ExplorerDialogResult::Failed;
+    for binary in powershell_binaries() {
+        let output = Command::new(binary)
+            .args([
+                "-NoProfile",
+                "-STA",
+                "-ExecutionPolicy",
+                "Bypass",
+                "-Command",
+                script,
+            ])
+            .output();
+        match output {
+            Ok(output) => {
+                last = parse_dialog_output(
+                    output.status.success(),
+                    &String::from_utf8_lossy(&output.stdout),
+                    &String::from_utf8_lossy(&output.stderr),
+                );
+                if last != ExplorerDialogResult::Failed {
+                    return last;
+                }
+            }
+            Err(_) => continue,
+        }
     }
+    last
 }
 
 const EXPLORER_DIALOG_PRELUDE: &str = r#"
@@ -204,18 +221,7 @@ pub fn pick_explorer_save(default_name: &str, default_dir: Option<&str>) -> Expl
     ))
 }
 
-fn unix_path_to_windows(path: &str) -> Option<String> {
-    if looks_like_windows_path(path) {
-        return Some(path.replace('/', "\\"));
-    }
-    if let Ok(output) = Command::new("wslpath").arg("-w").arg(path).output() {
-        if output.status.success() {
-            let converted = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            if !converted.is_empty() {
-                return Some(converted);
-            }
-        }
-    }
+fn map_mnt_to_windows(path: &str) -> Option<String> {
     let trimmed = path.trim().replace('\\', "/");
     trimmed.strip_prefix("/mnt/").and_then(|rest| {
         let mut chars = rest.chars();
@@ -234,41 +240,103 @@ fn unix_path_to_windows(path: &str) -> Option<String> {
     })
 }
 
-pub fn pick_folder_native() -> Option<PathBuf> {
-    match if is_wsl() {
-        Some(pick_explorer_folder())
-    } else {
-        None
-    } {
-        Some(ExplorerDialogResult::Picked(path)) => Some(PathBuf::from(to_local_fs_path(&path))),
-        Some(ExplorerDialogResult::Cancelled) => None,
-        Some(ExplorerDialogResult::Failed) | None => rfd::FileDialog::new().pick_folder(),
+fn unix_path_to_windows(path: &str) -> Option<String> {
+    if looks_like_windows_path(path) {
+        return Some(path.replace('/', "\\"));
     }
+    if let Some(mapped) = map_mnt_to_windows(path) {
+        return Some(mapped);
+    }
+    if let Ok(output) = Command::new("wslpath").arg("-w").arg(path).output() {
+        if output.status.success() {
+            let converted = String::from_utf8_lossy(&output.stdout).trim().to_string();
+            if !converted.is_empty() {
+                return Some(converted);
+            }
+        }
+    }
+    None
+}
+
+#[derive(Debug, PartialEq, Eq)]
+enum NativePickAction {
+    UsePath(String),
+    Cancel,
+    FallbackRfd,
+}
+
+fn native_pick_action(is_wsl: bool, windows: Option<ExplorerDialogResult>) -> NativePickAction {
+    match windows {
+        Some(ExplorerDialogResult::Picked(path)) => {
+            NativePickAction::UsePath(to_local_fs_path(&path))
+        }
+        Some(ExplorerDialogResult::Cancelled) => NativePickAction::Cancel,
+        Some(ExplorerDialogResult::Failed) if is_wsl => NativePickAction::Cancel,
+        Some(ExplorerDialogResult::Failed) | None => NativePickAction::FallbackRfd,
+    }
+}
+
+fn finish_native_pick(
+    is_wsl: bool,
+    windows: Option<ExplorerDialogResult>,
+    fallback: impl FnOnce() -> Option<PathBuf>,
+) -> Option<PathBuf> {
+    match native_pick_action(is_wsl, windows) {
+        NativePickAction::UsePath(path) => Some(PathBuf::from(path)),
+        NativePickAction::Cancel => None,
+        NativePickAction::FallbackRfd => fallback(),
+    }
+}
+
+pub fn pick_explorer_image() -> ExplorerDialogResult {
+    run_powershell(&explorer_open_script(
+        "画像を選択",
+        Some("画像 (*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp|すべてのファイル (*.*)|*.*"),
+        false,
+    ))
+}
+
+pub fn pick_folder_native() -> Option<PathBuf> {
+    let wsl = is_wsl();
+    finish_native_pick(
+        wsl,
+        wsl.then(pick_explorer_folder),
+        || rfd::FileDialog::new().pick_folder(),
+    )
 }
 
 pub fn pick_file_native() -> Option<PathBuf> {
-    match if is_wsl() {
-        Some(pick_explorer_pdf_or_zip())
-    } else {
-        None
-    } {
-        Some(ExplorerDialogResult::Picked(path)) => Some(PathBuf::from(to_local_fs_path(&path))),
-        Some(ExplorerDialogResult::Cancelled) => None,
-        Some(ExplorerDialogResult::Failed) | None => rfd::FileDialog::new()
-            .add_filter("PDF / ZIP", &["pdf", "zip"])
-            .pick_file(),
-    }
+    let wsl = is_wsl();
+    finish_native_pick(
+        wsl,
+        wsl.then(pick_explorer_pdf_or_zip),
+        || {
+            rfd::FileDialog::new()
+                .add_filter("PDF / ZIP", &["pdf", "zip"])
+                .pick_file()
+        },
+    )
+}
+
+pub fn pick_image_native() -> Option<PathBuf> {
+    let wsl = is_wsl();
+    finish_native_pick(
+        wsl,
+        wsl.then(pick_explorer_image),
+        || {
+            rfd::FileDialog::new()
+                .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
+                .pick_file()
+        },
+    )
 }
 
 pub fn save_file_native(default_name: &str, default_dir: Option<&str>) -> Option<PathBuf> {
-    match if is_wsl() {
-        Some(pick_explorer_save(default_name, default_dir))
-    } else {
-        None
-    } {
-        Some(ExplorerDialogResult::Picked(path)) => Some(PathBuf::from(to_local_fs_path(&path))),
-        Some(ExplorerDialogResult::Cancelled) => None,
-        Some(ExplorerDialogResult::Failed) | None => {
+    let wsl = is_wsl();
+    finish_native_pick(
+        wsl,
+        wsl.then(|| pick_explorer_save(default_name, default_dir)),
+        || {
             let mut dialog = rfd::FileDialog::new()
                 .add_filter("PDF", &["pdf"])
                 .set_file_name(default_name);
@@ -276,15 +344,16 @@ pub fn save_file_native(default_name: &str, default_dir: Option<&str>) -> Option
                 dialog = dialog.set_directory(dir);
             }
             dialog.save_file()
-        }
-    }
+        },
+    )
 }
 
 #[cfg(test)]
 mod tests {
     use super::{
-        looks_like_windows_path, parse_dialog_output, unix_path_to_windows, windows_path_to_wsl,
-        ExplorerDialogResult,
+        looks_like_windows_path, map_mnt_to_windows, native_pick_action, parse_dialog_output,
+        powershell_binaries, unix_path_to_windows, windows_path_to_wsl, ExplorerDialogResult,
+        NativePickAction,
     };
 
     #[test]
@@ -316,11 +385,23 @@ mod tests {
     #[test]
     fn converts_wsl_mounts_back_to_windows() {
         assert_eq!(
+            map_mnt_to_windows("/mnt/c/Users/me/現場A").as_deref(),
+            Some(r"C:\Users\me\現場A")
+        );
+        assert_eq!(map_mnt_to_windows("/mnt/d").as_deref(), Some(r"D:\"));
+        assert_eq!(map_mnt_to_windows("/home/me"), None);
+        assert_eq!(
             unix_path_to_windows("/mnt/c/Users/me/現場A").as_deref(),
             Some(r"C:\Users\me\現場A")
         );
         assert_eq!(unix_path_to_windows("/mnt/d").as_deref(), Some(r"D:\"));
-        assert_eq!(unix_path_to_windows("/home/me").as_deref(), None);
+        let home = unix_path_to_windows("/home/me");
+        if let Some(path) = home {
+            assert!(
+                path.contains("wsl") || path.starts_with(r"\\"),
+                "linux home paths must not be invented as a drive letter, got {path}"
+            );
+        }
     }
 
     #[test]
@@ -337,5 +418,43 @@ mod tests {
             parse_dialog_output(true, "C:\\Users\\me\\現場A\n", ""),
             ExplorerDialogResult::Picked(r"C:\Users\me\現場A".to_string())
         );
+    }
+
+    #[test]
+    fn never_falls_back_to_gtk_file_dialog_on_wsl() {
+        assert_eq!(
+            native_pick_action(true, Some(ExplorerDialogResult::Failed)),
+            NativePickAction::Cancel
+        );
+        assert_eq!(
+            native_pick_action(true, Some(ExplorerDialogResult::Cancelled)),
+            NativePickAction::Cancel
+        );
+        assert_eq!(
+            native_pick_action(false, Some(ExplorerDialogResult::Failed)),
+            NativePickAction::FallbackRfd
+        );
+        assert_eq!(
+            native_pick_action(false, None),
+            NativePickAction::FallbackRfd
+        );
+    }
+
+    #[test]
+    fn uses_windows_explorer_path_when_powershell_succeeds() {
+        assert_eq!(
+            native_pick_action(
+                true,
+                Some(ExplorerDialogResult::Picked("/mnt/c/Users/me/a.pdf".into())),
+            ),
+            NativePickAction::UsePath("/mnt/c/Users/me/a.pdf".into())
+        );
+    }
+
+    #[test]
+    fn lists_windows_powershell_candidates_for_wsl() {
+        let bins = powershell_binaries();
+        assert!(bins.iter().any(|bin| bin.contains("powershell.exe")));
+        assert!(bins.iter().any(|bin| bin.contains("/mnt/c/Windows")));
     }
 }
