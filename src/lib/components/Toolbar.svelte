@@ -15,9 +15,15 @@
   let {
     onToggleConnection,
     onRequestPhoto,
+    compact = false,
+    onShareProject,
+    onSharePdf,
   }: {
     onToggleConnection: () => void;
     onRequestPhoto: () => void;
+    compact?: boolean;
+    onShareProject?: () => void;
+    onSharePdf?: () => void;
   } = $props();
 
   const tools: Array<{ id: Tool; label: string }> = [
@@ -30,6 +36,7 @@
   const currentTool = $derived(toolStore.current);
 
   let saving = $state(false);
+  let overflowOpen = $state(false);
 
   async function openPdf() {
     await openPdfIntoCurrentProject();
@@ -52,7 +59,9 @@
 </script>
 
 <header
-  class="flex flex-wrap items-center gap-2 border-b border-slate-700 bg-slate-900 px-3 py-2"
+  class="flex flex-wrap items-center gap-2 border-slate-700 bg-slate-900 px-3 py-2 {compact
+    ? 'border-t'
+    : 'border-b'}"
 >
   <div class="mr-2 text-sm font-semibold tracking-wide text-cyan-300">
     Blueprint Sync
