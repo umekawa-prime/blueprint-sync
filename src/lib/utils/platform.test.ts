@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   detectPlatform,
+  isDesktopTauriRuntime,
   isIosLike,
   shouldAutoStartWebDemo,
   shouldOfferBrowserDemo,
@@ -24,6 +25,14 @@ describe("platform detection", () => {
     expect(isIosLike()).toBe(true);
     expect(detectPlatform()).toBe("ios");
     expect(usesRfdFileDialog()).toBe(false);
+  });
+
+  it("shows desktop window chrome only in Tauri outside Android and iOS", () => {
+    expect(isDesktopTauriRuntime(true, "windows")).toBe(true);
+    expect(isDesktopTauriRuntime(true, "other")).toBe(true);
+    expect(isDesktopTauriRuntime(true, "android")).toBe(false);
+    expect(isDesktopTauriRuntime(true, "ios")).toBe(false);
+    expect(isDesktopTauriRuntime(false, "windows")).toBe(false);
   });
 
   it("hides the browser demo on the Tauri home screen", () => {

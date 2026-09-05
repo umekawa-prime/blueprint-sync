@@ -40,8 +40,15 @@ export function detectPlatform(): AppPlatform {
   return "other";
 }
 
+export function isDesktopTauriRuntime(
+  isTauri = isTauriRuntime(),
+  platform: AppPlatform = typeof navigator === "undefined" ? "other" : detectPlatform(),
+): boolean {
+  return isTauri && platform !== "android" && platform !== "ios";
+}
+
 export function usesRfdFileDialog(): boolean {
-  return isTauriRuntime() && detectPlatform() !== "android" && detectPlatform() !== "ios";
+  return isDesktopTauriRuntime();
 }
 
 export function prefersCameraCapture(platform = detectPlatform()): boolean {

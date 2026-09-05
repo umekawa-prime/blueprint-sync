@@ -20,6 +20,9 @@
         "center": true,
         "focus": true,
         "visible": true,
+        "decorations": false,
+        "resizable": true,
+        "shadow": true,
         "dragDropEnabled": true
       }
     ],
