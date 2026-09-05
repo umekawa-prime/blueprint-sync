@@ -1,4 +1,5 @@
 import type { ProjectMeta, RecentProject } from "$lib/utils/projectFormat";
+import type { ProjectTab } from "$lib/utils/projectTabs";
 
 class ProjectStore {
   folder = $state("");
@@ -7,6 +8,8 @@ class ProjectStore {
   currentPdf = $state("");
   error = $state("");
   recents = $state<RecentProject[]>([]);
+  tabs = $state<ProjectTab[]>([]);
+  activeTabId = $state<string | null>(null);
 
   get isOpen() {
     return Boolean(this.folder && this.meta);
@@ -18,6 +21,8 @@ class ProjectStore {
     this.pdfs = [];
     this.currentPdf = "";
     this.error = "";
+    this.tabs = [];
+    this.activeTabId = null;
   }
 }
 

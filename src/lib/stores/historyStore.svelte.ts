@@ -49,6 +49,10 @@ class HistoryStore {
   clear() {
     this.apply(emptyHistory());
   }
+
+  replace(history: EditHistory) {
+    this.apply(history);
+  }
 }
 
 export const historyStore = new HistoryStore();

@@ -1,6 +1,8 @@
 import { annotationStore } from "$lib/stores/annotationStore.svelte";
+import { historyStore } from "$lib/stores/historyStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
+import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
 import { openPdfFromDisk } from "./fileAccess";
 import { isTauriRuntime } from "./platform";
@@ -25,6 +27,7 @@ import {
   moveFileIntoFolder,
   pathExists,
   pickFolder,
+  projectJsonPath,
   readAnnotationFile,
   readBinaryFile,
   readProjectMeta,
@@ -44,6 +47,13 @@ import {
   webListPdfs,
   webPut,
 } from "./webDemoFs";
+import {
+  closeTabList,
+  createProjectTab,
+  findTabByFolder,
+  rememberLiveTab,
+  type TabSession,
+} from "./projectTabs";
 
 function requireTauri() {
   if (!isTauriRuntime() && !isWebDemo()) {
@@ -67,6 +77,96 @@ function setProjectImportError(error: unknown): Error {
 function setPdfOpenError(message: string) {
   projectStore.error = message;
   pdfStore.status = message;
+}
+
+function tabTitle(): string {
+  return projectStore.meta?.name || folderDisplayName(projectStore.folder);
+}
+
+function captureLiveSession(): TabSession {
+  return {
+    folder: projectStore.folder,
+    meta: projectStore.meta,
+    pdfs: [...projectStore.pdfs],
+    currentPdf: projectStore.currentPdf,
+    error: projectStore.error,
+    annotations: {
+      byPage: JSON.parse(JSON.stringify(annotationStore.exportByPage())),
+      photoPins: JSON.parse(JSON.stringify(annotationStore.exportPhotoPins())),
+    },
+    history: {
+      undoStack: [...historyStore.undoStack],
+      redoStack: [...historyStore.redoStack],
+    },
+    pdf: {
+      name: pdfStore.name,
+      bytes: pdfStore.bytes,
+      pageIndex: pdfStore.pageIndex,
+      zoom: pdfStore.zoom,
+      status: pdfStore.status,
+    },
+  };
+}
+
+async function applyLiveSession(session: TabSession): Promise<void> {
+  viewerApi.discardOverlays();
+  projectStore.folder = session.folder;
+  projectStore.meta = session.meta;
+  projectStore.pdfs = [...session.pdfs];
+  projectStore.currentPdf = session.currentPdf;
+  projectStore.error = session.error;
+  annotationStore.importByPage(session.annotations.byPage, session.annotations.photoPins);
+  historyStore.replace(session.history);
+  if (session.pdf.bytes) {
+    await pdfStore.load(session.pdf.name, session.pdf.bytes);
+    pdfStore.pageIndex = session.pdf.pageIndex;
+    pdfStore.zoom = session.pdf.zoom;
+    pdfStore.status = session.pdf.status;
+    return;
+  }
+  pdfStore.clear();
+  pdfStore.status = session.pdf.status;
+}
+
+function registerLiveTab(): void {
+  if (!projectStore.folder) {
+    return;
+  }
+  const existing = findTabByFolder(projectStore.tabs, projectStore.folder);
+  if (existing) {
+    projectStore.tabs = projectStore.tabs.map((tab) =>
+      tab.id === existing.id
+        ? { ...tab, folder: projectStore.folder, name: tabTitle(), session: null }
+        : tab,
+    );
+    projectStore.activeTabId = existing.id;
+    return;
+  }
+  const tab = createProjectTab({
+    id: crypto.randomUUID(),
+    folder: projectStore.folder,
+    name: tabTitle(),
+  });
+  projectStore.tabs = [...projectStore.tabs, tab];
+  projectStore.activeTabId = tab.id;
+}
+
+async function parkActiveTab(): Promise<boolean> {
+  if (!projectStore.activeTabId || projectStore.tabs.length === 0) {
+    return true;
+  }
+  viewerApi.persistPage();
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return false;
+  }
+  projectStore.tabs = rememberLiveTab(
+    projectStore.tabs,
+    projectStore.activeTabId,
+    captureLiveSession(),
+  );
+  viewerApi.discardOverlays();
+  return true;
 }
 
 async function openFirstProjectPdf(): Promise<void> {
@@ -100,15 +200,32 @@ export async function createProject(): Promise<void> {
   if (!folder) {
     return;
   }
+  await createProjectAt(folder);
+}
+
+async function createProjectAt(folder: string): Promise<void> {
+  const existing = findTabByFolder(projectStore.tabs, folder);
+  if (existing) {
+    await switchProjectTab(existing.id);
+    return;
+  }
   await initProjectDir(folder);
   const meta = createProjectMeta(folderDisplayName(folder));
   await writeProjectMeta(folder, meta);
+  const pdfs = await listProjectPdfs(folder);
+  const parked = await parkActiveTab();
+  if (!parked) {
+    return;
+  }
   projectStore.folder = folder;
   projectStore.meta = meta;
-  projectStore.pdfs = await listProjectPdfs(folder);
+  projectStore.pdfs = pdfs;
   projectStore.currentPdf = "";
   projectStore.error = "";
+  pdfStore.clear();
+  annotationStore.clear();
   await remember(folderDisplayName(folder), folder);
+  registerLiveTab();
   await openFirstProjectPdf();
 }
 
@@ -118,17 +235,28 @@ export async function openProject(folder?: string): Promise<void> {
   if (!selected) {
     return;
   }
+  const existing = findTabByFolder(projectStore.tabs, selected);
+  if (existing) {
+    await switchProjectTab(existing.id);
+    return;
+  }
   try {
     const meta = await readProjectMeta(selected);
     await initProjectDir(selected);
+    const pdfs = await listProjectPdfs(selected);
+    const parked = await parkActiveTab();
+    if (!parked) {
+      return;
+    }
     projectStore.folder = selected;
     projectStore.meta = meta;
-    projectStore.pdfs = await listProjectPdfs(selected);
+    projectStore.pdfs = pdfs;
     projectStore.currentPdf = "";
     projectStore.error = "";
     pdfStore.clear();
     annotationStore.clear();
     await remember(folderDisplayName(selected), selected);
+    registerLiveTab();
     await openFirstProjectPdf();
   } catch (error) {
     const message = error instanceof Error ? error.message : "プロジェクトを開けませんでした";
@@ -139,13 +267,93 @@ export async function openProject(folder?: string): Promise<void> {
       projectStore.recents = dropRecent(projectStore.recents, selected);
       await saveRecentProjects(projectStore.recents);
     }
-    projectStore.reset();
-    projectStore.error = friendly;
+    if (projectStore.tabs.length === 0) {
+      projectStore.reset();
+      projectStore.error = friendly;
+    } else {
+      pdfStore.status = friendly;
+    }
     throw new Error(friendly);
   }
 }
 
+export async function switchProjectTab(tabId: string): Promise<void> {
+  if (tabId === projectStore.activeTabId) {
+    return;
+  }
+  const target = projectStore.tabs.find((tab) => tab.id === tabId);
+  if (!target?.session) {
+    return;
+  }
+  const parked = await parkActiveTab();
+  if (!parked) {
+    return;
+  }
+  await applyLiveSession(target.session);
+  projectStore.tabs = projectStore.tabs.map((tab) =>
+    tab.id === tabId ? { ...tab, session: null } : tab,
+  );
+  projectStore.activeTabId = tabId;
+}
+
+export async function closeProjectTab(tabId: string): Promise<void> {
+  const closing = projectStore.tabs.find((tab) => tab.id === tabId);
+  if (!closing) {
+    return;
+  }
+  if (tabId === projectStore.activeTabId) {
+    viewerApi.persistPage();
+    const persisted = await persistCurrentAnnotations();
+    if (!persisted) {
+      return;
+    }
+  }
+  const result = closeTabList(projectStore.tabs, tabId, projectStore.activeTabId);
+  if (result.closedLast) {
+    projectStore.reset();
+    pdfStore.clear();
+    annotationStore.clear();
+    return;
+  }
+  projectStore.tabs = result.tabs;
+  if (result.nextActiveId === projectStore.activeTabId) {
+    return;
+  }
+  const next = result.tabs.find((tab) => tab.id === result.nextActiveId);
+  if (!next?.session) {
+    projectStore.activeTabId = result.nextActiveId;
+    return;
+  }
+  await applyLiveSession(next.session);
+  projectStore.tabs = result.tabs.map((tab) =>
+    tab.id === next.id ? { ...tab, session: null } : tab,
+  );
+  projectStore.activeTabId = next.id;
+}
+
+export async function openProjectTab(): Promise<void> {
+  requireTauri();
+  const folder = await pickFolder();
+  if (!folder) {
+    return;
+  }
+  const existing = findTabByFolder(projectStore.tabs, folder);
+  if (existing) {
+    await switchProjectTab(existing.id);
+    return;
+  }
+  if (await pathExists(projectJsonPath(folder))) {
+    await openProject(folder);
+    return;
+  }
+  await createProjectAt(folder);
+}
+
 export async function closeProject(): Promise<void> {
+  if (projectStore.activeTabId) {
+    await closeProjectTab(projectStore.activeTabId);
+    return;
+  }
   const persisted = await persistCurrentAnnotations();
   if (!persisted) {
     return;
@@ -357,6 +565,7 @@ export async function startWebDemo(): Promise<void> {
   projectStore.currentPdf = "";
   projectStore.error = "";
   pdfStore.status = "ブラウザデモ: 図面名をクリックして切り替えてください";
+  registerLiveTab();
   await openProjectPdf("図面/既存図.pdf");
 }
 

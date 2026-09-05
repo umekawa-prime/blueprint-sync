@@ -39,6 +39,7 @@
   let fabricCanvas: Canvas | undefined;
   let applyingRemote = false;
   let applyingHistory = false;
+  let overlaysStale = false;
   let pendingModify:
     | { id: string; object: Record<string, unknown> }
     | undefined;
@@ -172,6 +173,12 @@
     };
     viewerApi.redo = () => {
       void redoLast();
+    };
+    viewerApi.persistPage = persistCurrentPage;
+    viewerApi.discardOverlays = () => {
+      overlaysStale = true;
+      fabricCanvas?.clear();
+      fabricCanvas?.requestRenderAll();
     };
     applyTool();
     bindFabricEvents();
@@ -420,7 +427,7 @@
   }
 
   function persistCurrentPage() {
-    if (!fabricCanvas || applyingRemote || applyingHistory) {
+    if (!fabricCanvas || applyingRemote || applyingHistory || overlaysStale) {
       return;
     }
     if (projectStore.currentPdf && pdfStore.name !== projectStore.currentPdf) {
@@ -445,6 +452,7 @@
     }
     fabricCanvas.requestRenderAll();
     applyingRemote = false;
+    overlaysStale = false;
     applyTool();
   }
 

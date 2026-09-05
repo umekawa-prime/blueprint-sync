@@ -58,6 +58,7 @@ vi.mock("./platform", () => ({
 vi.mock("./projectIo", () => ({
   annotationPath: (folder: string, pdfName: string) =>
     `${folder}/.blueprint-sync/annotations/${pdfName}.json`,
+  projectJsonPath: (folder: string) => `${folder}/.blueprint-sync/project.json`,
   copyFileIntoFolder: vi.fn(),
   moveFileIntoFolder: mockMoveFileIntoFolder,
   initProjectDir: mockInitProjectDir,
@@ -98,6 +99,7 @@ import {
   openProjectLink,
   openProject,
   openProjectPdf,
+  openProjectTab,
   persistCurrentAnnotations,
   refreshProjectPdfs,
   removeProjectLink,
@@ -133,6 +135,14 @@ describe("projectActions", () => {
     vi.spyOn(pdfStore, "load").mockResolvedValue();
     vi.spyOn(pdfStore, "clear");
     vi.spyOn(annotationStore, "clear");
+  });
+
+  it("reset clears open tabs", () => {
+    projectStore.tabs = [{ id: "t", folder: "/a", name: "a", session: null }];
+    projectStore.activeTabId = "t";
+    projectStore.reset();
+    expect(projectStore.tabs).toEqual([]);
+    expect(projectStore.activeTabId).toBeNull();
   });
 
   it("loads recents and removes entries whose path no longer exists", async () => {
@@ -660,5 +670,77 @@ describe("projectActions", () => {
     expect(pdfStore.clear).not.toHaveBeenCalled();
     expect(annotationStore.clear).not.toHaveBeenCalled();
     expect(pdfStore.status).toBe("write failed");
+  });
+
+  it("registers a tab when opening a project", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+
+    await openProject("/projects/a");
+
+    expect(projectStore.tabs).toHaveLength(1);
+    expect(projectStore.tabs[0].folder).toBe("/projects/a");
+    expect(projectStore.activeTabId).toBe(projectStore.tabs[0].id);
+  });
+
+  it("does not add a tab when folder picker is cancelled", async () => {
+    mockPickFolder.mockResolvedValue(null);
+
+    await openProjectTab();
+
+    expect(projectStore.tabs).toEqual([]);
+    expect(mockReadProjectMeta).not.toHaveBeenCalled();
+  });
+
+  it("switches to an existing tab instead of opening a duplicate", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    const id = projectStore.activeTabId;
+    mockPickFolder.mockResolvedValue("/projects/a");
+
+    await openProjectTab();
+
+    expect(projectStore.tabs).toHaveLength(1);
+    expect(projectStore.activeTabId).toBe(id);
+  });
+
+  it("creates a project in a new tab when the folder has no project.json", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    mockPickFolder.mockResolvedValue("/projects/b");
+    mockPathExists.mockImplementation(async (path: string) => !String(path).includes("project.json"));
+    mockListProjectPdfs.mockResolvedValue([]);
+
+    await openProjectTab();
+
+    expect(projectStore.tabs).toHaveLength(2);
+    expect(projectStore.folder).toBe("/projects/b");
+    expect(mockInitProjectDir).toHaveBeenCalledWith("/projects/b");
+    expect(mockWriteProjectMeta).toHaveBeenCalled();
+  });
+
+  it("keeps other tabs when a second open fails", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    mockReadProjectMeta.mockRejectedValue(new Error("Invalid project"));
+
+    await expect(openProject("/broken")).rejects.toThrow("project.json");
+
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.tabs).toHaveLength(1);
+  });
+
+  it("returns to the home screen after closing the last tab", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+
+    await closeProject();
+
+    expect(projectStore.tabs).toEqual([]);
+    expect(projectStore.isOpen).toBe(false);
   });
 });

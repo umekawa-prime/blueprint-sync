@@ -12,6 +12,8 @@ class ViewerApi {
   openCamera: () => void = () => undefined;
   undo: () => void = () => undefined;
   redo: () => void = () => undefined;
+  persistPage: () => void = () => undefined;
+  discardOverlays: () => void = () => undefined;
 }
 
 export const viewerApi = new ViewerApi();

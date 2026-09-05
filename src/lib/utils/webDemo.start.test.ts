@@ -36,6 +36,7 @@ describe("startWebDemo", () => {
 
     expect(isWebDemo()).toBe(true);
     expect(projectStore.isOpen).toBe(true);
+    expect(projectStore.tabs).toHaveLength(1);
     expect(projectStore.pdfs).toEqual(["工程表/週間工程.pdf", "図面/既存図.pdf", "図面/追加図.pdf"]);
     expect(projectStore.currentPdf).toBe("図面/既存図.pdf");
     expect(pdfStore.name).toBe("図面/既存図.pdf");
