@@ -9,6 +9,7 @@
     openProjectLink,
     openProjectPdf,
     removeProjectLink,
+    shareCurrentProject,
   } from "$lib/utils/projectActions";
   import {
     displayLinkTitle,
@@ -210,6 +211,12 @@
     </ul>
   </section>
 
+  <button
+    class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
+    onclick={() => void shareCurrentProject()}
+  >
+    プロジェクトを共有
+  </button>
   <button class="border-t border-slate-800 px-3 py-2 text-xs text-slate-400" onclick={onCloseProject}>
     プロジェクトを閉じる
   </button>

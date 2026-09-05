@@ -35,6 +35,7 @@
     <div
       class="pointer-events-auto absolute -translate-x-1/2 -translate-y-full"
       style="left: {pin.nx * 100}%; top: {pin.ny * 100}%"
+      role="group"
       onmouseenter={() => {
         if (!viewportStore.isPhone) {
           view = hoverPhotoPin(view, pin.id);

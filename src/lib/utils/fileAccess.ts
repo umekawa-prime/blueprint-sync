@@ -122,6 +122,7 @@ async function pickFilesInBrowser(
       );
       resolve(picked);
     };
+    input.addEventListener("cancel", () => resolve([]));
     input.click();
   });
 }

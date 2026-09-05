@@ -69,8 +69,7 @@
       </div>
 
       <p class="mb-4 text-xs leading-5 text-slate-400">
-        インターネットは使いません。Windows をホストにし、Android のテザリングまたは
-        モバイルルーターの同一LANで接続します。
+        インターネットは使いません。同一 LAN 上でホストが待機し、クライアントが接続します。
       </p>
 
       <div class="mb-4 grid grid-cols-2 gap-2">
@@ -80,7 +79,7 @@
             : 'bg-slate-800'}"
           onclick={() => (connectionStore.role = 'host')}
         >
-          Windows ホスト
+          ホスト
         </button>
         <button
           class="rounded px-3 py-2 text-sm {connectionStore.role === 'client'
@@ -88,7 +87,7 @@
             : 'bg-slate-800'}"
           onclick={() => (connectionStore.role = 'client')}
         >
-          Android クライアント
+          クライアント
         </button>
       </div>
 

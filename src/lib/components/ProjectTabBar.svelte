@@ -1,7 +1,7 @@
 <script lang="ts">
   import WindowControls from "$lib/components/WindowControls.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
-  import { isDesktopTauriRuntime } from "$lib/utils/platform";
+  import { isDesktopTauriRuntime, usesSandboxProjects } from "$lib/utils/platform";
   import { closeProjectTab, openProjectTab, switchProjectTab } from "$lib/utils/projectActions";
   import { toggleMaximizeAppWindow } from "$lib/utils/windowActions";
 
@@ -45,14 +45,16 @@
           </div>
         {/each}
       </div>
-      <button
-        type="button"
-        class="shrink-0 border-l border-slate-800 px-3 text-sm text-cyan-300 hover:bg-slate-900"
-        aria-label="プロジェクトを開く"
-        onclick={() => void openProjectTab()}
-      >
-        +
-      </button>
+      {#if !usesSandboxProjects()}
+        <button
+          type="button"
+          class="shrink-0 border-l border-slate-800 px-3 text-sm text-cyan-300 hover:bg-slate-900"
+          aria-label="プロジェクトを開く"
+          onclick={() => void openProjectTab()}
+        >
+          +
+        </button>
+      {/if}
     {:else}
       <div
         class="flex min-w-0 items-center px-3 text-xs font-semibold tracking-wide text-cyan-300"

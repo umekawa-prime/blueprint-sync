@@ -1,0 +1,29 @@
+<!--
+  Merge these intent-filters and permissions into
+  src-tauri/gen/android/app/src/main/AndroidManifest.xml after `npm run tauri android init`.
+-->
+<manifest>
+  <uses-permission android:name="android.permission.CAMERA" />
+  <uses-permission android:name="android.permission.INTERNET" />
+  <uses-feature android:name="android.hardware.camera" android:required="false" />
+
+  <application>
+    <activity>
+      <intent-filter>
+        <action android:name="android.intent.action.SEND" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="application/zip" />
+        <data android:mimeType="application/octet-stream" />
+        <data android:mimeType="*/*" />
+      </intent-filter>
+      <intent-filter>
+        <action android:name="android.intent.action.VIEW" />
+        <category android:name="android.intent.category.DEFAULT" />
+        <category android:name="android.intent.category.BROWSABLE" />
+        <data android:mimeType="application/pdf" />
+        <data android:mimeType="application/zip" />
+      </intent-filter>
+    </activity>
+  </application>
+</manifest>

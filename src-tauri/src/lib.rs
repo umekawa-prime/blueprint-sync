@@ -405,6 +405,20 @@ pub fn run() {
                 let _ = window.set_focus();
                 allow_webview_camera(&window);
             }
+            let incoming: Vec<String> = std::env::args()
+                .skip(1)
+                .filter(|arg| {
+                    let lower = arg.to_ascii_lowercase();
+                    lower.ends_with(".pdf") || lower.ends_with(".zip")
+                })
+                .collect();
+            if !incoming.is_empty() {
+                let handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    tokio::time::sleep(std::time::Duration::from_millis(400)).await;
+                    let _ = handle.emit("incoming-files", incoming);
+                });
+            }
             Ok(())
         })
         .manage(Arc::new(SyncServer::default()))
@@ -431,14 +445,8 @@ pub fn run() {
             list_sandbox_projects,
             share_file
         ])
-        .build(tauri::generate_context!())
-        .expect("error while building tauri application")
-        .run(|app, event| {
-            if let tauri::RunEvent::Opened { urls } = event {
-                let payload: Vec<String> = urls.iter().map(|url| url.to_string()).collect();
-                let _ = app.emit("incoming-files", payload);
-            }
-        });
+        .run(tauri::generate_context!())
+        .expect("error while running tauri application");
 }
 
 #[cfg(test)]

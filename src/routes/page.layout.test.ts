@@ -26,4 +26,19 @@ describe("editor shell layout", () => {
     expect(tabBar).toContain("WindowControls");
     expect(tabBar).toContain("isDesktopTauriRuntime");
   });
+
+  it("labels LAN roles as host and client", () => {
+    const connection = readFileSync(path.resolve("src/lib/components/ConnectionPanel.svelte"), "utf8");
+    expect(connection).toContain("ホスト");
+    expect(connection).toContain("クライアント");
+    expect(connection).not.toContain("Windows ホスト");
+    expect(connection).not.toContain("Android クライアント");
+  });
+
+  it("uses sandbox project home actions instead of a folder picker when RFD is off", () => {
+    const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
+    expect(home).toContain("usesSandboxProjects");
+    expect(home).toContain("取り込む");
+    expect(home).toContain("新規作成");
+  });
 });
