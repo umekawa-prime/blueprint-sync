@@ -399,10 +399,13 @@ pub fn run() {
         .plugin(tauri_plugin_fs::init())
         .setup(|app| {
             if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.unminimize();
-                let _ = window.center();
-                let _ = window.set_focus();
+                #[cfg(not(any(target_os = "ios", target_os = "android")))]
+                {
+                    let _ = window.show();
+                    let _ = window.unminimize();
+                    let _ = window.center();
+                    let _ = window.set_focus();
+                }
                 allow_webview_camera(&window);
             }
             let incoming: Vec<String> = std::env::args()

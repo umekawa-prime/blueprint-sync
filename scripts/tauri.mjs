@@ -2,6 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
+import { applyAndroidOverlays } from "./applyAndroidOverlays.mjs";
 import { applyWslGraphicsEnv } from "./wslGraphicsEnv.mjs";
 
 const isWsl =
@@ -10,6 +11,9 @@ const isWsl =
     readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft"));
 
 const env = applyWslGraphicsEnv({ ...process.env }, isWsl);
+if (process.argv[2] === "android") {
+  applyAndroidOverlays();
+}
 const tauriCli = path.resolve(
   path.dirname(fileURLToPath(import.meta.url)),
   "../node_modules/@tauri-apps/cli/tauri.js",
