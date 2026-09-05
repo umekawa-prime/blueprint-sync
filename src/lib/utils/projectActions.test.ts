@@ -8,6 +8,7 @@ import type { ProjectMeta, RecentProject } from "./projectFormat";
 const {
   mockOpenPdfFromDisk,
   mockIsTauriRuntime,
+  mockUsesSandboxProjects,
   mockPickFolder,
   mockInitProjectDir,
   mockListProjectPdfs,
@@ -25,9 +26,15 @@ const {
   mockOpenUrl,
   mockSendCurrentPdf,
   mockImportOneDrive,
+  mockSandboxProjectsDir,
+  mockListProjectFiles,
+  mockRemoveDirAll,
+  mockListSandboxProjects,
+  mockShareFileBytes,
 } = vi.hoisted(() => ({
   mockOpenPdfFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
+  mockUsesSandboxProjects: vi.fn(() => false),
   mockPickFolder: vi.fn(),
   mockInitProjectDir: vi.fn(),
   mockListProjectPdfs: vi.fn(),
@@ -45,6 +52,11 @@ const {
   mockOpenUrl: vi.fn(),
   mockSendCurrentPdf: vi.fn(),
   mockImportOneDrive: vi.fn(),
+  mockSandboxProjectsDir: vi.fn(),
+  mockListProjectFiles: vi.fn(),
+  mockRemoveDirAll: vi.fn(),
+  mockListSandboxProjects: vi.fn(),
+  mockShareFileBytes: vi.fn(),
 }));
 
 vi.mock("./fileAccess", () => ({
@@ -53,6 +65,7 @@ vi.mock("./fileAccess", () => ({
 
 vi.mock("./platform", () => ({
   isTauriRuntime: mockIsTauriRuntime,
+  usesSandboxProjects: () => mockUsesSandboxProjects(),
 }));
 
 vi.mock("./projectIo", () => ({
@@ -75,6 +88,14 @@ vi.mock("./projectIo", () => ({
   saveRecentProjects: mockSaveRecentProjects,
   writeAnnotationFile: mockWriteAnnotationFile,
   writeProjectMeta: mockWriteProjectMeta,
+  sandboxProjectsDir: mockSandboxProjectsDir,
+  listProjectFiles: mockListProjectFiles,
+  removeDirAll: mockRemoveDirAll,
+  listSandboxProjects: mockListSandboxProjects,
+}));
+
+vi.mock("./shareFile", () => ({
+  shareFileBytes: mockShareFileBytes,
 }));
 
 vi.mock("./oneDriveImport", () => ({
@@ -103,6 +124,8 @@ import {
   persistCurrentAnnotations,
   refreshProjectPdfs,
   removeProjectLink,
+  importIncomingFile,
+  shareCurrentProject,
 } from "./projectActions";
 
 function sampleMeta(overrides: Partial<ProjectMeta> = {}): ProjectMeta {
@@ -127,7 +150,13 @@ describe("projectActions", () => {
     pdfStore.clear();
     vi.clearAllMocks();
     mockIsTauriRuntime.mockReturnValue(true);
+    mockUsesSandboxProjects.mockReturnValue(false);
     mockListProjectPdfs.mockResolvedValue([]);
+    mockShareFileBytes.mockResolvedValue(undefined);
+    mockListSandboxProjects.mockResolvedValue([]);
+    mockSandboxProjectsDir.mockResolvedValue("/data/projects");
+    mockRemoveDirAll.mockResolvedValue(undefined);
+    mockListProjectFiles.mockResolvedValue([]);
     mockReadAnnotationFile.mockResolvedValue({ byPage: {}, photoPins: {} });
     mockReadBinaryFile.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockWriteAnnotationFile.mockResolvedValue(undefined);
@@ -184,7 +213,7 @@ describe("projectActions", () => {
     expect(projectStore.currentPdf).toBe("A.pdf");
     expect(pdfStore.load).toHaveBeenCalledWith("A.pdf", new Uint8Array([1, 2, 3]));
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([
-      { name: "a", path: "/projects/a" },
+      expect.objectContaining({ name: "a", path: "/projects/a" }),
     ]);
   });
 
@@ -205,7 +234,7 @@ describe("projectActions", () => {
     expect(pdfStore.clear).toHaveBeenCalled();
     expect(annotationStore.clear).toHaveBeenCalled();
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([
-      { name: "a", path: "/projects/a" },
+      { id: "project-1", name: "現場A", path: "/projects/a" },
     ]);
   });
 
@@ -742,5 +771,53 @@ describe("projectActions", () => {
 
     expect(projectStore.tabs).toEqual([]);
     expect(projectStore.isOpen).toBe(false);
+  });
+
+  it("creates a named sandbox project without a folder picker", async () => {
+    mockUsesSandboxProjects.mockReturnValue(true);
+    vi.spyOn(crypto, "randomUUID").mockReturnValue("22222222-2222-4222-8222-222222222222");
+
+    await createProject("現場B");
+
+    expect(mockPickFolder).not.toHaveBeenCalled();
+    expect(mockInitProjectDir).toHaveBeenCalledWith(
+      "/data/projects/22222222-2222-4222-8222-222222222222",
+    );
+    expect(projectStore.folder).toBe("/data/projects/22222222-2222-4222-8222-222222222222");
+    expect(projectStore.meta?.name).toBe("現場B");
+    expect(projectStore.meta?.id).toBe("22222222-2222-4222-8222-222222222222");
+  });
+
+  it("does not share when annotation persist fails", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    mockWriteAnnotationFile.mockRejectedValue(new Error("disk full"));
+
+    await expect(shareCurrentProject()).resolves.toBe(false);
+    expect(mockShareFileBytes).not.toHaveBeenCalled();
+    expect(mockListProjectFiles).not.toHaveBeenCalled();
+  });
+
+  it("installs a project bundle and refuses a silent merge of the same id", async () => {
+    mockUsesSandboxProjects.mockReturnValue(true);
+    const zip = zipSync({
+      ".blueprint-sync/project.json": new TextEncoder().encode(
+        JSON.stringify(sampleMeta({ id: "project-1", name: "現場A" })),
+      ),
+      "図面/1F.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+    });
+    mockListSandboxProjects.mockResolvedValue([
+      { id: "project-1", name: "現場A", path: "/data/projects/project-1" },
+    ]);
+    mockReadProjectMeta.mockResolvedValue(sampleMeta({ id: "project-1", name: "現場A" }));
+    mockPathExists.mockResolvedValue(true);
+
+    await expect(importIncomingFile("現場A.bpsync.zip", zip)).resolves.toBe("confirm-overwrite");
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+
+    await expect(importIncomingFile("現場A.bpsync.zip", zip, true)).resolves.toBe("ok");
+    expect(mockRemoveDirAll).toHaveBeenCalledWith("/data/projects/project-1");
+    expect(mockWriteBinaryFile).toHaveBeenCalled();
   });
 });

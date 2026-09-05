@@ -4,8 +4,8 @@ import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
-import { openPdfFromDisk } from "./fileAccess";
-import { isTauriRuntime } from "./platform";
+import { openPdfFromDisk, pickImportFiles } from "./fileAccess";
+import { isTauriRuntime, usesSandboxProjects } from "./platform";
 import {
   createProjectMeta,
   dropRecent,
@@ -14,15 +14,19 @@ import {
   isProjectPdfBasename,
   isProjectPdfRelPath,
   joinProjectPdfRelPath,
+  projectPdfDisplayName,
   projectPdfKindDir,
   rememberRecent,
+  type ProjectMeta,
   type ProjectPdfKind,
 } from "./projectFormat";
 import {
   deleteFile,
   httpGet,
   initProjectDir,
+  listProjectFiles,
   listProjectPdfs,
+  listSandboxProjects,
   loadRecentProjects,
   moveFileIntoFolder,
   pathExists,
@@ -31,6 +35,8 @@ import {
   readAnnotationFile,
   readBinaryFile,
   readProjectMeta,
+  removeDirAll,
+  sandboxProjectsDir,
   saveRecentProjects,
   writeAnnotationFile,
   writeBinaryFile,
@@ -39,6 +45,8 @@ import {
 import { importOneDrivePdfsIntoFolder } from "./oneDriveImport";
 import { importZipPdfsIntoFolder } from "./zipImport";
 import { isZipBasename } from "./zipPdf";
+import { planIncoming, shareProjectBundle } from "./projectShare";
+import { shareFileBytes } from "./shareFile";
 import {
   WEB_DEMO_FOLDER,
   enableWebDemo,
@@ -61,8 +69,8 @@ function requireTauri() {
   }
 }
 
-async function remember(name: string, path: string) {
-  const next = rememberRecent(projectStore.recents, { name, path });
+async function remember(name: string, path: string, id?: string) {
+  const next = rememberRecent(projectStore.recents, { id, name, path });
   projectStore.recents = next;
   await saveRecentProjects(next);
 }
@@ -192,10 +200,23 @@ export async function loadRecentsIntoStore(): Promise<void> {
   if (next.length !== items.length) {
     await saveRecentProjects(next);
   }
+  if (usesSandboxProjects()) {
+    projectStore.sandboxProjects = await listSandboxProjects();
+  }
 }
 
-export async function createProject(): Promise<void> {
+export async function createProject(name?: string): Promise<void> {
   requireTauri();
+  if (usesSandboxProjects()) {
+    const trimmed = name?.trim();
+    if (!trimmed) {
+      return;
+    }
+    const root = (await sandboxProjectsDir()).replace(/[/\\]+$/, "");
+    const meta = createProjectMeta(trimmed);
+    await createProjectAt(`${root}/${meta.id}`, meta);
+    return;
+  }
   const folder = await pickFolder();
   if (!folder) {
     return;
@@ -203,28 +224,28 @@ export async function createProject(): Promise<void> {
   await createProjectAt(folder);
 }
 
-async function createProjectAt(folder: string): Promise<void> {
+async function createProjectAt(folder: string, meta?: ProjectMeta): Promise<void> {
   const existing = findTabByFolder(projectStore.tabs, folder);
   if (existing) {
     await switchProjectTab(existing.id);
     return;
   }
   await initProjectDir(folder);
-  const meta = createProjectMeta(folderDisplayName(folder));
-  await writeProjectMeta(folder, meta);
+  const nextMeta = meta ?? createProjectMeta(folderDisplayName(folder));
+  await writeProjectMeta(folder, nextMeta);
   const pdfs = await listProjectPdfs(folder);
   const parked = await parkActiveTab();
   if (!parked) {
     return;
   }
   projectStore.folder = folder;
-  projectStore.meta = meta;
+  projectStore.meta = nextMeta;
   projectStore.pdfs = pdfs;
   projectStore.currentPdf = "";
   projectStore.error = "";
   pdfStore.clear();
   annotationStore.clear();
-  await remember(folderDisplayName(folder), folder);
+  await remember(nextMeta.name, folder, nextMeta.id);
   registerLiveTab();
   await openFirstProjectPdf();
 }
@@ -255,7 +276,7 @@ export async function openProject(folder?: string): Promise<void> {
     projectStore.error = "";
     pdfStore.clear();
     annotationStore.clear();
-    await remember(folderDisplayName(selected), selected);
+    await remember(meta.name, selected, meta.id);
     registerLiveTab();
     await openFirstProjectPdf();
   } catch (error) {
@@ -333,6 +354,9 @@ export async function closeProjectTab(tabId: string): Promise<void> {
 
 export async function openProjectTab(): Promise<void> {
   requireTauri();
+  if (usesSandboxProjects()) {
+    return;
+  }
   const folder = await pickFolder();
   if (!folder) {
     return;
@@ -658,3 +682,149 @@ export async function refreshProjectPdfs(): Promise<void> {
   }
   projectStore.pdfs = await listProjectPdfs(projectStore.folder);
 }
+
+export async function shareCurrentProject(): Promise<boolean> {
+  if (!projectStore.folder || !projectStore.meta) {
+    pdfStore.status = "先にプロジェクトを開いてください";
+    return false;
+  }
+  viewerApi.persistPage();
+  const result = await shareProjectBundle({
+    persist: persistCurrentAnnotations,
+    folder: projectStore.folder,
+    name: projectStore.meta.name,
+    listFiles: listProjectFiles,
+    readFile: readBinaryFile,
+    share: shareFileBytes,
+  });
+  if (result === "persist-failed") {
+    return false;
+  }
+  if (result === "pack-failed") {
+    const message = "プロジェクトの共有に失敗しました";
+    pdfStore.status = message;
+    projectStore.error = message;
+    return false;
+  }
+  return true;
+}
+
+export async function shareCurrentPdf(): Promise<boolean> {
+  if (!pdfStore.bytes || !projectStore.currentPdf) {
+    pdfStore.status = "先にPDFを開いてください";
+    return false;
+  }
+  await shareFileBytes({
+    name: projectPdfDisplayName(projectStore.currentPdf),
+    bytes: pdfStore.bytes,
+    mime: "application/pdf",
+  });
+  return true;
+}
+
+export async function pickAndImportIncoming(): Promise<string> {
+  const files = await pickImportFiles();
+  let last: "ok" | "confirm-overwrite" | "ask-new-from-pdf" | "empty" = "empty";
+  for (const file of files) {
+    last = await importIncomingFile(file.name, file.bytes);
+    if (last !== "ok") {
+      return last;
+    }
+  }
+  return last;
+}
+
+export async function importIncomingFile(
+  name: string,
+  bytes: Uint8Array,
+  overwrite = false,
+  createFromPdf = false,
+): Promise<"ok" | "confirm-overwrite" | "ask-new-from-pdf"> {
+  const sandbox = usesSandboxProjects() ? await listSandboxProjects() : [];
+  const existingIds = sandbox
+    .map((item) => item.id)
+    .filter((id): id is string => Boolean(id));
+  const plan = planIncoming({
+    name,
+    bytes,
+    projectOpen: projectStore.isOpen,
+    existingIds,
+    overwrite,
+  });
+
+  if (plan.action === "confirm-overwrite") {
+    return "confirm-overwrite";
+  }
+  if (plan.action === "reject") {
+    throw setProjectImportError(new Error(plan.reason));
+  }
+  if (plan.action === "ask-new-from-pdf") {
+    if (!createFromPdf) {
+      return "ask-new-from-pdf";
+    }
+    await createProject(plan.name.replace(/\.pdf$/i, "") || "無題プロジェクト");
+    if (!projectStore.folder) {
+      return "ok";
+    }
+    await writeIncomingPdf(plan.name, plan.bytes);
+    return "ok";
+  }
+  if (plan.action === "import-pdf") {
+    await writeIncomingPdf(plan.name, plan.bytes);
+    return "ok";
+  }
+  if (plan.action === "import-pdfs") {
+    if (!projectStore.folder) {
+      throw setProjectImportError(new Error("先にプロジェクトを開くか、一式を共有してください"));
+    }
+    const persisted = await persistCurrentAnnotations();
+    if (!persisted) {
+      return "ok";
+    }
+    const first = await importZipBytesIntoOpenProject(plan.zipBytes, "drawing");
+    projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+    await openProjectPdf(first);
+    return "ok";
+  }
+  if (plan.action === "install-project" || plan.action === "overwrite-project") {
+    await installBundle(plan.meta, plan.files, plan.action === "overwrite-project");
+    return "ok";
+  }
+  return "ok";
+}
+
+async function writeIncomingPdf(name: string, bytes: Uint8Array): Promise<void> {
+  if (!projectStore.folder) {
+    throw setProjectImportError(new Error("プロジェクトが開かれていません"));
+  }
+  const persisted = await persistCurrentAnnotations();
+  if (!persisted) {
+    return;
+  }
+  const relPath = joinProjectPdfRelPath("drawing", name);
+  const destPath = `${projectStore.folder}/${relPath}`;
+  if (await pathExists(destPath)) {
+    throw setProjectImportError(new Error("同じ名前のPDFが既にあります"));
+  }
+  await writeBinaryFile(destPath, bytes);
+  projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+  await openProjectPdf(relPath);
+}
+
+async function installBundle(
+  meta: ProjectMeta,
+  files: Record<string, Uint8Array>,
+  overwrite: boolean,
+): Promise<void> {
+  const root = (await sandboxProjectsDir()).replace(/[/\\]+$/, "");
+  const folder = `${root}/${meta.id}`;
+  if (overwrite) {
+    await removeDirAll(folder);
+  }
+  await initProjectDir(folder);
+  for (const [rel, data] of Object.entries(files)) {
+    await writeBinaryFile(`${folder}/${rel}`, data);
+  }
+  await openProject(folder);
+}
+

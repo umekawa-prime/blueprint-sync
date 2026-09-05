@@ -1,9 +1,10 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectMeta } from "./projectFormat";
 
-const { mockInvoke, mockIsTauriRuntime } = vi.hoisted(() => ({
+const { mockInvoke, mockIsTauriRuntime, mockUsesRfd } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => false),
+  mockUsesRfd: vi.fn(() => false),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -12,7 +13,7 @@ vi.mock("@tauri-apps/api/core", () => ({
 
 vi.mock("./platform", () => ({
   isTauriRuntime: () => mockIsTauriRuntime(),
-  usesRfdFileDialog: () => mockIsTauriRuntime(),
+  usesRfdFileDialog: () => mockUsesRfd(),
 }));
 
 import {
@@ -50,16 +51,26 @@ describe("projectIo", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsTauriRuntime.mockReturnValue(false);
+    mockUsesRfd.mockReturnValue(false);
     resetWebDemo();
   });
 
   it("keeps using Tauri file commands even if the web demo flag was left on", async () => {
     mockIsTauriRuntime.mockReturnValue(true);
+    mockUsesRfd.mockReturnValue(true);
     enableWebDemo();
     mockInvoke.mockResolvedValueOnce("/picked");
 
     await expect(pickFolder()).resolves.toBe("/picked");
     expect(mockInvoke).toHaveBeenCalledWith("pick_folder");
+  });
+
+  it("does not open a folder picker on mobile Tauri", async () => {
+    mockIsTauriRuntime.mockReturnValue(true);
+    mockUsesRfd.mockReturnValue(false);
+
+    await expect(pickFolder()).resolves.toBeNull();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 
   it("uses the documented project paths", () => {

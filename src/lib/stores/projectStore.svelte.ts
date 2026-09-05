@@ -8,6 +8,7 @@ class ProjectStore {
   currentPdf = $state("");
   error = $state("");
   recents = $state<RecentProject[]>([]);
+  sandboxProjects = $state<RecentProject[]>([]);
   tabs = $state<ProjectTab[]>([]);
   activeTabId = $state<string | null>(null);
 

@@ -22,7 +22,7 @@ export function cameraConstraints(deviceId?: string): MediaStreamConstraints {
 
 export const DEFAULT_CAMERA_CONSTRAINTS: MediaStreamConstraints = cameraConstraints();
 
-const ENVIRONMENT_CAMERA_CONSTRAINTS: MediaStreamConstraints = {
+export const ENVIRONMENT_CAMERA_CONSTRAINTS: MediaStreamConstraints = {
   audio: false,
   video: {
     facingMode: { ideal: "environment" },
@@ -149,14 +149,20 @@ export function defaultEnumerateDevices(): Promise<MediaDeviceInfo[]> {
 export async function startCameraStream(
   getUserMedia: GetUserMedia = defaultGetUserMedia,
   deviceId?: string,
+  preferEnvironment = false,
 ): Promise<MediaStream> {
   const attempts: MediaStreamConstraints[] = [];
   if (deviceId) {
     attempts.push(cameraConstraints(deviceId));
   }
+  if (preferEnvironment && !deviceId) {
+    attempts.push(ENVIRONMENT_CAMERA_CONSTRAINTS);
+  }
   attempts.push(cameraConstraints());
   attempts.push({ audio: false, video: true });
-  attempts.push(ENVIRONMENT_CAMERA_CONSTRAINTS);
+  if (!preferEnvironment || deviceId) {
+    attempts.push(ENVIRONMENT_CAMERA_CONSTRAINTS);
+  }
 
   let lastError: unknown;
   for (const constraints of attempts) {

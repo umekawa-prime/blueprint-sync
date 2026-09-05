@@ -99,21 +99,36 @@ export function readFileAsBytes(file: File): Promise<Uint8Array> {
   return file.arrayBuffer().then((buffer) => new Uint8Array(buffer));
 }
 
-async function pickFileInBrowser(
+export async function pickImportFiles(): Promise<Array<{ name: string; bytes: Uint8Array }>> {
+  return pickFilesInBrowser(
+    ".pdf,.zip,.bpsync.zip,application/pdf,application/zip",
+    true,
+  );
+}
+
+async function pickFilesInBrowser(
   accept: string,
-): Promise<{ name: string; bytes: Uint8Array } | null> {
+  multiple: boolean,
+): Promise<Array<{ name: string; bytes: Uint8Array }>> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = accept;
+    input.multiple = multiple;
     input.onchange = async () => {
-      const file = input.files?.[0];
-      if (!file) {
-        resolve(null);
-        return;
-      }
-      resolve({ name: file.name, bytes: await readFileAsBytes(file) });
+      const files = [...(input.files ?? [])];
+      const picked = await Promise.all(
+        files.map(async (file) => ({ name: file.name, bytes: await readFileAsBytes(file) })),
+      );
+      resolve(picked);
     };
     input.click();
   });
+}
+
+async function pickFileInBrowser(
+  accept: string,
+): Promise<{ name: string; bytes: Uint8Array } | null> {
+  const files = await pickFilesInBrowser(accept, false);
+  return files[0] ?? null;
 }

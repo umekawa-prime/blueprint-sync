@@ -51,6 +51,13 @@ export function usesRfdFileDialog(): boolean {
   return isDesktopTauriRuntime();
 }
 
+export function usesSandboxProjects(
+  isTauri = isTauriRuntime(),
+  usesRfd = usesRfdFileDialog(),
+): boolean {
+  return isTauri && !usesRfd;
+}
+
 export function prefersCameraCapture(platform = detectPlatform()): boolean {
   return platform === "android" || platform === "ios";
 }

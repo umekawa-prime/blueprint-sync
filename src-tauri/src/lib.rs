@@ -1,13 +1,19 @@
 mod sync_server;
+mod sandbox;
+mod share;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod explorer_dialog;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
-use serde::{Deserialize, Serialize};
-use tauri::{AppHandle, Manager, State};
+use serde::Serialize;
+use tauri::{AppHandle, Emitter, Manager, State};
 
+use crate::sandbox::{
+    list_project_files, list_sandbox_projects, remove_dir_all, sandbox_projects_dir, RecentProject,
+};
+use crate::share::share_file;
 use crate::sync_server::{ServerInfo, SyncServer, DEFAULT_PORT};
 
 #[derive(Serialize)]
@@ -15,12 +21,6 @@ struct PdfFile {
     name: String,
     path: String,
     bytes: Vec<u8>,
-}
-
-#[derive(Serialize, Deserialize, Clone, Debug, PartialEq, Eq)]
-struct RecentProject {
-    name: String,
-    path: String,
 }
 
 fn is_visible_pdf_name(name: &str) -> bool {
@@ -99,7 +99,7 @@ fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
 #[cfg(any(target_os = "ios", target_os = "android"))]
 #[tauri::command]
 fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
-    Err("モバイルでは HTML のファイル選択を使ってください".to_string())
+    Ok(None)
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -111,7 +111,7 @@ fn pick_folder() -> Result<Option<String>, String> {
 #[cfg(any(target_os = "ios", target_os = "android"))]
 #[tauri::command]
 fn pick_folder() -> Result<Option<String>, String> {
-    Err("モバイルではフォルダ選択ダイアログを使えません".to_string())
+    Ok(None)
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -137,7 +137,7 @@ fn pick_image_file() -> Result<Option<PdfFile>, String> {
 #[cfg(any(target_os = "ios", target_os = "android"))]
 #[tauri::command]
 fn pick_image_file() -> Result<Option<PdfFile>, String> {
-    Err("モバイルでは HTML のファイル選択を使ってください".to_string())
+    Ok(None)
 }
 
 #[tauri::command]
@@ -326,7 +326,7 @@ fn save_pdf_file(
     _bytes: Vec<u8>,
     _default_dir: Option<String>,
 ) -> Result<bool, String> {
-    Err("モバイルでは HTML のダウンロードを使ってください".to_string())
+    Ok(false)
 }
 
 #[cfg(windows)]
@@ -424,10 +424,21 @@ pub fn run() {
             load_recent_projects,
             save_recent_projects,
             path_exists,
-            save_pdf_file
+            save_pdf_file,
+            sandbox_projects_dir,
+            list_project_files,
+            remove_dir_all,
+            list_sandbox_projects,
+            share_file
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while building tauri application")
+        .run(|app, event| {
+            if let tauri::RunEvent::Opened { urls } = event {
+                let payload: Vec<String> = urls.iter().map(|url| url.to_string()).collect();
+                let _ = app.emit("incoming-files", payload);
+            }
+        });
 }
 
 #[cfg(test)]

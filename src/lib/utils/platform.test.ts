@@ -6,6 +6,7 @@ import {
   shouldAutoStartWebDemo,
   shouldOfferBrowserDemo,
   usesRfdFileDialog,
+  usesSandboxProjects,
 } from "./platform";
 
 describe("platform detection", () => {
@@ -44,5 +45,11 @@ describe("platform detection", () => {
     expect(shouldAutoStartWebDemo("?demo=1", true)).toBe(false);
     expect(shouldAutoStartWebDemo("?demo=1", false)).toBe(true);
     expect(shouldAutoStartWebDemo("", false)).toBe(false);
+  });
+
+  it("uses the sandbox project tree on mobile Tauri instead of a folder picker", () => {
+    expect(usesSandboxProjects(true, false)).toBe(true);
+    expect(usesSandboxProjects(true, true)).toBe(false);
+    expect(usesSandboxProjects(false, false)).toBe(false);
   });
 });

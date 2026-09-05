@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import {
   DEFAULT_CAMERA_CONSTRAINTS,
+  ENVIRONMENT_CAMERA_CONSTRAINTS,
   blobFromCanvas,
   cameraConstraints,
   drawVideoFrame,
@@ -189,5 +190,14 @@ describe("startCameraStream", () => {
     await expect(startCameraStream(getUserMedia)).rejects.toThrow(
       "カメラの使用が許可されていません",
     );
+  });
+
+  it("asks for the environment camera first on mobile", async () => {
+    const stream = { id: "rear" } as unknown as MediaStream;
+    const getUserMedia = vi.fn().mockResolvedValue(stream);
+
+    await expect(startCameraStream(getUserMedia, undefined, true)).resolves.toBe(stream);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith(ENVIRONMENT_CAMERA_CONSTRAINTS);
   });
 });

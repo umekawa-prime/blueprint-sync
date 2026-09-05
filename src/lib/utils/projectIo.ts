@@ -29,13 +29,7 @@ export async function pickFolder(): Promise<string | null> {
     return "/demo";
   }
   if (isTauriRuntime() && !usesRfdFileDialog()) {
-    try {
-      const { open } = await import("@tauri-apps/plugin-dialog");
-      const selected = await open({ directory: true, multiple: false });
-      return typeof selected === "string" ? selected : null;
-    } catch {
-      return null;
-    }
+    return null;
   }
   return invoke<string | null>("pick_folder");
 }
@@ -198,4 +192,32 @@ export async function writeAnnotationFile(
   photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
 ): Promise<void> {
   await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage, photoPins));
+}
+
+export async function sandboxProjectsDir(): Promise<string> {
+  if (useWebDemoFs()) {
+    return "/demo/projects";
+  }
+  return invoke<string>("sandbox_projects_dir");
+}
+
+export async function listProjectFiles(folder: string): Promise<string[]> {
+  if (useWebDemoFs()) {
+    return [];
+  }
+  return invoke<string[]>("list_project_files", { folder });
+}
+
+export async function removeDirAll(path: string): Promise<void> {
+  if (useWebDemoFs()) {
+    return;
+  }
+  await invoke("remove_dir_all", { path });
+}
+
+export async function listSandboxProjects(): Promise<RecentProject[]> {
+  if (useWebDemoFs()) {
+    return [];
+  }
+  return invoke<RecentProject[]>("list_sandbox_projects");
 }

@@ -25,6 +25,13 @@ export function clickPhotoPin(view: PhotoPinView, id: string): PhotoPinView {
   return { hoverId: null, modalId: id };
 }
 
+export function tapPhotoPin(view: PhotoPinView, id: string): PhotoPinView {
+  if (view.hoverId === id && !view.modalId) {
+    return clickPhotoPin(view, id);
+  }
+  return { hoverId: id, modalId: null };
+}
+
 export function closePhotoPinModal(view: PhotoPinView): PhotoPinView {
   return { ...view, hoverId: null, modalId: null };
 }

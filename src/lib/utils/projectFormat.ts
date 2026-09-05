@@ -12,6 +12,7 @@ export type ProjectMeta = {
 };
 
 export type RecentProject = {
+  id?: string;
   name: string;
   path: string;
 };

@@ -5,6 +5,7 @@ import {
   hoverPhotoPin,
   idlePhotoPinView,
   leavePhotoPin,
+  tapPhotoPin,
 } from "./photoPinUi";
 
 describe("photoPinUi", () => {
@@ -41,5 +42,11 @@ describe("photoPinUi", () => {
   it("closes only the modal overlay", () => {
     const modal = clickPhotoPin(idlePhotoPinView(), "pin-1");
     expect(closePhotoPinModal(modal)).toEqual(idlePhotoPinView());
+  });
+
+  it("uses tap-to-preview then a second tap for the modal on phone", () => {
+    const preview = tapPhotoPin(idlePhotoPinView(), "pin-1");
+    expect(preview).toEqual({ hoverId: "pin-1", modalId: null });
+    expect(tapPhotoPin(preview, "pin-1")).toEqual({ hoverId: null, modalId: "pin-1" });
   });
 });

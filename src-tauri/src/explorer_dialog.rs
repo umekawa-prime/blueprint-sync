@@ -107,6 +107,8 @@ fn run_powershell(script: &str) -> ExplorerDialogResult {
             .args([
                 "-NoProfile",
                 "-STA",
+                "-WindowStyle",
+                "Hidden",
                 "-ExecutionPolicy",
                 "Bypass",
                 "-Command",
@@ -134,10 +136,68 @@ const EXPLORER_DIALOG_PRELUDE: &str = r#"
 [Console]::OutputEncoding = [System.Text.Encoding]::UTF8
 $OutputEncoding = [System.Text.Encoding]::UTF8
 Add-Type -AssemblyName System.Windows.Forms
+Add-Type -AssemblyName System.Drawing
 [System.Windows.Forms.Application]::EnableVisualStyles()
+if (-not ('DialogFocus' -as [type])) {
+  Add-Type -TypeDefinition @'
+using System;
+using System.Runtime.InteropServices;
+public static class DialogFocus {
+  public static uint Pid;
+  public delegate bool EnumWindowsProc(IntPtr hWnd, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool BringWindowToTop(IntPtr hWnd);
+  [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr hWndInsertAfter, int X, int Y, int cx, int cy, uint uFlags);
+  [DllImport("user32.dll")] public static extern bool EnumWindows(EnumWindowsProc lpEnumFunc, IntPtr lParam);
+  [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint pid);
+  [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr hWnd);
+  public static readonly IntPtr HWND_TOPMOST = new IntPtr(-1);
+  public static IntPtr Owner;
+  public static bool OnWindow(IntPtr hWnd, IntPtr lParam) {
+    if (hWnd == Owner) { return true; }
+    uint windowPid = 0;
+    GetWindowThreadProcessId(hWnd, out windowPid);
+    if (windowPid == Pid && IsWindowVisible(hWnd)) {
+      SetWindowPos(hWnd, HWND_TOPMOST, 0, 0, 0, 0, 0x0043);
+      SetForegroundWindow(hWnd);
+      BringWindowToTop(hWnd);
+    }
+    return true;
+  }
+  public static void ForceFront(IntPtr owner, uint pid) {
+    Owner = owner;
+    Pid = pid;
+    EnumWindows(OnWindow, IntPtr.Zero);
+  }
+}
+'@
+}
 $form = New-Object System.Windows.Forms.Form
 $form.TopMost = $true
+$form.ShowInTaskbar = $false
+$form.FormBorderStyle = 'None'
+$form.Opacity = 0
+$form.StartPosition = 'Manual'
+$form.Location = New-Object System.Drawing.Point(-20000, -20000)
+$form.Size = New-Object System.Drawing.Size(1, 1)
+$form.Show()
+[void][DialogFocus]::SetForegroundWindow($form.Handle)
+[void][DialogFocus]::BringWindowToTop($form.Handle)
 "#;
+
+const EXPLORER_SHOW_DIALOG: &str = r#"
+$timer = New-Object System.Windows.Forms.Timer
+$timer.Interval = 50
+$timer.add_Tick({
+  [DialogFocus]::ForceFront($form.Handle, [uint32]$PID)
+})
+$timer.Start()
+$result = $dialog.ShowDialog($form)
+$timer.Stop()
+$timer.Dispose()
+$form.Dispose()
+"#;
+
 
 fn explorer_open_script(title: &str, filter: Option<&str>, folder_mode: bool) -> String {
     let mut script = String::from(EXPLORER_DIALOG_PRELUDE);
@@ -154,8 +214,7 @@ fn explorer_open_script(title: &str, filter: Option<&str>, folder_mode: bool) ->
     } else if let Some(filter) = filter {
         script.push_str(&format!("$dialog.Filter = {}\n", powershell_single_quote(filter)));
     }
-    script.push_str("$result = $dialog.ShowDialog($form)\n");
-    script.push_str("$form.Dispose()\n");
+    script.push_str(EXPLORER_SHOW_DIALOG);
     script.push_str("if ($result -ne [System.Windows.Forms.DialogResult]::OK) { exit 0 }\n");
     if folder_mode {
         script.push_str(
@@ -193,8 +252,7 @@ fn explorer_save_script(title: &str, default_name: &str, default_dir: Option<&st
             powershell_single_quote(dir)
         ));
     }
-    script.push_str("$result = $dialog.ShowDialog($form)\n");
-    script.push_str("$form.Dispose()\n");
+    script.push_str(EXPLORER_SHOW_DIALOG);
     script.push_str("if ($result -ne [System.Windows.Forms.DialogResult]::OK) { exit 0 }\n");
     script.push_str("Write-Output $dialog.FileName\n");
     script
@@ -351,9 +409,9 @@ pub fn save_file_native(default_name: &str, default_dir: Option<&str>) -> Option
 #[cfg(test)]
 mod tests {
     use super::{
-        looks_like_windows_path, map_mnt_to_windows, native_pick_action, parse_dialog_output,
-        powershell_binaries, unix_path_to_windows, windows_path_to_wsl, ExplorerDialogResult,
-        NativePickAction,
+        explorer_open_script, explorer_save_script, looks_like_windows_path, map_mnt_to_windows,
+        native_pick_action, parse_dialog_output, powershell_binaries, unix_path_to_windows,
+        windows_path_to_wsl, ExplorerDialogResult, NativePickAction,
     };
 
     #[test]
@@ -456,5 +514,18 @@ mod tests {
         let bins = powershell_binaries();
         assert!(bins.iter().any(|bin| bin.contains("powershell.exe")));
         assert!(bins.iter().any(|bin| bin.contains("/mnt/c/Windows")));
+    }
+
+    #[test]
+    fn explorer_scripts_force_the_windows_dialog_to_the_front() {
+        let open = explorer_open_script("画像を選択", Some("画像|*.png"), false);
+        let save = explorer_save_script("PDF を保存", "a.pdf", None);
+        for script in [open.as_str(), save.as_str()] {
+            assert!(script.contains("$form.Show()"), "{script}");
+            assert!(script.contains("SetForegroundWindow"), "{script}");
+            assert!(script.contains("HWND_TOPMOST"), "{script}");
+            assert!(script.contains("ForceFront($form.Handle"), "{script}");
+            assert!(script.contains("ShowDialog($form)"), "{script}");
+        }
     }
 }
