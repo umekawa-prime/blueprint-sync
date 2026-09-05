@@ -11,6 +11,7 @@
     stopMediaStream,
     type CameraDevice,
   } from "$lib/utils/cameraCapture";
+  import { prefersCameraCapture } from "$lib/utils/platform";
 
   const STORAGE_KEY = "blueprint-sync.cameraDeviceId";
 
@@ -53,7 +54,7 @@
     error = "";
     ready = false;
     try {
-      const next = await startCameraStream(defaultGetUserMedia, deviceId);
+      const next = await startCameraStream(defaultGetUserMedia, deviceId, prefersCameraCapture());
       await attachStream(next);
       await refreshCameras();
       if (autoPrefer) {
@@ -108,7 +109,7 @@
 
   onMount(() => {
     const stored = localStorage.getItem(STORAGE_KEY) ?? undefined;
-    void start(stored, !stored);
+    void start(stored, !stored && !prefersCameraCapture());
   });
 
   onDestroy(() => {

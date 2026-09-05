@@ -6,7 +6,9 @@
     hoverPhotoPin,
     idlePhotoPinView,
     leavePhotoPin,
+    tapPhotoPin,
   } from "$lib/utils/photoPinUi";
+  import { viewportStore } from "$lib/stores/viewportStore.svelte";
 
   let { pins }: { pins: PhotoPinRecord[] } = $props();
 
@@ -34,10 +36,14 @@
       class="pointer-events-auto absolute -translate-x-1/2 -translate-y-full"
       style="left: {pin.nx * 100}%; top: {pin.ny * 100}%"
       onmouseenter={() => {
-        view = hoverPhotoPin(view, pin.id);
+        if (!viewportStore.isPhone) {
+          view = hoverPhotoPin(view, pin.id);
+        }
       }}
       onmouseleave={() => {
-        view = leavePhotoPin(view, pin.id);
+        if (!viewportStore.isPhone) {
+          view = leavePhotoPin(view, pin.id);
+        }
       }}
     >
       <button
@@ -45,7 +51,7 @@
         class="flex flex-col items-center"
         aria-label="写真ピン"
         onclick={() => {
-          view = clickPhotoPin(view, pin.id);
+          view = viewportStore.isPhone ? tapPhotoPin(view, pin.id) : clickPhotoPin(view, pin.id);
         }}
       >
         <span
