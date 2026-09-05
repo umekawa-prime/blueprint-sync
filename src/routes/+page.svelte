@@ -1,4 +1,5 @@
 <script lang="ts">
+  import { onMount } from "svelte";
   import CameraCapture from "$lib/components/CameraCapture.svelte";
   import ConnectionPanel from "$lib/components/ConnectionPanel.svelte";
   import PdfViewer from "$lib/components/PdfViewer.svelte";
@@ -8,11 +9,20 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
+  import { viewportStore } from "$lib/stores/viewportStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
   import { imageBlobFromPicked, pickImageFromDisk } from "$lib/utils/fileAccess";
+  import {
+    importIncomingFile,
+    shareCurrentPdf,
+    shareCurrentProject,
+  } from "$lib/utils/projectActions";
+  import { isTauriRuntime } from "$lib/utils/platform";
 
   let connectionOpen = $state(false);
   let cameraOpen = $state(false);
+  let drawerOpen = $state(false);
+  let sheetOpen = $state(false);
 
   viewerApi.openCamera = () => {
     cameraOpen = true;
@@ -34,23 +44,94 @@
       await viewerApi.addPhoto(imageBlobFromPicked(picked));
     }
   }
+
+  async function onShareProject() {
+    await shareCurrentProject();
+  }
+
+  async function onSharePdf() {
+    await shareCurrentPdf();
+  }
+
+  onMount(() => {
+    const unbind = viewportStore.bind();
+    let unlisten: (() => void) | undefined;
+    if (isTauriRuntime()) {
+      void import("@tauri-apps/api/event").then(({ listen }) => {
+        void listen<string[]>("incoming-files", async (event) => {
+          for (const url of event.payload) {
+            const path = url.replace(/^file:\/\//, "");
+            const name = path.split(/[/\\]/).pop() ?? "incoming";
+            try {
+              const { invoke } = await import("@tauri-apps/api/core");
+              const bytes = Uint8Array.from(await invoke<number[]>("read_file_bytes", { path }));
+              const result = await importIncomingFile(name, bytes);
+              if (result === "confirm-overwrite" && window.confirm("同じプロジェクトが既にあります。上書きしますか？")) {
+                await importIncomingFile(name, bytes, true);
+              }
+              if (result === "ask-new-from-pdf" && window.confirm("プロジェクトが開いていません。この PDF で新規プロジェクトを作りますか？")) {
+                await importIncomingFile(name, bytes, false, true);
+              }
+            } catch (error) {
+              projectStore.error = error instanceof Error ? error.message : "取り込みに失敗しました";
+            }
+          }
+        }).then((fn) => {
+          unlisten = fn;
+        });
+      });
+    }
+    return () => {
+      unbind();
+      unlisten?.();
+    };
+  });
 </script>
 
 <div class="flex h-full flex-col bg-slate-950 text-slate-100">
-  <ProjectTabBar />
+  {#if !viewportStore.isPhone}
+    <ProjectTabBar />
+  {:else if projectStore.isOpen}
+    <div class="flex h-10 shrink-0 items-center gap-2 border-b border-slate-700 bg-slate-950 px-2">
+      <button
+        class="rounded border border-slate-600 px-2 py-1 text-xs"
+        onclick={() => (drawerOpen = !drawerOpen)}
+      >
+        メニュー
+      </button>
+      <button class="min-w-0 flex-1 truncate text-left text-sm text-cyan-200" onclick={() => (sheetOpen = !sheetOpen)}>
+        {projectStore.meta?.name || "プロジェクト"}
+      </button>
+    </div>
+  {/if}
 
   {#if !projectStore.isOpen}
     <div class="min-h-0 flex-1">
       <ProjectHome />
     </div>
   {:else}
-    <div class="flex min-h-0 flex-1">
-      <ProjectSidebar />
+    <div class="relative flex min-h-0 flex-1">
+      {#if viewportStore.isPhone}
+        {#if drawerOpen}
+          <div class="absolute inset-0 z-30 flex">
+            <button class="flex-1 bg-slate-950/70" onclick={() => (drawerOpen = false)} aria-label="閉じる"></button>
+            <div class="h-full w-72 max-w-[85vw] shadow-2xl">
+              <ProjectSidebar />
+            </div>
+          </div>
+        {/if}
+      {:else}
+        <ProjectSidebar />
+      {/if}
       <div class="flex min-w-0 flex-1 flex-col">
-        <Toolbar
-          onToggleConnection={() => (connectionOpen = !connectionOpen)}
-          onRequestPhoto={requestPhoto}
-        />
+        {#if !viewportStore.isPhone}
+          <Toolbar
+            onToggleConnection={() => (connectionOpen = !connectionOpen)}
+            onRequestPhoto={requestPhoto}
+            onShareProject={onShareProject}
+            onSharePdf={onSharePdf}
+          />
+        {/if}
 
         <div class="relative flex min-h-0 flex-1 flex-col">
           <PdfViewer />
@@ -65,7 +146,20 @@
         </div>
 
         <StatusBar />
+        {#if viewportStore.isPhone}
+          <Toolbar
+            compact
+            onToggleConnection={() => (connectionOpen = !connectionOpen)}
+            onRequestPhoto={requestPhoto}
+            onShareProject={onShareProject}
+            onSharePdf={onSharePdf}
+          />
+        {/if}
       </div>
     </div>
+  {/if}
+
+  {#if sheetOpen && viewportStore.isPhone}
+    <ProjectTabBar />
   {/if}
 </div>
