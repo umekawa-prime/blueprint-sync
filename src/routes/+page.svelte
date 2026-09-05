@@ -13,11 +13,10 @@
   import { viewerApi } from "$lib/stores/viewerApi";
   import { imageBlobFromPicked, pickImageFromDisk } from "$lib/utils/fileAccess";
   import {
-    importIncomingFile,
     shareCurrentPdf,
     shareCurrentProject,
   } from "$lib/utils/projectActions";
-  import { isTauriRuntime } from "$lib/utils/platform";
+  import { listenIncomingFiles } from "$lib/utils/incomingShare";
 
   let connectionOpen = $state(false);
   let cameraOpen = $state(false);
@@ -56,31 +55,9 @@
   onMount(() => {
     const unbind = viewportStore.bind();
     let unlisten: (() => void) | undefined;
-    if (isTauriRuntime()) {
-      void import("@tauri-apps/api/event").then(({ listen }) => {
-        void listen<string[]>("incoming-files", async (event) => {
-          for (const url of event.payload) {
-            const path = url.replace(/^file:\/\//, "");
-            const name = path.split(/[/\\]/).pop() ?? "incoming";
-            try {
-              const { invoke } = await import("@tauri-apps/api/core");
-              const bytes = Uint8Array.from(await invoke<number[]>("read_file_bytes", { path }));
-              const result = await importIncomingFile(name, bytes);
-              if (result === "confirm-overwrite" && window.confirm("同じプロジェクトが既にあります。上書きしますか？")) {
-                await importIncomingFile(name, bytes, true);
-              }
-              if (result === "ask-new-from-pdf" && window.confirm("プロジェクトが開いていません。この PDF で新規プロジェクトを作りますか？")) {
-                await importIncomingFile(name, bytes, false, true);
-              }
-            } catch (error) {
-              projectStore.error = error instanceof Error ? error.message : "取り込みに失敗しました";
-            }
-          }
-        }).then((fn) => {
-          unlisten = fn;
-        });
-      });
-    }
+    void listenIncomingFiles().then((fn) => {
+      unlisten = fn;
+    });
     return () => {
       unbind();
       unlisten?.();
