@@ -46,6 +46,7 @@ import { importOneDrivePdfsIntoFolder } from "./oneDriveImport";
 import { importZipPdfsIntoFolder } from "./zipImport";
 import { isZipBasename } from "./zipPdf";
 import { planIncoming, shareProjectBundle } from "./projectShare";
+import { extractDrawingPdfBytes, pinSlideCounts } from "./pinSlides";
 import { shareFileBytes } from "./shareFile";
 import {
   WEB_DEMO_FOLDER,
@@ -485,12 +486,25 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
     return true;
   }
   try {
-    await writeAnnotationFile(
-      projectStore.folder,
-      projectStore.currentPdf,
-      annotationStore.exportByPage(),
-      annotationStore.exportPhotoPins(),
-    );
+    if (pdfStore.pageCount > 0) {
+      await writeAnnotationFile(
+        projectStore.folder,
+        projectStore.currentPdf,
+        annotationStore.exportByPage(),
+        annotationStore.exportPhotoPins(),
+        {
+          drawingPageCount: pdfStore.pageCount,
+          pinSlideCountByPage: pinSlideCounts(pdfStore.pageCount, annotationStore.exportPhotoPins()),
+        },
+      );
+    } else {
+      await writeAnnotationFile(
+        projectStore.folder,
+        projectStore.currentPdf,
+        annotationStore.exportByPage(),
+        annotationStore.exportPhotoPins(),
+      );
+    }
     annotationStore.dirty = false;
     return true;
   } catch (error) {
@@ -542,7 +556,15 @@ export async function openProjectPdf(fileName: string): Promise<void> {
       return;
     }
     annotationStore.importByPage(nextAnnotations.byPage, nextAnnotations.photoPins);
-    await pdfStore.load(fileName, bytes);
+    const drawingBytes =
+      nextAnnotations.drawingPageCount && nextAnnotations.pinSlideCountByPage
+        ? await extractDrawingPdfBytes(
+            bytes,
+            nextAnnotations.drawingPageCount,
+            nextAnnotations.pinSlideCountByPage,
+          )
+        : bytes;
+    await pdfStore.load(fileName, drawingBytes);
     if (seq !== openPdfSeq) {
       return;
     }

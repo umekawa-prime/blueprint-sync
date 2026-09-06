@@ -1,10 +1,14 @@
 import { describe, expect, it } from "vitest";
 import {
+  PIN_DRAG_HOLD_MS,
   clickPhotoPin,
   closePhotoPinModal,
   hoverPhotoPin,
   idlePhotoPinView,
   leavePhotoPin,
+  pinPositionFromPointer,
+  shouldArmPinDrag,
+  startPinDrag,
   tapPhotoPin,
 } from "./photoPinUi";
 
@@ -25,6 +29,7 @@ describe("photoPinUi", () => {
     expect(clickPhotoPin(hovered, "pin-1")).toEqual({
       hoverId: null,
       modalId: "pin-1",
+      draggingId: null,
     });
   });
 
@@ -46,7 +51,32 @@ describe("photoPinUi", () => {
 
   it("uses tap-to-preview then a second tap for the modal on phone", () => {
     const preview = tapPhotoPin(idlePhotoPinView(), "pin-1");
-    expect(preview).toEqual({ hoverId: "pin-1", modalId: null });
-    expect(tapPhotoPin(preview, "pin-1")).toEqual({ hoverId: null, modalId: "pin-1" });
+    expect(preview).toEqual({ hoverId: "pin-1", modalId: null, draggingId: null });
+    expect(tapPhotoPin(preview, "pin-1")).toEqual({ hoverId: null, modalId: "pin-1", draggingId: null });
+  });
+
+  it("maps a pointer on the drawing to a clamped pin position", () => {
+    expect(
+      pinPositionFromPointer(150, 80, { left: 100, top: 50, width: 200, height: 100 }),
+    ).toEqual({ nx: 0.25, ny: 0.3 });
+    expect(
+      pinPositionFromPointer(-10, 400, { left: 0, top: 0, width: 100, height: 100 }),
+    ).toEqual({ nx: 0, ny: 1 });
+  });
+
+  it("arms a pin drag after a hold on touch, or after moving on mouse", () => {
+    expect(shouldArmPinDrag("touch", PIN_DRAG_HOLD_MS, 0)).toBe(true);
+    expect(shouldArmPinDrag("touch", PIN_DRAG_HOLD_MS - 1, 0)).toBe(false);
+    expect(shouldArmPinDrag("mouse", 0, 9)).toBe(true);
+    expect(shouldArmPinDrag("mouse", PIN_DRAG_HOLD_MS, 0)).toBe(false);
+  });
+
+  it("starts a pin drag by clearing preview and modal", () => {
+    const modal = clickPhotoPin(idlePhotoPinView(), "pin-1");
+    expect(startPinDrag(modal, "pin-2")).toEqual({
+      hoverId: null,
+      modalId: null,
+      draggingId: "pin-2",
+    });
   });
 });

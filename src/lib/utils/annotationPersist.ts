@@ -4,6 +4,7 @@ export type PhotoPinRecord = {
   id: string;
   nx: number;
   ny: number;
+  title?: string;
   thumbnailDataUrl: string;
   imageDataUrl: string;
 };
@@ -11,6 +12,8 @@ export type PhotoPinRecord = {
 export type AnnotationFile = {
   byPage: Record<number, PageObjects>;
   photoPins: Record<number, Record<string, PhotoPinRecord>>;
+  drawingPageCount?: number;
+  pinSlideCountByPage?: number[];
 };
 
 function isPageObjects(value: unknown): value is PageObjects {
@@ -25,7 +28,7 @@ function isPageObjects(value: unknown): value is PageObjects {
   return true;
 }
 
-function isPhotoPinRecord(value: unknown): value is PhotoPinRecord {
+function isPhotoPinRecord(value: unknown): value is Omit<PhotoPinRecord, "title"> & { title?: unknown } {
   if (typeof value !== "object" || value === null || Array.isArray(value)) {
     return false;
   }
@@ -35,8 +38,20 @@ function isPhotoPinRecord(value: unknown): value is PhotoPinRecord {
     typeof record.nx === "number" &&
     typeof record.ny === "number" &&
     typeof record.thumbnailDataUrl === "string" &&
-    typeof record.imageDataUrl === "string"
+    typeof record.imageDataUrl === "string" &&
+    (record.title === undefined || typeof record.title === "string")
   );
+}
+
+function normalizePhotoPin(pin: Omit<PhotoPinRecord, "title"> & { title?: unknown }): PhotoPinRecord {
+  return {
+    id: pin.id,
+    nx: pin.nx,
+    ny: pin.ny,
+    title: typeof pin.title === "string" ? pin.title : "",
+    thumbnailDataUrl: pin.thumbnailDataUrl,
+    imageDataUrl: pin.imageDataUrl,
+  };
 }
 
 function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinRecord>> {
@@ -55,7 +70,7 @@ function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinR
     const pins: Record<string, PhotoPinRecord> = {};
     for (const [id, pin] of Object.entries(pageValue)) {
       if (isPhotoPinRecord(pin)) {
-        pins[id] = pin;
+        pins[id] = normalizePhotoPin(pin);
       }
     }
     output[page] = pins;
@@ -66,8 +81,14 @@ function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinR
 export function serializeAnnotations(
   byPage: Record<number, PageObjects>,
   photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
+  layout?: { drawingPageCount?: number; pinSlideCountByPage?: number[] },
 ): string {
-  return JSON.stringify({ byPage, photoPins });
+  return JSON.stringify({
+    byPage,
+    photoPins,
+    ...(layout?.drawingPageCount != null ? { drawingPageCount: layout.drawingPageCount } : {}),
+    ...(layout?.pinSlideCountByPage ? { pinSlideCountByPage: layout.pinSlideCountByPage } : {}),
+  });
 }
 
 export function parseAnnotations(raw: string): AnnotationFile {
@@ -92,8 +113,22 @@ export function parseAnnotations(raw: string): AnnotationFile {
     }
     output[page] = value;
   }
+  const record = parsed as {
+    photoPins?: unknown;
+    drawingPageCount?: unknown;
+    pinSlideCountByPage?: unknown;
+  };
+  const drawingPageCount =
+    typeof record.drawingPageCount === "number" && Number.isInteger(record.drawingPageCount) && record.drawingPageCount > 0
+      ? record.drawingPageCount
+      : undefined;
+  const pinSlideCountByPage = Array.isArray(record.pinSlideCountByPage)
+    ? record.pinSlideCountByPage.filter((value): value is number => typeof value === "number" && Number.isInteger(value) && value >= 0)
+    : undefined;
   return {
     byPage: output,
-    photoPins: parsePhotoPins((parsed as { photoPins?: unknown }).photoPins),
+    photoPins: parsePhotoPins(record.photoPins),
+    ...(drawingPageCount != null ? { drawingPageCount } : {}),
+    ...(pinSlideCountByPage && pinSlideCountByPage.length > 0 ? { pinSlideCountByPage } : {}),
   };
 }

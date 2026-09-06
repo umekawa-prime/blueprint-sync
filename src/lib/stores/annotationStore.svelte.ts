@@ -24,7 +24,18 @@ class AnnotationStore {
 
   addPhotoPin(page: number, pin: PhotoPinRecord) {
     const current = { ...(this.photoPins[page] ?? {}) };
-    current[pin.id] = pin;
+    current[pin.id] = { ...pin, title: pin.title ?? "" };
+    this.photoPins = { ...this.photoPins, [page]: current };
+    this.dirty = true;
+  }
+
+  updatePhotoPin(page: number, id: string, patch: Partial<Pick<PhotoPinRecord, "title" | "nx" | "ny">>) {
+    const current = { ...(this.photoPins[page] ?? {}) };
+    const existing = current[id];
+    if (!existing) {
+      return;
+    }
+    current[id] = { ...existing, ...patch };
     this.photoPins = { ...this.photoPins, [page]: current };
     this.dirty = true;
   }
@@ -99,8 +110,16 @@ class AnnotationStore {
     byPage: Record<number, PageObjects>,
     photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
   ) {
+    const normalized: Record<number, Record<string, PhotoPinRecord>> = {};
+    for (const [key, pins] of Object.entries(photoPins)) {
+      const page = Number(key);
+      normalized[page] = {};
+      for (const [id, pin] of Object.entries(pins)) {
+        normalized[page][id] = { ...pin, title: pin.title ?? "" };
+      }
+    }
     this.byPage = byPage;
-    this.photoPins = photoPins;
+    this.photoPins = normalized;
     this.dirty = false;
     this.remoteRevision += 1;
     historyStore.clear();

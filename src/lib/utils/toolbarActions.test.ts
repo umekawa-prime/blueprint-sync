@@ -10,6 +10,7 @@ const {
   mockSavePdfToDisk,
   mockWriteBinaryFile,
   mockEmbedAnnotationPngOnPdf,
+  mockAppendPhotoPinSlides,
   mockLoadPdfDocument,
 } = vi.hoisted(() => ({
   mockImportPdfIntoProject: vi.fn(),
@@ -17,6 +18,7 @@ const {
   mockSavePdfToDisk: vi.fn(),
   mockWriteBinaryFile: vi.fn(),
   mockEmbedAnnotationPngOnPdf: vi.fn(),
+  mockAppendPhotoPinSlides: vi.fn(),
   mockLoadPdfDocument: vi.fn(),
 }));
 
@@ -46,6 +48,10 @@ vi.mock("./pdfExport", () => ({
   suggestedExportName: vi.fn(),
 }));
 
+vi.mock("./pinSlides", () => ({
+  appendPhotoPinSlides: mockAppendPhotoPinSlides,
+}));
+
 vi.mock("$lib/utils/pdfRenderer", () => ({
   loadPdfDocument: mockLoadPdfDocument,
 }));
@@ -72,6 +78,7 @@ describe("toolbarActions", () => {
       },
     ]);
     mockEmbedAnnotationPngOnPdf.mockResolvedValue(new Uint8Array([4, 5, 6]));
+    mockAppendPhotoPinSlides.mockResolvedValue(new Uint8Array([4, 5, 6]));
     mockLoadPdfDocument.mockResolvedValue({ numPages: 2, destroy: vi.fn() });
     mockPersistCurrentAnnotations.mockResolvedValue(true);
   });
@@ -100,6 +107,7 @@ describe("toolbarActions", () => {
       "/projects/a/図面/A.pdf",
       new Uint8Array([4, 5, 6]),
     );
+    expect(mockAppendPhotoPinSlides).toHaveBeenCalledTimes(1);
     expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
     expect(annotationStore.dirty).toBe(false);
     expect(pdfStore.status).toBe("");

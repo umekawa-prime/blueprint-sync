@@ -46,6 +46,7 @@ describe("annotationStore photo pins", () => {
         id: "pin-1",
         nx: 0.3,
         ny: 0.7,
+        title: "",
         thumbnailDataUrl: "data:image/jpeg;base64,thumb",
         imageDataUrl: "data:image/jpeg;base64,full",
       },
@@ -63,5 +64,33 @@ describe("annotationStore photo pins", () => {
     });
     annotationStore.clear();
     expect(annotationStore.pinsFor(0)).toEqual([]);
+  });
+
+  it("updates a pin title without changing its image", () => {
+    annotationStore.importByPage({});
+    annotationStore.addPhotoPin(0, {
+      id: "pin-1",
+      nx: 0.1,
+      ny: 0.2,
+      thumbnailDataUrl: "t",
+      imageDataUrl: "f",
+    });
+    annotationStore.updatePhotoPin(0, "pin-1", { title: "基礎" });
+    expect(annotationStore.pinsFor(0)[0]?.title).toBe("基礎");
+    expect(annotationStore.pinsFor(0)[0]?.imageDataUrl).toBe("f");
+  });
+
+  it("moves a pin to a new normalized position", () => {
+    annotationStore.importByPage({});
+    annotationStore.addPhotoPin(0, {
+      id: "pin-1",
+      nx: 0.1,
+      ny: 0.2,
+      thumbnailDataUrl: "t",
+      imageDataUrl: "f",
+    });
+    annotationStore.updatePhotoPin(0, "pin-1", { nx: 0.8, ny: 0.9 });
+    expect(annotationStore.pinsFor(0)[0]?.nx).toBe(0.8);
+    expect(annotationStore.pinsFor(0)[0]?.ny).toBe(0.9);
   });
 });

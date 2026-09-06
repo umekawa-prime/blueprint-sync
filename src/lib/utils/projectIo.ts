@@ -190,8 +190,9 @@ export async function writeAnnotationFile(
   pdfName: string,
   byPage: Record<number, PageObjects>,
   photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
+  layout?: { drawingPageCount?: number; pinSlideCountByPage?: number[] },
 ): Promise<void> {
-  await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage, photoPins));
+  await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage, photoPins, layout));
 }
 
 export async function sandboxProjectsDir(): Promise<string> {

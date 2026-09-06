@@ -3,6 +3,7 @@ import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { embedAnnotationPngOnPdf } from "./pdfExport";
+import { appendPhotoPinSlides } from "./pinSlides";
 import { persistCurrentAnnotations, importPdfIntoProject } from "./projectActions";
 import { writeBinaryFile } from "./projectIo";
 
@@ -26,7 +27,12 @@ export async function saveCurrentPdf(): Promise<boolean> {
 
   try {
     const overlays = await viewerApi.exportOverlays();
-    const output = await embedAnnotationPngOnPdf(pdfStore.bytes, overlays);
+    const annotated = await embedAnnotationPngOnPdf(pdfStore.bytes, overlays);
+    const output = await appendPhotoPinSlides(
+      annotated,
+      annotationStore.exportPhotoPins(),
+      pdfStore.pageCount,
+    );
     const path = `${projectStore.folder}/${projectStore.currentPdf.replaceAll("\\", "/")}`;
     await writeBinaryFile(path, output);
     const persisted = await persistCurrentAnnotations();

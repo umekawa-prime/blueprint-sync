@@ -21,6 +21,7 @@ describe("annotationPersist", () => {
           id: "pin-1",
           nx: 0.4,
           ny: 0.6,
+          title: "",
           thumbnailDataUrl: "data:image/jpeg;base64,aaa",
           imageDataUrl: "data:image/jpeg;base64,bbb",
         },
@@ -30,6 +31,43 @@ describe("annotationPersist", () => {
       byPage,
       photoPins,
     });
+  });
+
+  it("round-trips photo pin titles and treats missing titles as empty", () => {
+    const byPage = { 0: { a: { id: "a", type: "path" } } };
+    const photoPins = {
+      0: {
+        "pin-1": {
+          id: "pin-1",
+          nx: 0.4,
+          ny: 0.6,
+          title: "基礎配筋",
+          thumbnailDataUrl: "data:image/jpeg;base64,aaa",
+          imageDataUrl: "data:image/jpeg;base64,bbb",
+        },
+      },
+    };
+    expect(parseAnnotations(serializeAnnotations(byPage, photoPins))).toEqual({
+      byPage,
+      photoPins,
+    });
+    expect(
+      parseAnnotations(
+        '{"byPage":{},"photoPins":{"0":{"pin-1":{"id":"pin-1","nx":0.1,"ny":0.2,"thumbnailDataUrl":"t","imageDataUrl":"f"}}}}',
+      ).photoPins[0]["pin-1"].title,
+    ).toBe("");
+  });
+
+  it("round-trips drawing page layout so pin slides can be stripped on reopen", () => {
+    const parsed = parseAnnotations(
+      serializeAnnotations(
+        {},
+        {},
+        { drawingPageCount: 2, pinSlideCountByPage: [1, 0] },
+      ),
+    );
+    expect(parsed.drawingPageCount).toBe(2);
+    expect(parsed.pinSlideCountByPage).toEqual([1, 0]);
   });
 
   it("treats legacy files without photoPins as empty pins", () => {

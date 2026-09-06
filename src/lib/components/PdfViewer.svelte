@@ -783,7 +783,11 @@
     <div class="absolute top-0 left-0 z-[1] touch-none">
       <canvas bind:this={fabricCanvasEl}></canvas>
     </div>
-    <PhotoPinLayer pins={Object.values(annotationStore.photoPins[pdfStore.pageIndex] ?? {})} />
+    <PhotoPinLayer
+      pins={Object.values(annotationStore.photoPins[pdfStore.pageIndex] ?? {})}
+      onTitleChange={(id, title) => annotationStore.updatePhotoPin(pdfStore.pageIndex, id, { title })}
+      onMove={(id, nx, ny) => annotationStore.updatePhotoPin(pdfStore.pageIndex, id, { nx, ny })}
+    />
   </div>
 </div>
 
