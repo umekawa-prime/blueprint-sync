@@ -15,7 +15,7 @@
 
 - Node.js 22+
 - Rust (rustc / cargo)
-- Windows 向けビルド: Visual Studio C++ ビルドツール
+- Windows ARM64 向けビルド（`npm run build`）: WSL からは `cargo-xwin` でクロスコンパイルする。初回は NSIS / LLVM / Windows SDK を取得する
 - Android 向けビルド: Android SDK / NDK / JDK（`npm run tauri android init` 後）
 
 ## 開発
@@ -34,6 +34,20 @@ npm run dev
 ```
 
 ホスト（WebSocket サーバー起動・QR 表示）は Tauri 実行時のみ使えます。
+
+## Windows ARM64 インストーラ
+
+```bash
+npm run build
+```
+
+ARM64 Windows 向け NSIS インストーラ（`-setup.exe`）を
+`src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/` に出力します。
+WSL から実行した場合は、見つかれば Windows の Downloads にもコピーします。
+インストーラは開発用の自己署名で Authenticode 署名します。ARM 機では先に
+`Install-BlueprintSync.cmd` を一度実行して証明書を信頼すると、「不明な発行元」警告を避けられます。
+Microsoft の発行するコード署名証明書ではないので、未信頼の PC では SmartScreen は残ります。
+フロントエンドだけビルドする場合は `npm run build:web` です。
 
 ## Android
 
