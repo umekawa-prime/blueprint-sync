@@ -12,6 +12,7 @@
     type CameraDevice,
   } from "$lib/utils/cameraCapture";
   import { prefersCameraCapture } from "$lib/utils/platform";
+  import { CAMERA_OVERLAY_CLASS } from "$lib/utils/chromeLayout";
 
   const STORAGE_KEY = "blueprint-sync.cameraDeviceId";
 
@@ -118,7 +119,7 @@
   });
 </script>
 
-<div class="absolute inset-0 z-30 flex items-center justify-center bg-slate-950/80 p-4">
+<div class={CAMERA_OVERLAY_CLASS}>
   <section class="w-full max-w-2xl rounded-xl border border-slate-700 bg-slate-900 p-4 shadow-2xl">
     <div class="mb-3 flex items-center justify-between">
       <h2 class="text-base font-semibold">カメラ撮影</h2>
@@ -141,10 +142,11 @@
 
     <video
       bind:this={videoEl}
-      class="max-h-[60vh] w-full rounded-lg bg-black object-contain"
+      class="max-h-[60vh] w-full rounded-lg bg-black object-contain [transform:translateZ(0)]"
       autoplay
       playsinline
       muted
+      webkit-playsinline
       onloadeddata={markReady}
       onplaying={markReady}
     ></video>

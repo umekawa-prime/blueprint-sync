@@ -25,3 +25,10 @@ export function isPhoneWidth(width: number): boolean {
 export function isTabletWidth(width: number): boolean {
   return width > PHONE_MAX_WIDTH;
 }
+
+export const CAMERA_OVERLAY_CLASS =
+  "fixed inset-0 z-[80] flex items-center justify-center bg-slate-950 p-4";
+
+export function drawingLayerHiddenClass(cameraOpen: boolean): string {
+  return cameraOpen ? "hidden" : "";
+}

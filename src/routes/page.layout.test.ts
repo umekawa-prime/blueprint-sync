@@ -41,4 +41,16 @@ describe("editor shell layout", () => {
     expect(home).toContain("取り込む");
     expect(home).toContain("新規作成");
   });
+
+  it("keeps camera capture above the PDF canvas and hides the drawing while capturing", () => {
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    const camera = readFileSync(
+      path.resolve("src/lib/components/CameraCapture.svelte"),
+      "utf8",
+    );
+    expect(camera).toContain("CAMERA_OVERLAY_CLASS");
+    expect(camera).not.toContain('class="absolute inset-0 z-30');
+    expect(page).toContain("drawingLayerHiddenClass(cameraOpen)");
+    expect(page.lastIndexOf("CameraCapture")).toBeGreaterThan(page.lastIndexOf("PdfViewer"));
+  });
 });

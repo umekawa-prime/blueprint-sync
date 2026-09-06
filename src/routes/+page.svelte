@@ -17,6 +17,7 @@
     shareCurrentProject,
   } from "$lib/utils/projectActions";
   import { listenIncomingFiles } from "$lib/utils/incomingShare";
+  import { drawingLayerHiddenClass } from "$lib/utils/chromeLayout";
 
   let connectionOpen = $state(false);
   let cameraOpen = $state(false);
@@ -87,7 +88,7 @@
       <ProjectHome />
     </div>
   {:else}
-    <div class="relative flex min-h-0 flex-1">
+    <div class="relative flex min-h-0 flex-1 {drawingLayerHiddenClass(cameraOpen)}">
       {#if viewportStore.isPhone}
         {#if drawerOpen}
           <div class="absolute inset-0 z-30 flex">
@@ -113,13 +114,6 @@
         <div class="relative flex min-h-0 flex-1 flex-col">
           <PdfViewer />
           <ConnectionPanel bind:open={connectionOpen} />
-          {#if cameraOpen}
-            <CameraCapture
-              onCaptured={onPhotoCaptured}
-              onCancel={() => (cameraOpen = false)}
-              onPickFile={pickPhotoFile}
-            />
-          {/if}
         </div>
 
         <StatusBar />
@@ -134,6 +128,14 @@
         {/if}
       </div>
     </div>
+  {/if}
+
+  {#if cameraOpen}
+    <CameraCapture
+      onCaptured={onPhotoCaptured}
+      onCancel={() => (cameraOpen = false)}
+      onPickFile={pickPhotoFile}
+    />
   {/if}
 
   {#if sheetOpen && viewportStore.isPhone}

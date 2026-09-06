@@ -1,5 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAMERA_OVERLAY_CLASS,
+  drawingLayerHiddenClass,
   isPhoneWidth,
   isTabletWidth,
   PHONE_MAX_WIDTH,
@@ -31,5 +33,17 @@ describe("chromeLayout", () => {
     expect(safeAreaPaddingCss()).toBe(
       "padding-top:env(safe-area-inset-top, 0px);padding-right:env(safe-area-inset-right, 0px);padding-bottom:env(safe-area-inset-bottom, 0px);padding-left:env(safe-area-inset-left, 0px)",
     );
+  });
+
+  it("puts the camera UI in a fixed overlay above canvas compositing", () => {
+    expect(CAMERA_OVERLAY_CLASS).toContain("fixed");
+    expect(CAMERA_OVERLAY_CLASS).toContain("inset-0");
+    expect(CAMERA_OVERLAY_CLASS).toContain("z-[80]");
+    expect(CAMERA_OVERLAY_CLASS).not.toContain("absolute");
+  });
+
+  it("hides the drawing surface while the camera is open so Android WebView cannot paint canvas over it", () => {
+    expect(drawingLayerHiddenClass(true)).toBe("hidden");
+    expect(drawingLayerHiddenClass(false)).toBe("");
   });
 });
