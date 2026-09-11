@@ -11,7 +11,7 @@
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
-  import { imageBlobFromPicked, pickImageFromDisk } from "$lib/utils/fileAccess";
+  import { imageBlobFromPicked, pickImagesFromDisk } from "$lib/utils/fileAccess";
   import {
     shareCurrentPdf,
     shareCurrentProject,
@@ -38,10 +38,13 @@
   }
 
   async function pickPhotoFile() {
-    const picked = await pickImageFromDisk();
-    if (picked) {
-      cameraOpen = false;
-      await viewerApi.addPhoto(imageBlobFromPicked(picked));
+    const picked = await pickImagesFromDisk();
+    if (picked.length === 0) {
+      return;
+    }
+    cameraOpen = false;
+    for (const [index, item] of picked.entries()) {
+      await viewerApi.addPhoto(imageBlobFromPicked(item), index);
     }
   }
 

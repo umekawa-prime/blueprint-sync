@@ -9,7 +9,7 @@ import {
 describe("pointerFromEvent", () => {
   it("reads the scene point from a Fabric 7 canvas", () => {
     const getScenePoint = vi.fn().mockReturnValue({ x: 40, y: 80 });
-    const event = new Event("pointerdown");
+    const event = new Event("pointerdown") as PointerEvent;
 
     expect(pointerFromEvent({ getScenePoint }, event)).toEqual({ x: 40, y: 80 });
     expect(getScenePoint).toHaveBeenCalledWith(event);

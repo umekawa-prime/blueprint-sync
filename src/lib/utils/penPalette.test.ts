@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  CAP_OPTIONS,
   PEN_COLORS,
   PEN_WIDTHS,
   isPresetColor,
@@ -35,5 +36,10 @@ describe("penPalette", () => {
   it("maps thickness to a visible preview dot that grows with width", () => {
     expect(thicknessDotSize(1)).toBeLessThan(thicknessDotSize(8));
     expect(thicknessDotSize(3)).toBeGreaterThan(8);
+  });
+
+  it("offers none, filled-dot, and arrow caps for each end of a stroke", () => {
+    expect(CAP_OPTIONS.map((option) => option.id)).toEqual(["none", "dot", "arrow"]);
+    expect(CAP_OPTIONS.map((option) => option.label)).toEqual(["なし", "黒丸", "矢印"]);
   });
 });

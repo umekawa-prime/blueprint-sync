@@ -3,10 +3,10 @@ import type { Tool } from "$lib/stores/toolStore.svelte";
 export type ScenePoint = { x: number; y: number };
 
 export type PointerCanvas = {
-  getScenePoint: (event: Event) => ScenePoint;
+  getScenePoint: (event: PointerEvent) => ScenePoint;
 };
 
-export function pointerFromEvent(canvas: PointerCanvas, event: Event): ScenePoint {
+export function pointerFromEvent(canvas: PointerCanvas, event: PointerEvent): ScenePoint {
   const point = canvas.getScenePoint(event);
   return { x: point.x, y: point.y };
 }

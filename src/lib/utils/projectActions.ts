@@ -4,7 +4,7 @@ import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
-import { openPdfFromDisk, pickImportFiles } from "./fileAccess";
+import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
 import { isTauriRuntime, usesSandboxProjects } from "./platform";
 import {
   createProjectMeta,
@@ -648,12 +648,14 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
   if (!projectStore.folder) {
     return;
   }
-  const file = await openPdfFromDisk();
-  if (!file) {
+  const files = await openPdfsFromDisk();
+  if (files.length === 0) {
     return;
   }
-  const zip = isZipBasename(file.name);
-  if (!zip && !isProjectPdfBasename(file.name)) {
+  const usable = files.filter(
+    (file) => isZipBasename(file.name) || isProjectPdfBasename(file.name),
+  );
+  if (usable.length === 0) {
     setPdfOpenError("PDFファイル名が不正です");
     return;
   }
@@ -661,40 +663,49 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
   if (!persisted) {
     return;
   }
-  if (zip) {
+  const imported: string[] = [];
+  let lastError: unknown;
+  for (const file of usable) {
     try {
-      const first = await importZipBytesIntoOpenProject(file.bytes, kind, file.path);
-      projectStore.error = "";
-      pdfStore.status = "";
-      projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-      await openProjectPdf(first);
+      imported.push(...(await importPickedPdfIntoOpenProject(file, kind)));
     } catch (error) {
-      throw setProjectImportError(error);
+      lastError = error;
     }
-    return;
   }
-  const relPath = joinProjectPdfRelPath(kind, file.name);
-  try {
-    if (file.path) {
-      await moveFileIntoFolder(file.path, projectPdfKindDir(projectStore.folder, kind));
-    } else {
-      const destPath = `${projectStore.folder}/${relPath}`;
-      if (await pathExists(destPath)) {
-        throw new Error("同じ名前のPDFが既にあります");
-      }
-      const { invoke } = await import("@tauri-apps/api/core");
-      await invoke("write_file_bytes", {
-        path: destPath,
-        bytes: Array.from(file.bytes),
-      });
-    }
-  } catch (error) {
-    throw setProjectImportError(error);
+  if (imported.length === 0) {
+    throw setProjectImportError(lastError ?? new Error("PDF の取り込みに失敗しました"));
   }
   projectStore.error = "";
   pdfStore.status = "";
   projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-  await openProjectPdf(relPath);
+  await openProjectPdf(imported[0]);
+}
+
+async function importPickedPdfIntoOpenProject(
+  file: { name: string; bytes: Uint8Array; path?: string },
+  kind: ProjectPdfKind,
+): Promise<string[]> {
+  if (isZipBasename(file.name)) {
+    const zipBytes =
+      file.bytes.length > 0 ? file.bytes : file.path ? await readBinaryFile(file.path) : file.bytes;
+    const first = await importZipBytesIntoOpenProject(zipBytes, kind, file.path);
+    return [first];
+  }
+  const relPath = joinProjectPdfRelPath(kind, file.name);
+  if (file.path) {
+    await moveFileIntoFolder(file.path, projectPdfKindDir(projectStore.folder!, kind));
+  } else {
+    const destPath = `${projectStore.folder}/${relPath}`;
+    if (await pathExists(destPath)) {
+      throw new Error("同じ名前のPDFが既にあります");
+    }
+    const { invoke } = await import("@tauri-apps/api/core");
+    await invoke("write_file_bytes", {
+      path: destPath,
+      bytes: Array.from(file.bytes),
+    });
+  }
+  return [relPath];
 }
 
 export async function refreshProjectPdfs(): Promise<void> {

@@ -23,6 +23,12 @@ struct PdfFile {
     bytes: Vec<u8>,
 }
 
+#[derive(Serialize)]
+struct PickedPath {
+    name: String,
+    path: String,
+}
+
 fn is_visible_pdf_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
     lower.ends_with(".pdf") && !name.starts_with('.')
@@ -104,6 +110,31 @@ fn pick_pdf_file() -> Result<Option<PdfFile>, String> {
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
+fn pick_pdf_files() -> Result<Vec<PickedPath>, String> {
+    Ok(explorer_dialog::pick_files_native()
+        .into_iter()
+        .map(|path| {
+            let name = path
+                .file_name()
+                .and_then(|value| value.to_str())
+                .unwrap_or("document.pdf")
+                .to_string();
+            PickedPath {
+                name,
+                path: path.to_string_lossy().into_owned(),
+            }
+        })
+        .collect())
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn pick_pdf_files() -> Result<Vec<PickedPath>, String> {
+    Ok(Vec::new())
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[tauri::command]
 fn pick_folder() -> Result<Option<String>, String> {
     Ok(explorer_dialog::pick_folder_native().map(|path| path.to_string_lossy().into_owned()))
 }
@@ -115,29 +146,47 @@ fn pick_folder() -> Result<Option<String>, String> {
 }
 
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
-#[tauri::command]
-fn pick_image_file() -> Result<Option<PdfFile>, String> {
-    let Some(path) = explorer_dialog::pick_image_native() else {
-        return Ok(None);
-    };
-
+fn pdf_file_from_path(path: PathBuf, fallback_name: &str) -> Result<PdfFile, String> {
     let name = path
         .file_name()
         .and_then(|value| value.to_str())
-        .unwrap_or("image.jpg")
+        .unwrap_or(fallback_name)
         .to_string();
     let bytes = std::fs::read(&path).map_err(|error| error.to_string())?;
-    Ok(Some(PdfFile {
+    Ok(PdfFile {
         name,
         path: path.to_string_lossy().into_owned(),
         bytes,
-    }))
+    })
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[tauri::command]
+fn pick_image_file() -> Result<Option<PdfFile>, String> {
+    explorer_dialog::pick_image_native()
+        .map(|path| pdf_file_from_path(path, "image.jpg"))
+        .transpose()
 }
 
 #[cfg(any(target_os = "ios", target_os = "android"))]
 #[tauri::command]
 fn pick_image_file() -> Result<Option<PdfFile>, String> {
     Ok(None)
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[tauri::command]
+fn pick_image_files() -> Result<Vec<PdfFile>, String> {
+    explorer_dialog::pick_images_native()
+        .into_iter()
+        .map(|path| pdf_file_from_path(path, "image.jpg"))
+        .collect()
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn pick_image_files() -> Result<Vec<PdfFile>, String> {
+    Ok(Vec::new())
 }
 
 #[tauri::command]
@@ -431,8 +480,10 @@ pub fn run() {
             read_file_bytes,
             write_file_bytes,
             pick_pdf_file,
+            pick_pdf_files,
             pick_folder,
             pick_image_file,
+            pick_image_files,
             init_project_dir,
             list_project_pdfs,
             copy_file_into_folder,

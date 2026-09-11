@@ -4,6 +4,7 @@
     Canvas,
     IText,
     PencilBrush,
+    Polyline,
     util,
     type FabricObject,
   } from "fabric";
@@ -13,11 +14,25 @@
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import { broadcastAnnotation } from "$lib/utils/connectionActions";
-  import { imageBlobFromPicked, pickImageFromDisk, readFileAsBytes } from "$lib/utils/fileAccess";
+  import { imageBlobFromPicked, pickImagesFromDisk, readFileAsBytes } from "$lib/utils/fileAccess";
   import { createPhotoPinAssets } from "$lib/utils/imageResize";
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { firstDroppedPdf, firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
+  import {
+    addStraightPoint,
+    commitStraightPoints,
+    emptyStraightStroke,
+    rubberBandPoints,
+    shouldUseStraightStroke,
+    type StraightStrokeSession,
+  } from "$lib/utils/straightStroke";
+  import { createStraightStrokeObject, decorateDrawnPath } from "$lib/utils/penStrokeFabric";
+  import {
+    textStyleFromColors,
+    textStyleFromSelection,
+    textStylesEqual,
+  } from "$lib/utils/textStyle";
   import {
     LONG_PRESS_MS,
     menuPosition,
@@ -31,6 +46,7 @@
   import { viewerApi } from "$lib/stores/viewerApi";
   import { sendCurrentPdf } from "$lib/utils/connectionActions";
   import type { EditCommand } from "$lib/utils/editHistory";
+  import { staggeredPinPosition } from "$lib/utils/photoPinUi";
   import PhotoPinLayer from "$lib/components/PhotoPinLayer.svelte";
 
   let viewportEl: HTMLDivElement | undefined = $state();
@@ -50,6 +66,8 @@
   let menuEl: HTMLDivElement | undefined = $state();
   let longPressTimer: ReturnType<typeof setTimeout> | undefined;
   let longPressAt = { x: 0, y: 0 };
+  let straightSession: StraightStrokeSession = emptyStraightStroke();
+  let straightPreview: Polyline | undefined;
 
   const CUSTOM_PROPS = ["id"];
   let persistedPage = 0;
@@ -92,7 +110,7 @@
     return overlays;
   }
 
-  async function addPhotoFromFile(file: Blob) {
+  async function addPhotoFromFile(file: Blob, offsetIndex = 0) {
     if (!fabricCanvas) {
       return;
     }
@@ -102,7 +120,10 @@
       return;
     }
     const assets = await createPhotoPinAssets(file);
-    const { nx, ny } = fabricToNormalized(lastTap.x, lastTap.y, width, height);
+    const { nx, ny } = staggeredPinPosition(
+      fabricToNormalized(lastTap.x, lastTap.y, width, height),
+      offsetIndex,
+    );
     annotationStore.addPhotoPin(pdfStore.pageIndex, {
       id: crypto.randomUUID(),
       nx,
@@ -110,6 +131,14 @@
       thumbnailDataUrl: assets.thumbnailDataUrl,
       imageDataUrl: assets.imageDataUrl,
     });
+  }
+
+  async function requestInsertImage() {
+    closeViewerMenu();
+    const picked = await pickImagesFromDisk();
+    for (const [index, item] of picked.entries()) {
+      await addPhotoFromFile(imageBlobFromPicked(item), index);
+    }
   }
 
   function openViewerMenu(clientX: number, clientY: number) {
@@ -123,14 +152,6 @@
 
   function closeViewerMenu() {
     menu = { open: false, x: menu.x, y: menu.y };
-  }
-
-  async function requestInsertImage() {
-    closeViewerMenu();
-    const picked = await pickImageFromDisk();
-    if (picked) {
-      await addPhotoFromFile(imageBlobFromPicked(picked));
-    }
   }
 
   function requestCaptureImage() {
@@ -197,6 +218,10 @@
         }
       }
       if (event.key === "Escape") {
+        if (straightSession.points.length > 0) {
+          finishStraightStroke(false);
+          return;
+        }
         fabricCanvas.discardActiveObject();
         fabricCanvas.requestRenderAll();
       }
@@ -230,11 +255,13 @@
       }
     };
     window.addEventListener("keydown", onKey);
+    window.addEventListener("keyup", onKeyUp);
     window.addEventListener("pointerdown", onWindowPointerDown);
     viewportEl?.addEventListener("pointerdown", onPointerDownCapture, true);
 
     return () => {
       window.removeEventListener("keydown", onKey);
+      window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("pointerdown", onWindowPointerDown);
       viewportEl?.removeEventListener("pointerdown", onPointerDownCapture, true);
     };
@@ -255,6 +282,12 @@
   });
 
   $effect(() => {
+    toolStore.textColor;
+    toolStore.textBackground;
+    applyTextStyleToActive();
+  });
+
+  $effect(() => {
     pdfStore.document;
     pdfStore.pageIndex;
     pdfStore.zoom;
@@ -272,17 +305,130 @@
     if (!fabricCanvas) {
       return;
     }
-    const drawing = toolStore.current === "pen";
+    const drawing = toolStore.current === "pen" && straightSession.points.length === 0;
     if (drawing && !fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush = new PencilBrush(fabricCanvas);
     }
     fabricCanvas.isDrawingMode = drawing;
     fabricCanvas.selection = toolStore.current === "select";
-    fabricCanvas.skipTargetFind = toolStore.current === "pan" || drawing;
+    fabricCanvas.skipTargetFind = toolStore.current === "pan" || toolStore.current === "pen";
     if (fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush.color = toolStore.penColor;
       fabricCanvas.freeDrawingBrush.width = toolStore.penWidth;
     }
+  }
+
+  function syncTextStyleFromSelection() {
+    const style = textStyleFromSelection(fabricCanvas?.getActiveObject());
+    if (!style) {
+      return;
+    }
+    if (toolStore.textColor !== style.fill) {
+      toolStore.textColor = style.fill;
+    }
+    if (toolStore.textBackground !== style.backgroundColor) {
+      toolStore.textBackground = style.backgroundColor;
+    }
+  }
+
+  function applyTextStyleToActive() {
+    if (!fabricCanvas || applyingRemote || applyingHistory) {
+      return;
+    }
+    const target = fabricCanvas.getActiveObject();
+    const current = textStyleFromSelection(target);
+    if (!target || !current) {
+      return;
+    }
+    const next = textStyleFromColors(toolStore.textColor, toolStore.textBackground);
+    if (textStylesEqual(current, next)) {
+      return;
+    }
+    const id = getId(target);
+    if (id) {
+      pendingModify = {
+        id,
+        object: target.toObject(CUSTOM_PROPS) as Record<string, unknown>,
+      };
+    }
+    target.set({
+      fill: next.fill,
+      backgroundColor: next.backgroundColor,
+      padding: next.padding,
+    });
+    target.setCoords();
+    fabricCanvas.requestRenderAll();
+    emitObject("modify", target);
+  }
+
+  function currentPenStrokeStyle() {
+    return {
+      color: toolStore.penColor,
+      width: toolStore.penWidth,
+      startCap: toolStore.penStartCap,
+      endCap: toolStore.penEndCap,
+    };
+  }
+
+  function syncStraightPreview(points: { x: number; y: number }[]) {
+    if (!fabricCanvas) {
+      return;
+    }
+    if (straightPreview) {
+      fabricCanvas.remove(straightPreview);
+      straightPreview = undefined;
+    }
+    if (points.length < 2) {
+      fabricCanvas.requestRenderAll();
+      return;
+    }
+    straightPreview = new Polyline(points, {
+      fill: "",
+      stroke: toolStore.penColor,
+      strokeWidth: toolStore.penWidth,
+      strokeLineCap: "round",
+      strokeLineJoin: "round",
+      selectable: false,
+      evented: false,
+      objectCaching: false,
+    });
+    fabricCanvas.add(straightPreview);
+    fabricCanvas.requestRenderAll();
+  }
+
+  function abortStraightStroke() {
+    if (straightPreview && fabricCanvas) {
+      fabricCanvas.remove(straightPreview);
+    }
+    straightPreview = undefined;
+    straightSession = emptyStraightStroke();
+  }
+
+  function finishStraightStroke(commit: boolean) {
+    if (straightPreview && fabricCanvas) {
+      fabricCanvas.remove(straightPreview);
+    }
+    straightPreview = undefined;
+    const points = commit ? commitStraightPoints(straightSession) : null;
+    straightSession = emptyStraightStroke();
+    if (points && fabricCanvas && !applyingRemote && !applyingHistory) {
+      const object = createStraightStrokeObject(points, currentPenStrokeStyle());
+      assignId(object);
+      fabricCanvas.add(object);
+      emitObject("add", object);
+    }
+    fabricCanvas?.requestRenderAll();
+    applyTool();
+  }
+
+  function onKeyUp(event: KeyboardEvent) {
+    if (event.key !== "Shift" || !fabricCanvas) {
+      return;
+    }
+    if (straightSession.points.length === 0 && !straightPreview) {
+      return;
+    }
+    finishStraightStroke(true);
   }
 
   function bindFabricEvents() {
@@ -297,6 +443,20 @@
       }
       const pointer = pointerFromEvent(fabricCanvas!, event);
       lastTap = { x: pointer.x, y: pointer.y };
+
+      if (
+        shouldUseStraightStroke({
+          tool: toolStore.current,
+          shiftKey: event.shiftKey,
+          pointerType: event.pointerType ?? "",
+          ctrlOrMeta: event.ctrlKey || event.metaKey,
+        })
+      ) {
+        fabricCanvas!.isDrawingMode = false;
+        straightSession = addStraightPoint(straightSession, pointer);
+        syncStraightPreview(rubberBandPoints(straightSession, pointer));
+        return;
+      }
 
       if (shouldOpenViewerMenu({ type: event.type, button: event.button, pointerType: event.pointerType })) {
         openViewerMenu(event.clientX, event.clientY);
@@ -331,10 +491,13 @@
       }
 
       if (toolStore.current === "text" && !opt.target) {
+        const style = textStyleFromColors(toolStore.textColor, toolStore.textBackground);
         const text = new IText("テキスト", {
           left: pointer.x,
           top: pointer.y,
-          fill: toolStore.penColor,
+          fill: style.fill,
+          backgroundColor: style.backgroundColor,
+          padding: style.padding,
           fontSize: 22,
           fontFamily: "Noto Sans JP Variable",
         });
@@ -347,8 +510,24 @@
       }
     });
 
+    fabricCanvas.on("mouse:move", (opt) => {
+      if (straightSession.points.length === 0 || !fabricCanvas) {
+        return;
+      }
+      const event = opt.e as PointerEvent | undefined;
+      if (!event?.shiftKey) {
+        return;
+      }
+      const pointer = pointerFromEvent(fabricCanvas, event);
+      syncStraightPreview(rubberBandPoints(straightSession, pointer));
+    });
+
     fabricCanvas.on("mouse:up", () => {
       if (toolStore.current === "pen" && fabricCanvas) {
+        if (straightSession.points.length > 0) {
+          fabricCanvas.isDrawingMode = false;
+          return;
+        }
         fabricCanvas.isDrawingMode = true;
         if (fabricCanvas.freeDrawingBrush) {
           fabricCanvas.freeDrawingBrush.width = toolStore.penWidth;
@@ -358,11 +537,16 @@
 
     fabricCanvas.on("path:created", (opt) => {
       const path = (opt as { path?: FabricObject }).path;
-      if (!path) {
+      if (!path || !fabricCanvas) {
         return;
       }
-      assignId(path);
-      emitObject("add", path);
+      const decorated = decorateDrawnPath(path, currentPenStrokeStyle());
+      if (decorated !== path) {
+        fabricCanvas.remove(path);
+        fabricCanvas.add(decorated);
+      }
+      assignId(decorated);
+      emitObject("add", decorated);
     });
 
     fabricCanvas.on("object:modified", (opt) => {
@@ -370,6 +554,9 @@
         emitObject("modify", opt.target);
       }
     });
+
+    fabricCanvas.on("selection:created", syncTextStyleFromSelection);
+    fabricCanvas.on("selection:updated", syncTextStyleFromSelection);
 
     fabricCanvas.on("object:removed", (opt) => {
       if (applyingRemote || applyingHistory || !opt.target) {
@@ -435,6 +622,7 @@
     }
     const objects = fabricCanvas
       .getObjects()
+      .filter((object) => getId(object))
       .map((object) => object.toObject(CUSTOM_PROPS) as Record<string, unknown>);
     annotationStore.replacePage(persistedPage, objects, false);
   }
@@ -444,6 +632,7 @@
       return;
     }
     applyingRemote = true;
+    abortStraightStroke();
     fabricCanvas.clear();
     const objects = annotationStore.objectsFor(pdfStore.pageIndex);
     if (objects.length > 0) {
@@ -674,11 +863,21 @@
 
   function onPointerDownCapture(event: PointerEvent) {
     const next = toolForPointerType(event.pointerType, toolStore.current);
-    if (next === toolStore.current) {
-      return;
+    if (next !== toolStore.current) {
+      toolStore.setTool(next);
+      applyTool();
     }
-    toolStore.setTool(next);
-    applyTool();
+    if (
+      fabricCanvas &&
+      shouldUseStraightStroke({
+        tool: toolStore.current,
+        shiftKey: event.shiftKey,
+        pointerType: event.pointerType ?? "",
+        ctrlOrMeta: event.ctrlKey || event.metaKey,
+      })
+    ) {
+      fabricCanvas.isDrawingMode = false;
+    }
   }
 
   function onPointerDown(event: PointerEvent) {

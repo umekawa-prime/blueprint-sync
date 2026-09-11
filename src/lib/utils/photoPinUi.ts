@@ -6,6 +6,7 @@ export type PhotoPinView = {
 
 export const PIN_DRAG_HOLD_MS = 400;
 export const PIN_DRAG_MOVE_PX = 8;
+export const PIN_STAGGER_STEP = 0.04;
 
 export function idlePhotoPinView(): PhotoPinView {
   return { hoverId: null, modalId: null, draggingId: null };
@@ -66,5 +67,16 @@ export function pinPositionFromPointer(
   return {
     nx: Math.min(1, Math.max(0, (clientX - bounds.left) / bounds.width)),
     ny: Math.min(1, Math.max(0, (clientY - bounds.top) / bounds.height)),
+  };
+}
+
+export function staggeredPinPosition(
+  base: { nx: number; ny: number },
+  index: number,
+  step = PIN_STAGGER_STEP,
+): { nx: number; ny: number } {
+  return {
+    nx: Math.min(1, Math.max(0, base.nx + index * step)),
+    ny: Math.min(1, Math.max(0, base.ny + index * step)),
   };
 }

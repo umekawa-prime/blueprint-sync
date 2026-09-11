@@ -1,28 +1,28 @@
 import { usesRfdFileDialog } from "./platform";
 
-export async function openPdfFromDisk(): Promise<{
+export type PickedPdf = {
   name: string;
   bytes: Uint8Array;
   path?: string;
-} | null> {
+};
+
+export async function openPdfsFromDisk(): Promise<PickedPdf[]> {
   if (usesRfdFileDialog()) {
     const { invoke } = await import("@tauri-apps/api/core");
-    const selected = await invoke<{
-      name: string;
-      path: string;
-      bytes: number[];
-    } | null>("pick_pdf_file");
-    if (!selected) {
-      return null;
-    }
-    return {
-      name: selected.name,
-      path: selected.path,
-      bytes: Uint8Array.from(selected.bytes),
-    };
+    const selected = await invoke<Array<{ name: string; path: string }>>("pick_pdf_files");
+    return (selected ?? []).map((item) => ({
+      name: item.name,
+      path: item.path,
+      bytes: new Uint8Array(),
+    }));
   }
 
-  return pickFileInBrowser(".pdf,.zip,application/pdf,application/zip");
+  return pickFilesInBrowser(".pdf,.zip,application/pdf,application/zip", true);
+}
+
+export async function openPdfFromDisk(): Promise<PickedPdf | null> {
+  const files = await openPdfsFromDisk();
+  return files[0] ?? null;
 }
 
 export async function savePdfToDisk(
@@ -49,29 +49,30 @@ export async function savePdfToDisk(
   return true;
 }
 
-export async function pickImageFromDisk(): Promise<{
-  name: string;
-  bytes: Uint8Array;
-  path?: string;
-} | null> {
+const IMAGE_ACCEPT =
+  "image/png,image/jpeg,image/webp,image/gif,image/bmp,.png,.jpg,.jpeg,.webp,.gif,.bmp";
+
+export async function pickImagesFromDisk(): Promise<PickedPdf[]> {
   if (usesRfdFileDialog()) {
     const { invoke } = await import("@tauri-apps/api/core");
-    const selected = await invoke<{
+    const selected = await invoke<Array<{
       name: string;
       path: string;
       bytes: number[];
-    } | null>("pick_image_file");
-    if (!selected) {
-      return null;
-    }
-    return {
-      name: selected.name,
-      path: selected.path,
-      bytes: Uint8Array.from(selected.bytes),
-    };
+    }>>("pick_image_files");
+    return (selected ?? []).map((item) => ({
+      name: item.name,
+      path: item.path,
+      bytes: Uint8Array.from(item.bytes),
+    }));
   }
 
-  return pickFileInBrowser("image/png,image/jpeg,image/webp,image/gif,image/bmp,.png,.jpg,.jpeg,.webp,.gif,.bmp");
+  return pickFilesInBrowser(IMAGE_ACCEPT, true);
+}
+
+export async function pickImageFromDisk(): Promise<PickedPdf | null> {
+  const files = await pickImagesFromDisk();
+  return files[0] ?? null;
 }
 
 export function imageMimeFromName(name: string): string {
@@ -125,11 +126,4 @@ async function pickFilesInBrowser(
     input.addEventListener("cancel", () => resolve([]));
     input.click();
   });
-}
-
-async function pickFileInBrowser(
-  accept: string,
-): Promise<{ name: string; bytes: Uint8Array } | null> {
-  const files = await pickFilesInBrowser(accept, false);
-  return files[0] ?? null;
 }

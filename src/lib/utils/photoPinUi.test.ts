@@ -9,6 +9,7 @@ import {
   pinPositionFromPointer,
   shouldArmPinDrag,
   startPinDrag,
+  staggeredPinPosition,
   tapPhotoPin,
 } from "./photoPinUi";
 
@@ -53,6 +54,12 @@ describe("photoPinUi", () => {
     const preview = tapPhotoPin(idlePhotoPinView(), "pin-1");
     expect(preview).toEqual({ hoverId: "pin-1", modalId: null, draggingId: null });
     expect(tapPhotoPin(preview, "pin-1")).toEqual({ hoverId: null, modalId: "pin-1", draggingId: null });
+  });
+
+  it("staggers stacked pins so multiple attachments stay distinct", () => {
+    expect(staggeredPinPosition({ nx: 0.2, ny: 0.3 }, 0)).toEqual({ nx: 0.2, ny: 0.3 });
+    expect(staggeredPinPosition({ nx: 0.2, ny: 0.3 }, 2)).toEqual({ nx: 0.28, ny: 0.38 });
+    expect(staggeredPinPosition({ nx: 0.98, ny: 0.99 }, 3)).toEqual({ nx: 1, ny: 1 });
   });
 
   it("maps a pointer on the drawing to a clamped pin position", () => {

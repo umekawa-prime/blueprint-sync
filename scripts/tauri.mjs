@@ -3,6 +3,7 @@ import { existsSync, readFileSync } from "node:fs";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { applyAndroidOverlays } from "./applyAndroidOverlays.mjs";
+import { applyWindowsMsvcEnv, discoverWindowsMsvcOptions } from "./windowsMsvcEnv.mjs";
 import { applyWslGraphicsEnv } from "./wslGraphicsEnv.mjs";
 
 const isWsl =
@@ -10,7 +11,8 @@ const isWsl =
   (existsSync("/proc/version") &&
     readFileSync("/proc/version", "utf8").toLowerCase().includes("microsoft"));
 
-const env = applyWslGraphicsEnv({ ...process.env }, isWsl);
+const msvcOptions = discoverWindowsMsvcOptions(process.env);
+const env = applyWslGraphicsEnv(applyWindowsMsvcEnv({ ...process.env }, msvcOptions), isWsl);
 if (process.argv[2] === "android") {
   applyAndroidOverlays();
 }

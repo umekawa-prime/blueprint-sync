@@ -6,7 +6,7 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 import type { ProjectMeta, RecentProject } from "./projectFormat";
 
 const {
-  mockOpenPdfFromDisk,
+  mockOpenPdfsFromDisk,
   mockIsTauriRuntime,
   mockUsesSandboxProjects,
   mockPickFolder,
@@ -32,7 +32,7 @@ const {
   mockListSandboxProjects,
   mockShareFileBytes,
 } = vi.hoisted(() => ({
-  mockOpenPdfFromDisk: vi.fn(),
+  mockOpenPdfsFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
   mockUsesSandboxProjects: vi.fn(() => false),
   mockPickFolder: vi.fn(),
@@ -60,7 +60,7 @@ const {
 }));
 
 vi.mock("./fileAccess", () => ({
-  openPdfFromDisk: mockOpenPdfFromDisk,
+  openPdfsFromDisk: mockOpenPdfsFromDisk,
 }));
 
 vi.mock("./platform", () => ({
@@ -383,11 +383,13 @@ describe("projectActions", () => {
 
   it("rejects invalid pdf names before importing into a project", async () => {
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: ".hidden.pdf",
-      path: "/downloads/.hidden.pdf",
-      bytes: new Uint8Array([9]),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: ".hidden.pdf",
+        path: "/downloads/.hidden.pdf",
+        bytes: new Uint8Array([9]),
+      },
+    ]);
 
     await importPdfIntoProject();
 
@@ -403,11 +405,13 @@ describe("projectActions", () => {
     projectStore.folder = "/projects/a";
     projectStore.currentPdf = "Before.pdf";
     annotationStore.importByPage({ 2: { prev: { id: "prev", type: "path" } } });
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "After.pdf",
-      path: "/downloads/After.pdf",
-      bytes: new Uint8Array([9]),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "After.pdf",
+        path: "/downloads/After.pdf",
+        bytes: new Uint8Array([9]),
+      },
+    ]);
     mockWriteAnnotationFile.mockRejectedValue(new Error("write failed"));
 
     await importPdfIntoProject();
@@ -424,11 +428,13 @@ describe("projectActions", () => {
 
   it("surfaces duplicate-name import errors instead of swallowing them", async () => {
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "A.pdf",
-      path: "/downloads/A.pdf",
-      bytes: new Uint8Array([9]),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "A.pdf",
+        path: "/downloads/A.pdf",
+        bytes: new Uint8Array([9]),
+      },
+    ]);
     mockMoveFileIntoFolder.mockRejectedValue(new Error("同じ名前のPDFが既にあります"));
 
     await expect(importPdfIntoProject()).rejects.toThrow("同じ名前のPDFが既にあります");
@@ -439,11 +445,13 @@ describe("projectActions", () => {
 
   it("moves a picked drawing pdf into 図面 and opens it", async () => {
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "A.pdf",
-      path: "/downloads/A.pdf",
-      bytes: new Uint8Array([9]),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "A.pdf",
+        path: "/downloads/A.pdf",
+        bytes: new Uint8Array([9]),
+      },
+    ]);
     mockMoveFileIntoFolder.mockResolvedValue("/projects/a/図面/A.pdf");
     mockListProjectPdfs.mockResolvedValue(["図面/A.pdf"]);
 
@@ -457,11 +465,13 @@ describe("projectActions", () => {
 
   it("moves a picked schedule pdf into 工程表 and opens it", async () => {
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "週間工程.pdf",
-      path: "/downloads/週間工程.pdf",
-      bytes: new Uint8Array([9]),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "週間工程.pdf",
+        path: "/downloads/週間工程.pdf",
+        bytes: new Uint8Array([9]),
+      },
+    ]);
     mockMoveFileIntoFolder.mockResolvedValue("/projects/a/工程表/週間工程.pdf");
     mockListProjectPdfs.mockResolvedValue(["工程表/週間工程.pdf"]);
 
@@ -480,11 +490,13 @@ describe("projectActions", () => {
     const pdfA = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
     const pdfB = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x32]);
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "plans.zip",
-      path: "/downloads/plans.zip",
-      bytes: zipSync({ "1F.pdf": pdfA, "nested/2F.pdf": pdfB }),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "plans.zip",
+        path: "/downloads/plans.zip",
+        bytes: zipSync({ "1F.pdf": pdfA, "nested/2F.pdf": pdfB }),
+      },
+    ]);
     mockPathExists.mockResolvedValue(false);
     mockWriteBinaryFile.mockResolvedValue(undefined);
     mockDeleteFile.mockResolvedValue(undefined);
@@ -503,11 +515,13 @@ describe("projectActions", () => {
   it("extracts zip pdfs into 工程表 when adding a schedule", async () => {
     const pdfA = new Uint8Array([0x25, 0x50, 0x44, 0x46, 0x2d, 0x31]);
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "schedules.zip",
-      path: "/downloads/schedules.zip",
-      bytes: zipSync({ "週間工程.pdf": pdfA }),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "schedules.zip",
+        path: "/downloads/schedules.zip",
+        bytes: zipSync({ "週間工程.pdf": pdfA }),
+      },
+    ]);
     mockPathExists.mockResolvedValue(false);
     mockWriteBinaryFile.mockResolvedValue(undefined);
     mockDeleteFile.mockResolvedValue(undefined);
@@ -522,11 +536,13 @@ describe("projectActions", () => {
 
   it("keeps the original zip when it contains no pdfs", async () => {
     projectStore.folder = "/projects/a";
-    mockOpenPdfFromDisk.mockResolvedValue({
-      name: "empty.zip",
-      path: "/downloads/empty.zip",
-      bytes: zipSync({ "notes.txt": new Uint8Array([1, 2, 3]) }),
-    });
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "empty.zip",
+        path: "/downloads/empty.zip",
+        bytes: zipSync({ "notes.txt": new Uint8Array([1, 2, 3]) }),
+      },
+    ]);
 
     await expect(importPdfIntoProject()).rejects.toThrow(/PDF/);
 
@@ -534,6 +550,92 @@ describe("projectActions", () => {
     expect(mockDeleteFile).not.toHaveBeenCalled();
     expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(pdfStore.load).not.toHaveBeenCalled();
+  });
+
+  it("moves every picked drawing pdf into 図面 and opens the first", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "A.pdf",
+        path: "/downloads/A.pdf",
+        bytes: new Uint8Array([9]),
+      },
+      {
+        name: "B.pdf",
+        path: "/downloads/B.pdf",
+        bytes: new Uint8Array([8]),
+      },
+    ]);
+    mockMoveFileIntoFolder.mockImplementation(async (source: string) =>
+      source.endsWith("A.pdf") ? "/projects/a/図面/A.pdf" : "/projects/a/図面/B.pdf",
+    );
+    mockListProjectPdfs.mockResolvedValue(["図面/A.pdf", "図面/B.pdf"]);
+
+    await importPdfIntoProject();
+
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/A.pdf", "/projects/a/図面");
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a/図面");
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/A.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/A.pdf");
+  });
+
+  it("moves every picked schedule pdf into 工程表 and opens the first", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "週間工程.pdf",
+        path: "/downloads/週間工程.pdf",
+        bytes: new Uint8Array([9]),
+      },
+      {
+        name: "月間工程.pdf",
+        path: "/downloads/月間工程.pdf",
+        bytes: new Uint8Array([8]),
+      },
+    ]);
+    mockMoveFileIntoFolder.mockImplementation(async (source: string) =>
+      source.includes("週間") ? "/projects/a/工程表/週間工程.pdf" : "/projects/a/工程表/月間工程.pdf",
+    );
+    mockListProjectPdfs.mockResolvedValue(["工程表/週間工程.pdf", "工程表/月間工程.pdf"]);
+
+    await importPdfIntoProject("schedule");
+
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith(
+      "/downloads/週間工程.pdf",
+      "/projects/a/工程表",
+    );
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith(
+      "/downloads/月間工程.pdf",
+      "/projects/a/工程表",
+    );
+    expect(pdfStore.load).toHaveBeenCalledWith("工程表/週間工程.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("工程表/週間工程.pdf");
+  });
+
+  it("keeps importing remaining pdfs when one picked name already exists", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "A.pdf",
+        path: "/downloads/A.pdf",
+        bytes: new Uint8Array([9]),
+      },
+      {
+        name: "B.pdf",
+        path: "/downloads/B.pdf",
+        bytes: new Uint8Array([8]),
+      },
+    ]);
+    mockMoveFileIntoFolder
+      .mockRejectedValueOnce(new Error("同じ名前のPDFが既にあります"))
+      .mockResolvedValueOnce("/projects/a/図面/B.pdf");
+    mockListProjectPdfs.mockResolvedValue(["図面/B.pdf"]);
+
+    await importPdfIntoProject();
+
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/A.pdf", "/projects/a/図面");
+    expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a/図面");
+    expect(projectStore.currentPdf).toBe("図面/B.pdf");
   });
 
   it("adds and removes project links via project metadata persistence", async () => {

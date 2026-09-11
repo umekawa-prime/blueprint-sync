@@ -11,6 +11,7 @@
   import { zoomStep } from "$lib/utils/viewerMenu";
   import { toast } from "svelte-sonner";
   import PenPalette from "$lib/components/PenPalette.svelte";
+  import TextPalette from "$lib/components/TextPalette.svelte";
 
   let {
     onToggleConnection,
@@ -132,7 +133,7 @@
   {#each tools as tool (tool.id)}
     {@const active = currentTool === tool.id}
     <div
-      class={tool.id === "pen"
+      class={tool.id === "pen" || tool.id === "text"
         ? `flex items-center gap-0.5 rounded-md ${active ? "bg-cyan-950/70 ring-1 ring-cyan-400" : ""}`
         : "contents"}
     >
@@ -152,6 +153,9 @@
       </button>
       {#if tool.id === "pen"}
         <PenPalette />
+      {/if}
+      {#if tool.id === "text"}
+        <TextPalette compact={compact} />
       {/if}
     </div>
   {/each}

@@ -8,7 +8,7 @@ class ViewerApi {
     }>
   > = async () => [];
 
-  addPhoto: (file: Blob) => Promise<void> = async () => undefined;
+  addPhoto: (file: Blob, offsetIndex?: number) => Promise<void> = async () => undefined;
   openCamera: () => void = () => undefined;
   undo: () => void = () => undefined;
   redo: () => void = () => undefined;

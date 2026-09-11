@@ -1,3 +1,13 @@
+import type { CapShape } from "./strokeCaps";
+
+export type { CapShape } from "./strokeCaps";
+
+export const CAP_OPTIONS: Array<{ id: CapShape; label: string }> = [
+  { id: "none", label: "なし" },
+  { id: "dot", label: "黒丸" },
+  { id: "arrow", label: "矢印" },
+];
+
 /** OneNote Draw タブに近い色。上段がニュートラル、下段がアクセント。 */
 export const PEN_COLORS = [
   "#000000",

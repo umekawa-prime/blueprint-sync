@@ -4,9 +4,10 @@
   "description": "Offline PDF annotation and LAN sync for architectural drawings",
   "type": "module",
   "scripts": {
-    "dev": "vite dev",
+    "prepare": "svelte-kit sync",
+    "dev": "svelte-kit sync && vite dev",
     "build": "node scripts/windowsArm64Build.mjs",
-    "build:web": "vite build",
+    "build:web": "svelte-kit sync && vite build",
     "preview": "vite preview",
     "check": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json",
     "check:watch": "svelte-kit sync && svelte-check --tsconfig ./tsconfig.json --watch",

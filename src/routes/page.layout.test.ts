@@ -42,6 +42,24 @@ describe("editor shell layout", () => {
     expect(home).toContain("新規作成");
   });
 
+  it("puts a text color palette beside the text tool, separate from the pen palette", () => {
+    const toolbar = readFileSync(path.resolve("src/lib/components/Toolbar.svelte"), "utf8");
+    const palette = readFileSync(path.resolve("src/lib/components/TextPalette.svelte"), "utf8");
+    expect(toolbar).toContain('import TextPalette from "$lib/components/TextPalette.svelte"');
+    expect(toolbar).toContain('import PenPalette from "$lib/components/PenPalette.svelte"');
+    expect(toolbar.indexOf('id: "text"')).toBeGreaterThan(-1);
+    expect(toolbar).toMatch(/tool\.id === "text"[\s\S]*<TextPalette compact=\{compact\} \/>/);
+    expect(toolbar).toMatch(/tool\.id === "pen"[\s\S]*<PenPalette \/>/);
+    expect(palette).toContain("文字色");
+    expect(palette).toContain("背景色");
+    expect(palette).toContain("背景なし");
+    expect(palette).toContain("textBackground");
+    expect(palette).not.toContain('setTool("pen")');
+    const viewer = readFileSync(path.resolve("src/lib/components/PdfViewer.svelte"), "utf8");
+    expect(viewer).toContain("textStyleFromColors(toolStore.textColor, toolStore.textBackground)");
+    expect(viewer).not.toContain("fill: toolStore.penColor");
+  });
+
   it("keeps camera capture above the PDF canvas and hides the drawing while capturing", () => {
     const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
     const camera = readFileSync(

@@ -2,9 +2,11 @@
   import { onDestroy, onMount } from "svelte";
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import {
+    CAP_OPTIONS,
     PEN_COLORS,
     PEN_WIDTHS,
     thicknessDotSize,
+    type CapShape,
   } from "$lib/utils/penPalette";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
 
@@ -18,6 +20,16 @@
 
   function selectWidth(width: number) {
     toolStore.penWidth = width;
+    toolStore.setTool("pen");
+  }
+
+  function selectStartCap(shape: CapShape) {
+    toolStore.penStartCap = shape;
+    toolStore.setTool("pen");
+  }
+
+  function selectEndCap(shape: CapShape) {
+    toolStore.penEndCap = shape;
     toolStore.setTool("pen");
   }
 
@@ -41,7 +53,7 @@
     type="button"
     class="{toolbarToolClass(open || toolStore.current === 'pen')} flex h-[1.9rem] items-center gap-1 px-2"
     aria-expanded={open}
-    aria-label="ペンの色と太さ"
+    aria-label="ペンの色・太さ・先端"
     onpointerdowncapture={(event) => {
       event.preventDefault();
       open = !open;
@@ -73,6 +85,38 @@
               class="rounded-full"
               style="width: {thicknessDotSize(width)}px; height: {thicknessDotSize(width)}px; background: {toolStore.penColor}; box-shadow: 0 0 0 1px rgb(71 85 105);"
             ></span>
+          </button>
+        {/each}
+      </div>
+
+      <p class="mb-2 text-[11px] tracking-wide text-slate-400">始点</p>
+      <div class="mb-3 flex gap-1">
+        {#each CAP_OPTIONS as option (option.id)}
+          <button
+            type="button"
+            class="flex-1 rounded-md border border-slate-600 px-1 py-1 text-[11px] text-slate-200"
+            class:ring-selected={toolStore.penStartCap === option.id}
+            aria-label="始点 {option.label}"
+            aria-pressed={toolStore.penStartCap === option.id}
+            onclick={() => selectStartCap(option.id)}
+          >
+            {option.label}
+          </button>
+        {/each}
+      </div>
+
+      <p class="mb-2 text-[11px] tracking-wide text-slate-400">終点</p>
+      <div class="mb-3 flex gap-1">
+        {#each CAP_OPTIONS as option (option.id)}
+          <button
+            type="button"
+            class="flex-1 rounded-md border border-slate-600 px-1 py-1 text-[11px] text-slate-200"
+            class:ring-selected={toolStore.penEndCap === option.id}
+            aria-label="終点 {option.label}"
+            aria-pressed={toolStore.penEndCap === option.id}
+            onclick={() => selectEndCap(option.id)}
+          >
+            {option.label}
           </button>
         {/each}
       </div>

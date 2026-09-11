@@ -75,17 +75,25 @@ pub enum ExplorerDialogResult {
 }
 
 fn parse_dialog_output(status_ok: bool, stdout: &str, stderr: &str) -> ExplorerDialogResult {
+    parse_dialog_paths(status_ok, stdout, stderr)
+}
+
+fn parse_dialog_paths(status_ok: bool, stdout: &str, stderr: &str) -> ExplorerDialogResult {
     if !status_ok {
         return ExplorerDialogResult::Failed;
     }
-    let path = stdout.trim();
-    if path.is_empty() {
+    let paths: Vec<&str> = stdout
+        .lines()
+        .map(str::trim)
+        .filter(|line| !line.is_empty())
+        .collect();
+    if paths.is_empty() {
         if stderr.to_ascii_lowercase().contains("error") {
             return ExplorerDialogResult::Failed;
         }
         return ExplorerDialogResult::Cancelled;
     }
-    ExplorerDialogResult::Picked(path.to_string())
+    ExplorerDialogResult::Picked(paths.join("\n"))
 }
 
 fn powershell_single_quote(value: &str) -> String {
@@ -200,11 +208,23 @@ $form.Dispose()
 
 
 fn explorer_open_script(title: &str, filter: Option<&str>, folder_mode: bool) -> String {
+    explorer_open_script_opts(title, filter, folder_mode, false)
+}
+
+fn explorer_open_script_opts(
+    title: &str,
+    filter: Option<&str>,
+    folder_mode: bool,
+    multiselect: bool,
+) -> String {
     let mut script = String::from(EXPLORER_DIALOG_PRELUDE);
     script.push_str("$dialog = New-Object System.Windows.Forms.OpenFileDialog\n");
     script.push_str("$dialog.AutoUpgradeEnabled = $true\n");
     script.push_str(&format!("$dialog.Title = {}\n", powershell_single_quote(title)));
-    script.push_str("$dialog.Multiselect = $false\n");
+    script.push_str(&format!(
+        "$dialog.Multiselect = {}\n",
+        if multiselect { "$true" } else { "$false" }
+    ));
     script.push_str("$dialog.DereferenceLinks = $true\n");
     if folder_mode {
         script.push_str("$dialog.CheckFileExists = $false\n");
@@ -227,6 +247,8 @@ if (Test-Path -LiteralPath $selected -PathType Container) {
 }
 "#,
         );
+    } else if multiselect {
+        script.push_str("Write-Output $dialog.FileNames\n");
     } else {
         script.push_str("Write-Output $dialog.FileName\n");
     }
@@ -267,6 +289,15 @@ pub fn pick_explorer_pdf_or_zip() -> ExplorerDialogResult {
         "PDF または ZIP を選択",
         Some("PDF / ZIP (*.pdf;*.zip)|*.pdf;*.zip|すべてのファイル (*.*)|*.*"),
         false,
+    ))
+}
+
+pub fn pick_explorer_pdfs_or_zips() -> ExplorerDialogResult {
+    run_powershell(&explorer_open_script_opts(
+        "PDF または ZIP を選択",
+        Some("PDF / ZIP (*.pdf;*.zip)|*.pdf;*.zip|すべてのファイル (*.*)|*.*"),
+        false,
+        true,
     ))
 }
 
@@ -346,14 +377,6 @@ fn finish_native_pick(
     }
 }
 
-pub fn pick_explorer_image() -> ExplorerDialogResult {
-    run_powershell(&explorer_open_script(
-        "画像を選択",
-        Some("画像 (*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp|すべてのファイル (*.*)|*.*"),
-        false,
-    ))
-}
-
 pub fn pick_folder_native() -> Option<PathBuf> {
     let wsl = is_wsl();
     finish_native_pick(
@@ -376,15 +399,61 @@ pub fn pick_file_native() -> Option<PathBuf> {
     )
 }
 
-pub fn pick_image_native() -> Option<PathBuf> {
+pub fn pick_files_native() -> Vec<PathBuf> {
     let wsl = is_wsl();
-    finish_native_pick(
+    finish_native_picks(
         wsl,
-        wsl.then(pick_explorer_image),
+        wsl.then(pick_explorer_pdfs_or_zips),
+        || {
+            rfd::FileDialog::new()
+                .add_filter("PDF / ZIP", &["pdf", "zip"])
+                .pick_files()
+                .unwrap_or_default()
+        },
+    )
+}
+
+fn finish_native_picks(
+    is_wsl: bool,
+    windows: Option<ExplorerDialogResult>,
+    fallback: impl FnOnce() -> Vec<PathBuf>,
+) -> Vec<PathBuf> {
+    match windows {
+        Some(ExplorerDialogResult::Picked(path)) => path
+            .lines()
+            .map(str::trim)
+            .filter(|line| !line.is_empty())
+            .map(|line| PathBuf::from(to_local_fs_path(line)))
+            .collect(),
+        Some(ExplorerDialogResult::Cancelled) => Vec::new(),
+        Some(ExplorerDialogResult::Failed) if is_wsl => Vec::new(),
+        Some(ExplorerDialogResult::Failed) | None => fallback(),
+    }
+}
+
+pub fn pick_explorer_images() -> ExplorerDialogResult {
+    run_powershell(&explorer_open_script_opts(
+        "画像を選択",
+        Some("画像 (*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp|すべてのファイル (*.*)|*.*"),
+        false,
+        true,
+    ))
+}
+
+pub fn pick_image_native() -> Option<PathBuf> {
+    pick_images_native().into_iter().next()
+}
+
+pub fn pick_images_native() -> Vec<PathBuf> {
+    let wsl = is_wsl();
+    finish_native_picks(
+        wsl,
+        wsl.then(pick_explorer_images),
         || {
             rfd::FileDialog::new()
                 .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
-                .pick_file()
+                .pick_files()
+                .unwrap_or_default()
         },
     )
 }
@@ -409,9 +478,10 @@ pub fn save_file_native(default_name: &str, default_dir: Option<&str>) -> Option
 #[cfg(test)]
 mod tests {
     use super::{
-        explorer_open_script, explorer_save_script, looks_like_windows_path, map_mnt_to_windows,
-        native_pick_action, parse_dialog_output, powershell_binaries, unix_path_to_windows,
-        windows_path_to_wsl, ExplorerDialogResult, NativePickAction,
+        explorer_open_script, explorer_open_script_opts, explorer_save_script,
+        looks_like_windows_path, map_mnt_to_windows, native_pick_action, parse_dialog_output,
+        parse_dialog_paths, powershell_binaries, unix_path_to_windows, windows_path_to_wsl,
+        ExplorerDialogResult, NativePickAction,
     };
 
     #[test]
@@ -527,5 +597,43 @@ mod tests {
             assert!(script.contains("ForceFront($form.Handle"), "{script}");
             assert!(script.contains("ShowDialog($form)"), "{script}");
         }
+    }
+
+    #[test]
+    fn explorer_open_script_can_multiselect_pdfs() {
+        let script = explorer_open_script_opts(
+            "PDF または ZIP を選択",
+            Some("PDF / ZIP (*.pdf;*.zip)|*.pdf;*.zip|すべてのファイル (*.*)|*.*"),
+            false,
+            true,
+        );
+        assert!(script.contains("$dialog.Multiselect = $true"), "{script}");
+        assert!(script.contains("Write-Output $dialog.FileNames"), "{script}");
+        assert!(!script.contains("$dialog.Multiselect = $false"), "{script}");
+    }
+
+    #[test]
+    fn explorer_open_script_can_multiselect_images() {
+        let script = explorer_open_script_opts(
+            "画像を選択",
+            Some("画像 (*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp)|*.png;*.jpg;*.jpeg;*.webp;*.gif;*.bmp|すべてのファイル (*.*)|*.*"),
+            false,
+            true,
+        );
+        assert!(script.contains("$dialog.Multiselect = $true"), "{script}");
+        assert!(script.contains("Write-Output $dialog.FileNames"), "{script}");
+        assert!(script.contains("画像を選択"), "{script}");
+    }
+
+    #[test]
+    fn parses_multiple_selected_paths() {
+        assert_eq!(
+            parse_dialog_paths(true, "C:\\a.pdf\r\nC:\\b.pdf\r\n", ""),
+            ExplorerDialogResult::Picked("C:\\a.pdf\nC:\\b.pdf".to_string())
+        );
+        assert_eq!(
+            parse_dialog_paths(true, "  \n", ""),
+            ExplorerDialogResult::Cancelled
+        );
     }
 }
