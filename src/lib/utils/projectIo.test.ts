@@ -26,6 +26,7 @@ import {
   moveFileIntoFolder,
   pathExists,
   pickFolder,
+  renameFile,
   projectJsonPath,
   readAnnotationFile,
   readBinaryFile,
@@ -167,6 +168,15 @@ describe("projectIo", () => {
     mockInvoke.mockResolvedValueOnce(undefined);
     await expect(deleteFile("/tmp/A.pdf")).resolves.toBeUndefined();
     expect(mockInvoke).toHaveBeenCalledWith("delete_file", { path: "/tmp/A.pdf" });
+  });
+
+  it("forwards rename_file", async () => {
+    mockInvoke.mockResolvedValueOnce(undefined);
+    await expect(renameFile("/a/図面/1F.pdf", "/a/図面/平面.pdf")).resolves.toBeUndefined();
+    expect(mockInvoke).toHaveBeenCalledWith("rename_file", {
+      from: "/a/図面/1F.pdf",
+      to: "/a/図面/平面.pdf",
+    });
   });
 
   it("reads binary bytes without decoding", async () => {

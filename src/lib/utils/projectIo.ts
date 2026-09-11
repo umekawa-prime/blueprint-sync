@@ -66,6 +66,19 @@ export async function deleteFile(path: string): Promise<void> {
   await invoke("delete_file", { path });
 }
 
+export async function renameFile(from: string, to: string): Promise<void> {
+  if (from === to) {
+    return;
+  }
+  if (useWebDemoFs()) {
+    const bytes = webReadBytes(from);
+    webPut(to, bytes);
+    webDelete(from);
+    return;
+  }
+  await invoke("rename_file", { from, to });
+}
+
 export async function moveFileIntoFolder(source: string, folder: string): Promise<string> {
   const dest = await copyFileIntoFolder(source, folder);
   if (shouldDeleteSourceAfterCopy(source, dest)) {

@@ -15,7 +15,13 @@ import {
   PROJECT_PDF_DIRS,
   projectPdfKind,
   rememberRecent,
+  renamedProjectRelPath,
   serializeProjectJson,
+  isProjectCadRelPath,
+  listCadFiles,
+  listSidebarCadFiles,
+  pairedDrawingPdfRelPath,
+  projectRenameStem,
 } from "./projectFormat";
 
 describe("isAllowedLinkUrl", () => {
@@ -96,6 +102,7 @@ describe("annotationFileName", () => {
   it("accepts kind-prefixed annotation names and still rejects other nested paths", () => {
     expect(annotationFileName("図面/1F.pdf")).toBe("図面__1F.pdf.json");
     expect(annotationFileName("工程表/週間工程.pdf")).toBe("工程表__週間工程.pdf.json");
+    expect(annotationFileName("図面JWW/1F.pdf")).toBe("図面JWW__1F.pdf.json");
     expect(() => annotationFileName("nested/A.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName(".hidden.pdf")).toThrow(/invalid/i);
     expect(() => annotationFileName("../x.pdf")).toThrow(/invalid/i);
@@ -113,32 +120,76 @@ describe("isProjectPdfBasename", () => {
 });
 
 describe("project pdf kinds", () => {
-  it("treats root and 図面 paths as drawings, 工程表 as schedules", () => {
+  it("treats root and 図面 paths as drawings, 工程表 as schedules, 図面JWW as cad", () => {
     expect(projectPdfKind("A.pdf")).toBe("drawing");
     expect(projectPdfKind("図面/1F.pdf")).toBe("drawing");
     expect(projectPdfKind("工程表/週間工程.pdf")).toBe("schedule");
+    expect(projectPdfKind("図面JWW/1F.pdf")).toBe("cad");
     expect(joinProjectPdfRelPath("drawing", "1F.pdf")).toBe("図面/1F.pdf");
     expect(joinProjectPdfRelPath("schedule", "週間工程.pdf")).toBe("工程表/週間工程.pdf");
+    expect(joinProjectPdfRelPath("cad", "1F.pdf")).toBe("図面JWW/1F.pdf");
     expect(PROJECT_PDF_DIRS.drawing).toBe("図面");
     expect(PROJECT_PDF_DIRS.schedule).toBe("工程表");
+    expect(PROJECT_PDF_DIRS.cad).toBe("図面JWW");
   });
 
   it("accepts legacy root pdfs and kind subfolder pdfs", () => {
     expect(isProjectPdfRelPath("A.pdf")).toBe(true);
     expect(isProjectPdfRelPath("図面/A.pdf")).toBe(true);
     expect(isProjectPdfRelPath("工程表/A.pdf")).toBe(true);
+    expect(isProjectPdfRelPath("図面JWW/A.pdf")).toBe(true);
     expect(isProjectPdfRelPath("other/A.pdf")).toBe(false);
     expect(isProjectPdfRelPath("図面/../A.pdf")).toBe(false);
     expect(isProjectPdfRelPath(".hidden.pdf")).toBe(false);
   });
 
-  it("splits a mixed list into drawings and schedules", () => {
+  it("splits a mixed list into drawings, cad, and schedules", () => {
     expect(
-      listPdfsOfKind(["A.pdf", "図面/B.pdf", "工程表/C.pdf", "工程表/D.pdf"], "drawing"),
+      listPdfsOfKind(["A.pdf", "図面/B.pdf", "図面JWW/J.pdf", "工程表/C.pdf", "工程表/D.pdf"], "drawing"),
     ).toEqual(["A.pdf", "図面/B.pdf"]);
-    expect(listPdfsOfKind(["A.pdf", "図面/B.pdf", "工程表/C.pdf"], "schedule")).toEqual([
+    expect(listPdfsOfKind(["A.pdf", "図面/B.pdf", "図面JWW/J.pdf", "工程表/C.pdf"], "schedule")).toEqual([
       "工程表/C.pdf",
     ]);
+    expect(listPdfsOfKind(["A.pdf", "図面/B.pdf", "図面JWW/J.pdf", "工程表/C.pdf"], "cad")).toEqual([
+      "図面JWW/J.pdf",
+    ]);
+  });
+
+  it("treats jww/jwc under 図面JWW as cad source files, not pdfs", () => {
+    expect(isProjectCadRelPath("図面JWW/1F.jww")).toBe(true);
+    expect(isProjectCadRelPath("図面JWW/旧図.JWC")).toBe(true);
+    expect(isProjectCadRelPath("図面JWW/1F.pdf")).toBe(false);
+    expect(isProjectCadRelPath("図面/1F.jww")).toBe(false);
+    expect(isProjectPdfRelPath("図面JWW/1F.jww")).toBe(false);
+    expect(listCadFiles(["図面/A.pdf", "図面JWW/1F.jww", "図面JWW/1F.pdf", "図面JWW/旧図.jwc"])).toEqual([
+      "図面JWW/1F.jww",
+      "図面JWW/旧図.jwc",
+    ]);
+    expect(
+      listSidebarCadFiles(["図面/A.pdf", "図面JWW/1F.jww", "図面JWW/1F.pdf", "工程表/C.pdf"]),
+    ).toEqual(["図面JWW/1F.jww", "図面JWW/1F.pdf"]);
+    expect(pairedDrawingPdfRelPath("図面JWW/1F.jww")).toBe("図面/1F.pdf");
+    expect(pairedDrawingPdfRelPath("図面JWW/旧図.JWC")).toBe("図面/旧図.pdf");
+    expect(pairedDrawingPdfRelPath("図面/1F.pdf")).toBeNull();
+    expect(projectRenameStem("図面JWW/1F.jww")).toBe("1F");
+    expect(projectRenameStem("工程表/週間工程.pdf")).toBe("週間工程");
+  });
+});
+
+describe("renamedProjectRelPath", () => {
+  it("keeps the folder and original extension while changing the stem", () => {
+    expect(renamedProjectRelPath("図面/1F.pdf", "2F")).toBe("図面/2F.pdf");
+    expect(renamedProjectRelPath("図面JWW/1F.jww", "平面図")).toBe("図面JWW/平面図.jww");
+    expect(renamedProjectRelPath("図面JWW/旧図.jwc", "旧図.jwc")).toBe("図面JWW/旧図.jwc");
+    expect(renamedProjectRelPath("工程表/週間工程.pdf", "月間工程.pdf")).toBe("工程表/月間工程.pdf");
+  });
+
+  it("rejects empty, nested, or extension-changing names", () => {
+    expect(renamedProjectRelPath("図面/1F.pdf", "")).toBeNull();
+    expect(renamedProjectRelPath("図面/1F.pdf", "..")).toBeNull();
+    expect(renamedProjectRelPath("図面/1F.pdf", "a/b")).toBeNull();
+    expect(renamedProjectRelPath("図面/1F.pdf", ".hidden")).toBeNull();
+    expect(renamedProjectRelPath("図面JWW/1F.jww", "1F.pdf")).toBeNull();
   });
 });
 

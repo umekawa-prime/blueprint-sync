@@ -1,4 +1,4 @@
-import { isProjectPdfRelPath } from "./projectFormat";
+import { isProjectCadRelPath, isProjectPdfRelPath } from "./projectFormat";
 
 const files = new Map<string, Uint8Array>();
 let enabled = false;
@@ -46,11 +46,11 @@ export function webListPdfs(folder: string): string[] {
   const prefix = `${normalize(folder)}/`;
   const names: string[] = [];
   for (const key of files.keys()) {
-    if (!key.startsWith(prefix) || !key.toLowerCase().endsWith(".pdf")) {
+    if (!key.startsWith(prefix)) {
       continue;
     }
     const rel = key.slice(prefix.length);
-    if (isProjectPdfRelPath(rel)) {
+    if (isProjectPdfRelPath(rel) || isProjectCadRelPath(rel)) {
       names.push(rel);
     }
   }

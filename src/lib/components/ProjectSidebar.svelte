@@ -9,19 +9,46 @@
     openProjectLink,
     openProjectPdf,
     removeProjectLink,
+    removeProjectPdf,
+    renameProjectFile,
     shareCurrentProject,
   } from "$lib/utils/projectActions";
   import {
     displayLinkTitle,
     folderDisplayName,
     listPdfsOfKind,
+    listSidebarCadFiles,
     projectPdfDisplayName,
+    projectRenameStem,
     type ProjectPdfKind,
   } from "$lib/utils/projectFormat";
 
   let url = $state("");
   let title = $state("");
   let importingLinkId = $state("");
+  let contextMenu = $state<{ file: string; x: number; y: number } | null>(null);
+  let renamingFile = $state("");
+  let renameValue = $state("");
+  let renameInputEl = $state<HTMLInputElement | null>(null);
+
+  $effect(() => {
+    if (!renamingFile || !renameInputEl) {
+      return;
+    }
+    renameInputEl.focus();
+    renameInputEl.select();
+  });
+
+  $effect(() => {
+    if (!contextMenu) {
+      return;
+    }
+    const close = () => {
+      contextMenu = null;
+    };
+    window.addEventListener("click", close);
+    return () => window.removeEventListener("click", close);
+  });
 
   function message(error: unknown, fallback: string): string {
     return error instanceof Error ? error.message : fallback;
@@ -82,6 +109,49 @@
     }
   }
 
+  async function onRemovePdf(file: string) {
+    const name = projectPdfDisplayName(file);
+    if (!window.confirm(`${name} を削除しますか？`)) {
+      return;
+    }
+    try {
+      await removeProjectPdf(file);
+    } catch (error) {
+      pdfStore.status = message(error, "PDF の削除に失敗しました");
+    }
+  }
+
+  function onFileContextMenu(event: MouseEvent, file: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    contextMenu = { file, x: event.clientX, y: event.clientY };
+  }
+
+  function startRename(file: string) {
+    contextMenu = null;
+    renamingFile = file;
+    renameValue = projectRenameStem(file);
+  }
+
+  function cancelRename() {
+    renamingFile = "";
+    renameValue = "";
+  }
+
+  async function commitRename() {
+    const file = renamingFile;
+    const nextName = renameValue;
+    if (!file) {
+      return;
+    }
+    renamingFile = "";
+    try {
+      await renameProjectFile(file, nextName);
+    } catch (error) {
+      pdfStore.status = message(error, "名前の変更に失敗しました");
+    }
+  }
+
   async function onCloseProject() {
     try {
       await closeProject();
@@ -91,10 +161,77 @@
   }
 </script>
 
+{#snippet pdfRow(file: string)}
+  <li
+    class="flex items-center gap-0.5 rounded {projectStore.currentPdf === file
+      ? 'bg-cyan-900 text-cyan-100'
+      : 'hover:bg-slate-800'}"
+    oncontextmenu={(event) => onFileContextMenu(event, file)}
+  >
+    {#if renamingFile === file}
+      <form
+        class="min-w-0 flex-1 px-1 py-0.5"
+        onsubmit={(event) => {
+          event.preventDefault();
+          void commitRename();
+        }}
+      >
+        <input
+          bind:this={renameInputEl}
+          bind:value={renameValue}
+          class="w-full rounded border border-cyan-700 bg-slate-950 px-1 py-0.5 text-sm text-slate-100"
+          aria-label="ファイル名"
+          onblur={() => void commitRename()}
+          onkeydown={(event) => {
+            if (event.key === "Escape") {
+              event.preventDefault();
+              cancelRename();
+            }
+          }}
+        />
+      </form>
+    {:else}
+      <button
+        type="button"
+        class="min-w-0 flex-1 truncate px-2 py-1 text-left text-sm"
+        title={projectPdfDisplayName(file)}
+        onclick={() => void onOpenPdf(file)}
+        oncontextmenu={(event) => onFileContextMenu(event, file)}
+      >
+        {projectPdfDisplayName(file)}
+      </button>
+    {/if}
+    <button
+      type="button"
+      class="mr-1 shrink-0 rounded p-1 text-slate-500 hover:bg-slate-700 hover:text-rose-300"
+      title="削除"
+      aria-label={`${projectPdfDisplayName(file)} を削除`}
+      onclick={() => void onRemovePdf(file)}
+    >
+      <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+        <path d="M5 7h14" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" />
+        <path
+          d="M10 7V5h4v2"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linecap="round"
+          stroke-linejoin="round"
+        />
+        <path
+          d="M8 7l.8 12h6.4L16 7"
+          stroke="currentColor"
+          stroke-width="1.8"
+          stroke-linejoin="round"
+        />
+      </svg>
+    </button>
+  </li>
+{/snippet}
+
 <aside class="flex w-72 shrink-0 flex-col border-r border-slate-700 bg-slate-900">
   <div class="border-b border-slate-800 px-3 py-3">
     <div class="text-sm font-semibold text-cyan-300">{folderDisplayName(projectStore.folder)}</div>
-    <div class="truncate text-[11px] text-slate-500">{projectStore.folder}</div>
+    <div class="truncate text-[11px] text-slate-500" title={projectStore.folder}>{projectStore.folder}</div>
   </div>
 
   <section class="min-h-0 flex-1 overflow-auto px-3 py-3">
@@ -113,17 +250,24 @@
     {:else}
       <ul class="space-y-1">
         {#each listPdfsOfKind(projectStore.pdfs, "drawing") as file (file)}
-          <li>
-            <button
-              type="button"
-              class="w-full truncate rounded px-2 py-1 text-left text-sm {projectStore.currentPdf === file
-                ? 'bg-cyan-900 text-cyan-100'
-                : 'hover:bg-slate-800'}"
-              onclick={() => void onOpenPdf(file)}
-            >
-              {projectPdfDisplayName(file)}
-            </button>
-          </li>
+          {@render pdfRow(file)}
+        {/each}
+      </ul>
+    {/if}
+
+    <h2 class="mb-2 mt-5 text-xs text-slate-500">図面 JWW</h2>
+    <button
+      class="mb-2 w-full rounded bg-slate-800 px-2 py-1 text-xs"
+      onclick={() => onAddPdf("cad")}
+    >
+      JWWを追加
+    </button>
+    {#if listSidebarCadFiles(projectStore.pdfs).length === 0}
+      <p class="text-xs text-slate-500">「JWWを追加」またはドロップで JWW / JWC を入れてください</p>
+    {:else}
+      <ul class="space-y-1">
+        {#each listSidebarCadFiles(projectStore.pdfs) as file (file)}
+          {@render pdfRow(file)}
         {/each}
       </ul>
     {/if}
@@ -140,17 +284,7 @@
     {:else}
       <ul class="space-y-1">
         {#each listPdfsOfKind(projectStore.pdfs, "schedule") as file (file)}
-          <li>
-            <button
-              type="button"
-              class="w-full truncate rounded px-2 py-1 text-left text-sm {projectStore.currentPdf === file
-                ? 'bg-cyan-900 text-cyan-100'
-                : 'hover:bg-slate-800'}"
-              onclick={() => void onOpenPdf(file)}
-            >
-              {projectPdfDisplayName(file)}
-            </button>
-          </li>
+          {@render pdfRow(file)}
         {/each}
       </ul>
     {/if}
@@ -183,6 +317,7 @@
         <li class="rounded border border-slate-800 px-2 py-1.5">
           <button
             class="w-full truncate text-left text-xs text-cyan-300 underline"
+            title={displayLinkTitle(link)}
             onclick={() => onOpenLink(link.url)}
           >
             {displayLinkTitle(link)}
@@ -221,3 +356,24 @@
     プロジェクトを閉じる
   </button>
 </aside>
+
+{#if contextMenu}
+  {@const menuFile = contextMenu.file}
+  <div
+    class="fixed z-50 min-w-[8rem] rounded border border-slate-700 bg-slate-800 py-1 text-xs shadow-lg"
+    style="left: {contextMenu.x}px; top: {contextMenu.y}px"
+    role="menu"
+  >
+    <button
+      type="button"
+      class="block w-full px-3 py-1.5 text-left text-slate-100 hover:bg-slate-700"
+      role="menuitem"
+      onclick={(event) => {
+        event.stopPropagation();
+        startRename(menuFile);
+      }}
+    >
+      名前を変更
+    </button>
+  </div>
+{/if}

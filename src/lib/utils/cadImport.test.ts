@@ -1,9 +1,8 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-const { mockInvoke, mockIsTauri, mockDxfToPdf } = vi.hoisted(() => ({
+const { mockInvoke, mockIsTauri } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
   mockIsTauri: vi.fn(() => true),
-  mockDxfToPdf: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -14,11 +13,12 @@ vi.mock("./platform", () => ({
   isTauriRuntime: () => mockIsTauri(),
 }));
 
-vi.mock("./dxfToPdf", () => ({
-  dxfDocumentToPdf: mockDxfToPdf,
-}));
-
-import { cadPdfBasename, convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
+import {
+  bytesForStandaloneViewer,
+  cadPdfBasename,
+  convertCadBytesToPdf,
+  isCadDrawingBasename,
+} from "./cadImport";
 
 describe("isCadDrawingBasename", () => {
   it("accepts jww and jwc basenames and rejects nested or hidden names", () => {
@@ -42,16 +42,14 @@ describe("convertCadBytesToPdf", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockIsTauri.mockReturnValue(true);
-    mockInvoke.mockResolvedValue({ layers: [], entities: [], blocks: [], unsupported_entities: [] });
-    mockDxfToPdf.mockResolvedValue(Uint8Array.from([0x25, 0x50, 0x44, 0x46]));
+    mockInvoke.mockResolvedValue([0x25, 0x50, 0x44, 0x46]);
   });
 
-  it("parses cad bytes and returns a pdf named after the source file", async () => {
+  it("asks rust to convert cad bytes and names the pdf after the source file", async () => {
     const source = Uint8Array.from([1, 2, 3]);
     const converted = await convertCadBytesToPdf("1F.jww", source);
 
-    expect(mockInvoke).toHaveBeenCalledWith("parse_cad_to_dxf", { bytes: [1, 2, 3] });
-    expect(mockDxfToPdf).toHaveBeenCalledTimes(1);
+    expect(mockInvoke).toHaveBeenCalledWith("convert_cad_to_pdf", { bytes: [1, 2, 3] });
     expect(converted).toEqual({
       pdfName: "1F.pdf",
       bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
@@ -64,6 +62,32 @@ describe("convertCadBytesToPdf", () => {
     await expect(convertCadBytesToPdf("1F.jww", Uint8Array.from([1]))).rejects.toThrow(
       "JWW/JWC の変換はデスクトップ版で行えます",
     );
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("bytesForStandaloneViewer", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsTauri.mockReturnValue(true);
+    mockInvoke.mockResolvedValue([0x25, 0x50, 0x44, 0x46]);
+  });
+
+  it("converts a dropped jww to pdf bytes instead of loading the cad file as a pdf", async () => {
+    const loaded = await bytesForStandaloneViewer("03_平面図0829_配布用.jww", Uint8Array.from([1, 2]));
+    expect(mockInvoke).toHaveBeenCalledWith("convert_cad_to_pdf", { bytes: [1, 2] });
+    expect(loaded).toEqual({
+      name: "03_平面図0829_配布用.pdf",
+      bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+    });
+  });
+
+  it("passes a regular pdf through unchanged", async () => {
+    const source = Uint8Array.from([0x25, 0x50, 0x44, 0x46]);
+    await expect(bytesForStandaloneViewer("A.pdf", source)).resolves.toEqual({
+      name: "A.pdf",
+      bytes: source,
+    });
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 });

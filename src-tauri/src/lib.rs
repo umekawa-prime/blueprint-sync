@@ -2,6 +2,7 @@ mod sync_server;
 mod sandbox;
 mod share;
 mod cad_dxf;
+mod cad_pdf;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod explorer_dialog;
 
@@ -10,6 +11,7 @@ use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::ipc::Response;
 
 use crate::sandbox::{
     list_project_files, list_sandbox_projects, remove_dir_all, sandbox_projects_dir, RecentProject,
@@ -35,8 +37,20 @@ fn is_visible_pdf_name(name: &str) -> bool {
     lower.ends_with(".pdf") && !name.starts_with('.')
 }
 
+fn is_visible_cad_name(name: &str) -> bool {
+    let lower = name.to_ascii_lowercase();
+    !name.starts_with('.') && (lower.ends_with(".jww") || lower.ends_with(".jwc"))
+}
+
 enum CopyIntoFolderDecision {
     SkipSamePath,
+    NameCollision,
+    Proceed,
+}
+
+enum RenameFileDecision {
+    SamePath,
+    DifferentParent,
     NameCollision,
     Proceed,
 }
@@ -77,6 +91,14 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 #[tauri::command]
 fn parse_cad_to_dxf(bytes: Vec<u8>) -> Result<serde_json::Value, String> {
     cad_dxf::cad_bytes_to_dxf_json(&bytes)
+}
+
+#[tauri::command]
+async fn convert_cad_to_pdf(bytes: Vec<u8>) -> Result<Response, String> {
+    let pdf = tauri::async_runtime::spawn_blocking(move || cad_dxf::cad_bytes_to_pdf(&bytes))
+        .await
+        .map_err(|error| error.to_string())??;
+    Ok(Response::new(pdf))
 }
 
 #[tauri::command]
@@ -202,6 +224,7 @@ fn init_project_dir(folder: String) -> Result<(), String> {
     std::fs::create_dir_all(annotations).map_err(|error| error.to_string())?;
     std::fs::create_dir_all(root.join("図面")).map_err(|error| error.to_string())?;
     std::fs::create_dir_all(root.join("工程表")).map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(root.join("図面JWW")).map_err(|error| error.to_string())?;
     Ok(())
 }
 
@@ -222,11 +245,21 @@ fn collect_visible_pdfs(
             continue;
         }
         let name = entry.file_name().to_string_lossy().into_owned();
-        if let Some(rel) = project_pdf_rel_name(prefix, &name) {
+        if let Some(rel) = project_listed_rel_name(prefix, &name) {
             names.push(rel);
         }
     }
     Ok(())
+}
+
+fn project_listed_rel_name(prefix: Option<&str>, name: &str) -> Option<String> {
+    if let Some(rel) = project_pdf_rel_name(prefix, name) {
+        return Some(rel);
+    }
+    if prefix == Some("図面JWW") && is_visible_cad_name(name) {
+        return Some(format!("図面JWW/{name}"));
+    }
+    None
 }
 
 fn project_pdf_rel_name(prefix: Option<&str>, name: &str) -> Option<String> {
@@ -234,7 +267,7 @@ fn project_pdf_rel_name(prefix: Option<&str>, name: &str) -> Option<String> {
         return None;
     }
     match prefix {
-        Some(dir) if dir == "図面" || dir == "工程表" => Some(format!("{dir}/{name}")),
+        Some(dir) if dir == "図面" || dir == "工程表" || dir == "図面JWW" => Some(format!("{dir}/{name}")),
         None => Some(name.to_string()),
         _ => None,
     }
@@ -247,6 +280,7 @@ fn list_project_pdfs(folder: String) -> Result<Vec<String>, String> {
     collect_visible_pdfs(root, None, &mut names)?;
     collect_visible_pdfs(&root.join("図面"), Some("図面"), &mut names)?;
     collect_visible_pdfs(&root.join("工程表"), Some("工程表"), &mut names)?;
+    collect_visible_pdfs(&root.join("図面JWW"), Some("図面JWW"), &mut names)?;
     names.sort();
     Ok(names)
 }
@@ -279,6 +313,39 @@ fn copy_file_into_folder(source: String, folder: String) -> Result<String, Strin
 #[tauri::command]
 fn delete_file(path: String) -> Result<(), String> {
     std::fs::remove_file(path).map_err(|error| error.to_string())
+}
+
+fn decide_rename_file(from: &Path, to: &Path, dest_exists: bool) -> RenameFileDecision {
+    if from == to {
+        return RenameFileDecision::SamePath;
+    }
+    match (from.parent(), to.parent()) {
+        (Some(from_parent), Some(to_parent)) if from_parent == to_parent => {
+            if dest_exists {
+                RenameFileDecision::NameCollision
+            } else {
+                RenameFileDecision::Proceed
+            }
+        }
+        _ => RenameFileDecision::DifferentParent,
+    }
+}
+
+#[tauri::command]
+fn rename_file(from: String, to: String) -> Result<(), String> {
+    let from_path = PathBuf::from(&from);
+    let to_path = PathBuf::from(&to);
+    let dest_exists = to_path.exists();
+    match decide_rename_file(&from_path, &to_path, dest_exists) {
+        RenameFileDecision::SamePath => Ok(()),
+        RenameFileDecision::DifferentParent => {
+            Err("同じフォルダ内でのみ名前を変更できます".to_string())
+        }
+        RenameFileDecision::NameCollision => Err("同じ名前のファイルが既にあります".to_string()),
+        RenameFileDecision::Proceed => {
+            std::fs::rename(&from_path, &to_path).map_err(|error| error.to_string())
+        }
+    }
 }
 
 #[derive(Serialize)]
@@ -486,6 +553,7 @@ pub fn run() {
             read_file_bytes,
             write_file_bytes,
             parse_cad_to_dxf,
+            convert_cad_to_pdf,
             pick_pdf_file,
             pick_pdf_files,
             pick_folder,
@@ -495,6 +563,7 @@ pub fn run() {
             list_project_pdfs,
             copy_file_into_folder,
             delete_file,
+            rename_file,
             http_get,
             load_recent_projects,
             save_recent_projects,
@@ -515,8 +584,9 @@ mod tests {
     use std::path::Path;
 
     use super::{
-        decide_copy_into_folder, is_visible_pdf_name, parse_recent_projects_json,
-        project_pdf_rel_name, CopyIntoFolderDecision, RecentProject,
+        decide_copy_into_folder, decide_rename_file, is_visible_pdf_name,
+        parse_recent_projects_json, project_listed_rel_name, project_pdf_rel_name,
+        CopyIntoFolderDecision, RecentProject, RenameFileDecision,
     };
 
     #[test]
@@ -558,8 +628,45 @@ mod tests {
             project_pdf_rel_name(Some("工程表"), "週間工程.pdf").as_deref(),
             Some("工程表/週間工程.pdf")
         );
+        assert_eq!(
+            project_pdf_rel_name(Some("図面JWW"), "1F.pdf").as_deref(),
+            Some("図面JWW/1F.pdf")
+        );
         assert_eq!(project_pdf_rel_name(Some("other"), "A.pdf"), None);
         assert_eq!(project_pdf_rel_name(None, ".hidden.pdf"), None);
+        assert_eq!(
+            project_listed_rel_name(Some("図面JWW"), "1F.jww").as_deref(),
+            Some("図面JWW/1F.jww")
+        );
+        assert_eq!(
+            project_listed_rel_name(Some("図面JWW"), "旧図.JWC").as_deref(),
+            Some("図面JWW/旧図.JWC")
+        );
+        assert_eq!(project_listed_rel_name(Some("図面"), "1F.jww"), None);
+        assert_eq!(project_listed_rel_name(None, "1F.jww"), None);
+    }
+
+    #[test]
+    fn rename_stays_in_the_same_folder() {
+        let from = Path::new("/tmp/図面/1F.pdf");
+        let to = Path::new("/tmp/図面/平面.pdf");
+        let other = Path::new("/tmp/工程表/平面.pdf");
+        assert!(matches!(
+            decide_rename_file(from, to, false),
+            RenameFileDecision::Proceed
+        ));
+        assert!(matches!(
+            decide_rename_file(from, from, false),
+            RenameFileDecision::SamePath
+        ));
+        assert!(matches!(
+            decide_rename_file(from, to, true),
+            RenameFileDecision::NameCollision
+        ));
+        assert!(matches!(
+            decide_rename_file(from, other, false),
+            RenameFileDecision::DifferentParent
+        ));
     }
 
     #[test]

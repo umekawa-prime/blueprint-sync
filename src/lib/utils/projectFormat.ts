@@ -87,11 +87,12 @@ export function createProjectMeta(name: string, now = new Date()): ProjectMeta {
   };
 }
 
-export type ProjectPdfKind = "drawing" | "schedule";
+export type ProjectPdfKind = "drawing" | "schedule" | "cad";
 
 export const PROJECT_PDF_DIRS: Record<ProjectPdfKind, string> = {
   drawing: "図面",
   schedule: "工程表",
+  cad: "図面JWW",
 };
 
 function normalizeRelPath(relPath: string): string {
@@ -109,6 +110,94 @@ export function isProjectPdfBasename(pdfName: string): boolean {
   );
 }
 
+function isCadSourceBasename(name: string): boolean {
+  const lower = name.toLowerCase();
+  return Boolean(
+    name &&
+      (lower.endsWith(".jww") || lower.endsWith(".jwc")) &&
+      !name.startsWith(".") &&
+      !name.includes("/") &&
+      !name.includes("\\") &&
+      !name.includes(".."),
+  );
+}
+
+export function isProjectCadRelPath(relPath: string): boolean {
+  const normalized = normalizeRelPath(relPath);
+  if (!normalized || normalized.startsWith("/") || normalized.includes("..")) {
+    return false;
+  }
+  const parts = normalized.split("/").filter(Boolean);
+  return parts.length === 2 && parts[0] === PROJECT_PDF_DIRS.cad && isCadSourceBasename(parts[1]);
+}
+
+export function isProjectFileRelPath(relPath: string): boolean {
+  return isProjectPdfRelPath(relPath) || isProjectCadRelPath(relPath);
+}
+
+export function listCadFiles(names: string[]): string[] {
+  return names.filter((name) => isProjectCadRelPath(name));
+}
+
+export function listSidebarCadFiles(names: string[]): string[] {
+  return names.filter(
+    (name) => isProjectCadRelPath(name) || (isProjectPdfRelPath(name) && projectPdfKind(name) === "cad"),
+  );
+}
+
+export function pairedDrawingPdfRelPath(relPath: string): string | null {
+  if (!isProjectCadRelPath(relPath)) {
+    return null;
+  }
+  const pdfName = projectPdfDisplayName(relPath).replace(/\.(jww|jwc)$/i, ".pdf");
+  return joinProjectPdfRelPath("drawing", pdfName);
+}
+
+export function projectRenameStem(relPath: string): string {
+  return projectFileStem(projectPdfDisplayName(relPath));
+}
+
+function projectFileExtension(basename: string): string | null {
+  const match = basename.match(/\.(pdf|jww|jwc)$/i);
+  return match ? match[0] : null;
+}
+
+function projectFileStem(basename: string): string {
+  return basename.replace(/\.(pdf|jww|jwc)$/i, "");
+}
+
+export function renamedProjectRelPath(relPath: string, nextName: string): string | null {
+  if (!isProjectFileRelPath(relPath)) {
+    return null;
+  }
+  const display = projectPdfDisplayName(relPath);
+  const ext = projectFileExtension(display);
+  if (!ext) {
+    return null;
+  }
+  let stem = nextName.trim();
+  const typedExt = projectFileExtension(stem);
+  if (typedExt) {
+    if (typedExt.toLowerCase() !== ext.toLowerCase()) {
+      return null;
+    }
+    stem = projectFileStem(stem);
+  }
+  if (
+    !stem ||
+    stem.startsWith(".") ||
+    stem.includes("/") ||
+    stem.includes("\\") ||
+    stem.includes("..")
+  ) {
+    return null;
+  }
+  const slash = normalizeRelPath(relPath).lastIndexOf("/");
+  const dir = slash >= 0 ? normalizeRelPath(relPath).slice(0, slash) : "";
+  const nextBase = `${stem}${ext}`;
+  return dir ? `${dir}/${nextBase}` : nextBase;
+}
+
 export function isProjectPdfRelPath(relPath: string): boolean {
   const normalized = normalizeRelPath(relPath);
   if (!normalized || normalized.startsWith("/") || normalized.includes("..")) {
@@ -120,7 +209,9 @@ export function isProjectPdfRelPath(relPath: string): boolean {
   }
   if (parts.length === 2) {
     return (
-      (parts[0] === PROJECT_PDF_DIRS.drawing || parts[0] === PROJECT_PDF_DIRS.schedule) &&
+      (parts[0] === PROJECT_PDF_DIRS.drawing ||
+        parts[0] === PROJECT_PDF_DIRS.schedule ||
+        parts[0] === PROJECT_PDF_DIRS.cad) &&
       isProjectPdfBasename(parts[1])
     );
   }
@@ -129,6 +220,9 @@ export function isProjectPdfRelPath(relPath: string): boolean {
 
 export function projectPdfKind(relPath: string): ProjectPdfKind {
   const normalized = normalizeRelPath(relPath);
+  if (normalized.startsWith(`${PROJECT_PDF_DIRS.cad}/`)) {
+    return "cad";
+  }
   if (normalized.startsWith(`${PROJECT_PDF_DIRS.schedule}/`)) {
     return "schedule";
   }

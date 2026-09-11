@@ -32,6 +32,7 @@ const {
   mockListSandboxProjects,
   mockShareFileBytes,
   mockConvertCadBytesToPdf,
+  mockRenameFile,
 } = vi.hoisted(() => ({
   mockOpenPdfsFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
@@ -50,6 +51,7 @@ const {
   mockWriteBinaryFile: vi.fn(),
   mockWriteProjectMeta: vi.fn(),
   mockDeleteFile: vi.fn(),
+  mockRenameFile: vi.fn(),
   mockOpenUrl: vi.fn(),
   mockSendCurrentPdf: vi.fn(),
   mockImportOneDrive: vi.fn(),
@@ -81,6 +83,8 @@ vi.mock("./platform", () => ({
 vi.mock("./projectIo", () => ({
   annotationPath: (folder: string, pdfName: string) =>
     `${folder}/.blueprint-sync/annotations/${pdfName}.json`,
+  legacyAnnotationPath: (folder: string, pdfName: string) =>
+    `${folder}/.blueprint-sync/annotations/legacy-${pdfName}.json`,
   projectJsonPath: (folder: string) => `${folder}/.blueprint-sync/project.json`,
   copyFileIntoFolder: vi.fn(),
   moveFileIntoFolder: mockMoveFileIntoFolder,
@@ -92,6 +96,7 @@ vi.mock("./projectIo", () => ({
   httpGet: vi.fn(),
   writeBinaryFile: mockWriteBinaryFile,
   deleteFile: mockDeleteFile,
+  renameFile: mockRenameFile,
   readAnnotationFile: mockReadAnnotationFile,
   readBinaryFile: mockReadBinaryFile,
   readProjectMeta: mockReadProjectMeta,
@@ -134,6 +139,8 @@ import {
   persistCurrentAnnotations,
   refreshProjectPdfs,
   removeProjectLink,
+  removeProjectPdf,
+  renameProjectFile,
   importIncomingFile,
   shareCurrentProject,
 } from "./projectActions";
@@ -473,7 +480,7 @@ describe("projectActions", () => {
     expect(projectStore.currentPdf).toBe("図面/A.pdf");
   });
 
-  it("converts a picked jww into 図面 as pdf without moving the cad file", async () => {
+  it("copies a picked jww into 図面JWW and writes the converted pdf into 図面", async () => {
     projectStore.folder = "/projects/a";
     mockOpenPdfsFromDisk.mockResolvedValue([
       {
@@ -493,18 +500,79 @@ describe("projectActions", () => {
       bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
     });
     mockPathExists.mockResolvedValue(false);
-    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf"]);
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf", "図面JWW/1F.jww"]);
 
     await importPdfIntoProject();
 
     expect(mockReadBinaryFile).toHaveBeenCalledWith("/downloads/1F.jww");
     expect(mockConvertCadBytesToPdf).toHaveBeenCalledWith("1F.jww", Uint8Array.from([10, 11, 12]));
     expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面JWW/1F.jww",
+      Uint8Array.from([10, 11, 12]),
+    );
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
       "/projects/a/図面/1F.pdf",
       Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
     );
     expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+  });
+
+  it("rejects a jww when the converted pdf already exists", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "1F.jww",
+        path: "/downloads/1F.jww",
+        bytes: new Uint8Array(),
+      },
+    ]);
+    mockReadBinaryFile.mockResolvedValue(Uint8Array.from([10, 11, 12]));
+    mockConvertCadBytesToPdf.mockResolvedValue({
+      pdfName: "1F.pdf",
+      bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+    });
+    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面/1F.pdf");
+
+    await expect(importPdfIntoProject()).rejects.toThrow("同じ名前のファイルが既にあります");
+
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+  });
+
+  it("opens the paired drawing pdf when a jww is selected", async () => {
+    projectStore.folder = "/projects/a";
+    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面/1F.pdf");
+
+    await openProjectPdf("図面JWW/1F.jww");
+
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面/1F.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+  });
+
+  it("converts a jww when the paired drawing pdf is missing", async () => {
+    projectStore.folder = "/projects/a";
+    mockPathExists.mockResolvedValue(false);
+    mockReadBinaryFile.mockImplementation(async (path: string) => {
+      if (path === "/projects/a/図面JWW/1F.jww") {
+        return Uint8Array.from([10, 11, 12]);
+      }
+      return Uint8Array.from([1, 2, 3]);
+    });
+    mockConvertCadBytesToPdf.mockResolvedValue({
+      pdfName: "1F.pdf",
+      bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+    });
+
+    await openProjectPdf("図面JWW/1F.jww");
+
+    expect(mockConvertCadBytesToPdf).toHaveBeenCalledWith("1F.jww", Uint8Array.from([10, 11, 12]));
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面/1F.pdf",
+      Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+    );
     expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
     expect(projectStore.currentPdf).toBe("図面/1F.pdf");
   });
@@ -712,6 +780,93 @@ describe("projectActions", () => {
       "/projects/a",
       expect.objectContaining({ links: [] }),
     );
+  });
+
+  it("deletes a project pdf without switching the open drawing", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/A.pdf";
+    mockDeleteFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["図面/A.pdf"]);
+
+    await removeProjectPdf("図面/B.pdf");
+
+    expect(mockDeleteFile).toHaveBeenCalledWith("/projects/a/図面/B.pdf");
+    expect(mockDeleteFile).toHaveBeenCalledWith(
+      "/projects/a/.blueprint-sync/annotations/図面/B.pdf.json",
+    );
+    expect(projectStore.currentPdf).toBe("図面/A.pdf");
+    expect(projectStore.pdfs).toEqual(["図面/A.pdf"]);
+    expect(pdfStore.load).not.toHaveBeenCalled();
+  });
+
+  it("opens the next remaining pdf when the current drawing is deleted", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/A.pdf";
+    mockDeleteFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["図面JWW/1F.pdf"]);
+
+    await removeProjectPdf("図面/A.pdf");
+
+    expect(mockDeleteFile).toHaveBeenCalledWith("/projects/a/図面/A.pdf");
+    expect(projectStore.currentPdf).toBe("図面JWW/1F.pdf");
+    expect(pdfStore.load).toHaveBeenCalledWith("図面JWW/1F.pdf", new Uint8Array([1, 2, 3]));
+  });
+
+  it("renames a pdf and its annotation without reloading when it is the open drawing", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/1F.pdf";
+    pdfStore.name = "図面/1F.pdf";
+    mockPathExists.mockResolvedValue(false);
+    mockRenameFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["図面/平面.pdf"]);
+    mockWriteAnnotationFile.mockResolvedValue(undefined);
+
+    await renameProjectFile("図面/1F.pdf", "平面");
+
+    expect(mockRenameFile).toHaveBeenCalledWith("/projects/a/図面/1F.pdf", "/projects/a/図面/平面.pdf");
+    expect(mockRenameFile).toHaveBeenCalledWith(
+      "/projects/a/.blueprint-sync/annotations/図面/1F.pdf.json",
+      "/projects/a/.blueprint-sync/annotations/図面/平面.pdf.json",
+    );
+    expect(projectStore.currentPdf).toBe("図面/平面.pdf");
+    expect(pdfStore.name).toBe("図面/平面.pdf");
+    expect(pdfStore.load).not.toHaveBeenCalled();
+  });
+
+  it("renames a jww without touching the converted pdf", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/1F.pdf";
+    mockPathExists.mockResolvedValue(false);
+    mockRenameFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf", "図面JWW/平面.jww"]);
+
+    await renameProjectFile("図面JWW/1F.jww", "平面");
+
+    expect(mockRenameFile).toHaveBeenCalledWith(
+      "/projects/a/図面JWW/1F.jww",
+      "/projects/a/図面JWW/平面.jww",
+    );
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+  });
+
+  it("rejects invalid rename stems", async () => {
+    projectStore.folder = "/projects/a";
+
+    await expect(renameProjectFile("図面/1F.pdf", "..")).rejects.toThrow("ファイル名が不正です");
+    expect(mockRenameFile).not.toHaveBeenCalled();
+  });
+
+  it("deletes a jww without deleting the converted pdf", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/1F.pdf";
+    mockDeleteFile.mockResolvedValue(undefined);
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf"]);
+
+    await removeProjectPdf("図面JWW/1F.jww");
+
+    expect(mockDeleteFile).toHaveBeenCalledWith("/projects/a/図面JWW/1F.jww");
+    expect(mockDeleteFile).not.toHaveBeenCalledWith("/projects/a/図面/1F.pdf");
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
   });
 
   it("keeps project links unchanged when writing a new link fails", async () => {

@@ -1,7 +1,7 @@
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { readFileAsBytes } from "./fileAccess";
-import { cadPdfBasename, isCadDrawingBasename } from "./cadImport";
+import { isCadDrawingBasename } from "./cadImport";
 import { importCadBytesIntoOpenProject, openProjectPdf, persistCurrentAnnotations } from "./projectActions";
 import {
   isProjectPdfBasename,
@@ -77,16 +77,6 @@ export async function importBrowserPdfIntoProject(
     return importZipIntoOpenProject(await readFileAsBytes(file), kind);
   }
   if (isCadDrawingBasename(file.name)) {
-    const pdfName = cadPdfBasename(file.name);
-    if (!pdfName || !projectStore.folder) {
-      return false;
-    }
-    const relPath = joinProjectPdfRelPath(kind, pdfName);
-    const destPath = `${projectStore.folder}/${relPath}`;
-    if (await pathExists(destPath)) {
-      setDropError("同じ名前のPDFが既にあります");
-      return false;
-    }
     const persisted = await persistCurrentAnnotations();
     if (!persisted) {
       return false;
@@ -142,17 +132,6 @@ export async function importTauriPdfIntoProject(
     return importZipIntoOpenProject(await readBinaryFile(path), kind, path);
   }
   if (isCadDrawingBasename(name)) {
-    const pdfName = cadPdfBasename(name);
-    if (!pdfName || !projectStore.folder) {
-      setDropError("PDFファイル名が不正です");
-      return false;
-    }
-    const relPath = joinProjectPdfRelPath(kind, pdfName);
-    const destPath = `${projectStore.folder}/${relPath}`;
-    if (await pathExists(destPath)) {
-      setDropError("同じ名前のPDFが既にあります");
-      return false;
-    }
     const persisted = await persistCurrentAnnotations();
     if (!persisted) {
       return false;

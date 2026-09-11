@@ -40,9 +40,14 @@ pub fn cad_bytes_to_dxf_json(bytes: &[u8]) -> Result<serde_json::Value, String> 
     serde_json::to_value(&document).map_err(|error| error.to_string())
 }
 
+pub fn cad_bytes_to_pdf(bytes: &[u8]) -> Result<Vec<u8>, String> {
+    let document = cad_bytes_to_dxf(bytes)?;
+    crate::cad_pdf::dxf_document_to_pdf(&document)
+}
+
 #[cfg(test)]
 mod tests {
-    use super::cad_bytes_to_dxf;
+    use super::{cad_bytes_to_dxf, cad_bytes_to_pdf};
 
     #[test]
     fn rejects_bytes_that_are_not_jww_or_jwc() {
@@ -56,6 +61,36 @@ mod tests {
         assert!(
             error.starts_with("図面を読み込めませんでした"),
             "{error}"
+        );
+    }
+
+    #[test]
+    fn parses_the_sample_floor_plan_jww() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sample/03_平面図0829_配布用.jww");
+        let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("read {path:?}: {error}"));
+        let document = cad_bytes_to_dxf(&bytes).expect("sample jww should parse");
+        assert!(
+            !document.entities.is_empty(),
+            "expected drawing entities, got none"
+        );
+    }
+
+    #[test]
+    fn converts_the_sample_floor_plan_jww_to_a_pdf() {
+        let path = std::path::Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("../sample/03_平面図0829_配布用.jww");
+        let bytes = std::fs::read(&path).unwrap_or_else(|error| panic!("read {path:?}: {error}"));
+        let pdf = cad_bytes_to_pdf(&bytes).expect("sample jww should convert to pdf");
+        assert!(
+            pdf.starts_with(b"%PDF"),
+            "expected a pdf header, got {:?}",
+            pdf.get(..8)
+        );
+        assert!(
+            pdf.len() > 10_000,
+            "expected drawing content, got {} bytes",
+            pdf.len()
         );
     }
 }

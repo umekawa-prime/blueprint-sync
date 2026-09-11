@@ -1,4 +1,3 @@
-import { dxfDocumentToPdf, type DxfDocumentJson } from "./dxfToPdf";
 import { isTauriRuntime } from "./platform";
 
 function isSafeBasename(name: string): boolean {
@@ -23,14 +22,6 @@ export function cadPdfBasename(name: string): string | null {
   return name.replace(/\.(jww|jwc)$/i, ".pdf");
 }
 
-export async function parseCadToDxf(bytes: Uint8Array): Promise<DxfDocumentJson> {
-  if (!isTauriRuntime()) {
-    throw new Error("JWW/JWC の変換はデスクトップ版で行えます");
-  }
-  const { invoke } = await import("@tauri-apps/api/core");
-  return invoke<DxfDocumentJson>("parse_cad_to_dxf", { bytes: Array.from(bytes) });
-}
-
 export async function convertCadBytesToPdf(
   name: string,
   bytes: Uint8Array,
@@ -39,6 +30,27 @@ export async function convertCadBytesToPdf(
   if (!pdfName) {
     throw new Error("PDFファイル名が不正です");
   }
-  const dxf = await parseCadToDxf(bytes);
-  return { pdfName, bytes: await dxfDocumentToPdf(dxf) };
+  if (!isTauriRuntime()) {
+    throw new Error("JWW/JWC の変換はデスクトップ版で行えます");
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  const pdfBytes = await invoke<number[] | Uint8Array | ArrayBuffer>("convert_cad_to_pdf", {
+    bytes: Array.from(bytes),
+  });
+  const converted =
+    pdfBytes instanceof ArrayBuffer
+      ? new Uint8Array(pdfBytes)
+      : Uint8Array.from(pdfBytes);
+  return { pdfName, bytes: converted };
+}
+
+export async function bytesForStandaloneViewer(
+  name: string,
+  bytes: Uint8Array,
+): Promise<{ name: string; bytes: Uint8Array }> {
+  if (isCadDrawingBasename(name)) {
+    const converted = await convertCadBytesToPdf(name, bytes);
+    return { name: converted.pdfName, bytes: converted.bytes };
+  }
+  return { name, bytes };
 }

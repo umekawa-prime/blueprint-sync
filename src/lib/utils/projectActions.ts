@@ -5,19 +5,24 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
-import { convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
+import { cadPdfBasename, convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
 import { isTauriRuntime, usesSandboxProjects } from "./platform";
 import {
   createProjectMeta,
   dropRecent,
   folderDisplayName,
   isAllowedLinkUrl,
+  isProjectCadRelPath,
+  isProjectFileRelPath,
   isProjectPdfBasename,
   isProjectPdfRelPath,
   joinProjectPdfRelPath,
+  pairedDrawingPdfRelPath,
+  PROJECT_PDF_DIRS,
   projectPdfDisplayName,
   projectPdfKindDir,
   rememberRecent,
+  renamedProjectRelPath,
   type ProjectMeta,
   type ProjectPdfKind,
 } from "./projectFormat";
@@ -29,6 +34,8 @@ import {
   listProjectPdfs,
   listSandboxProjects,
   loadRecentProjects,
+  annotationPath,
+  legacyAnnotationPath,
   moveFileIntoFolder,
   pathExists,
   pickFolder,
@@ -37,6 +44,7 @@ import {
   readBinaryFile,
   readProjectMeta,
   removeDirAll,
+  renameFile,
   sandboxProjectsDir,
   saveRecentProjects,
   writeAnnotationFile,
@@ -430,6 +438,89 @@ export async function removeProjectLink(id: string): Promise<void> {
   }
 }
 
+export async function removeProjectPdf(relPath: string): Promise<void> {
+  const folder = projectStore.folder;
+  if (!folder) {
+    throw new Error("プロジェクトが開かれていません");
+  }
+  if (!isProjectFileRelPath(relPath)) {
+    throw new Error("PDFファイル名が不正です");
+  }
+  await deleteFile(`${folder}/${relPath}`);
+  if (isProjectPdfRelPath(relPath)) {
+    const note = annotationPath(folder, relPath);
+    try {
+      await deleteFile(note);
+    } catch {
+      // Annotation file may not exist yet.
+    }
+    const legacy = legacyAnnotationPath(folder, relPath);
+    if (legacy !== note) {
+      try {
+        await deleteFile(legacy);
+      } catch {
+        // Legacy annotation file is optional.
+      }
+    }
+  }
+  const wasCurrent = projectStore.currentPdf === relPath;
+  projectStore.pdfs = await listProjectPdfs(folder);
+  projectStore.error = "";
+  if (!wasCurrent) {
+    return;
+  }
+  annotationStore.clear();
+  pdfStore.clear();
+  projectStore.currentPdf = "";
+  const next = projectStore.pdfs[0];
+  if (next) {
+    await openProjectPdf(next);
+  }
+}
+
+export async function renameProjectFile(relPath: string, nextName: string): Promise<void> {
+  const folder = projectStore.folder;
+  if (!folder) {
+    throw new Error("プロジェクトが開かれていません");
+  }
+  const nextRel = renamedProjectRelPath(relPath, nextName);
+  if (!nextRel) {
+    throw new Error("ファイル名が不正です");
+  }
+  const fromRel = relPath.replaceAll("\\", "/");
+  if (nextRel === fromRel) {
+    return;
+  }
+  const destPath = `${folder}/${nextRel}`;
+  if (await pathExists(destPath)) {
+    throw new Error("同じ名前のファイルが既にあります");
+  }
+  await renameFile(`${folder}/${fromRel}`, destPath);
+  if (isProjectPdfRelPath(fromRel)) {
+    try {
+      await renameFile(annotationPath(folder, fromRel), annotationPath(folder, nextRel));
+    } catch {
+      // Annotation file may not exist yet.
+    }
+    const legacy = legacyAnnotationPath(folder, fromRel);
+    if (legacy !== annotationPath(folder, fromRel)) {
+      try {
+        await renameFile(legacy, annotationPath(folder, nextRel));
+      } catch {
+        // Legacy annotation file is optional.
+      }
+    }
+  }
+  projectStore.pdfs = await listProjectPdfs(folder);
+  projectStore.error = "";
+  if (projectStore.currentPdf === fromRel) {
+    projectStore.currentPdf = nextRel;
+    if (pdfStore.name === fromRel) {
+      pdfStore.name = nextRel;
+    }
+  }
+}
+
 export async function openProjectLink(url: string): Promise<void> {
   requireTauri();
   if (!isAllowedLinkUrl(url)) {
@@ -520,13 +611,40 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   if (!projectStore.folder) {
     return;
   }
-  if (!isProjectPdfRelPath(fileName)) {
+  const normalized = fileName.replaceAll("\\", "/");
+  if (isProjectCadRelPath(normalized)) {
+    const paired = pairedDrawingPdfRelPath(normalized);
+    if (!paired) {
+      setPdfOpenError("PDFファイル名が不正です");
+      return;
+    }
+    if (projectStore.currentPdf === paired && pdfStore.name === paired && pdfStore.document) {
+      return;
+    }
+    const pdfPath = `${projectStore.folder}/${paired}`;
+    if (!(await pathExists(pdfPath))) {
+      try {
+        const cadBytes = await readBinaryFile(`${projectStore.folder}/${normalized}`);
+        const converted = await convertCadBytesToPdf(projectPdfDisplayName(normalized), cadBytes);
+        await writeBinaryFile(pdfPath, converted.bytes);
+        projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+      } catch (error) {
+        const message = error instanceof Error ? error.message : "図面を読み込めませんでした";
+        pdfStore.status = message;
+        projectStore.error = message;
+        return;
+      }
+    }
+    await openProjectPdf(paired);
+    return;
+  }
+  if (!isProjectPdfRelPath(normalized)) {
     setPdfOpenError("PDFファイル名が不正です");
     return;
   }
   if (
-    projectStore.currentPdf === fileName &&
-    pdfStore.name === fileName &&
+    projectStore.currentPdf === normalized &&
+    pdfStore.name === normalized &&
     pdfStore.document
   ) {
     return;
@@ -540,16 +658,14 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     return;
   }
   try {
-    const bytes = await readBinaryFile(
-      `${projectStore.folder}/${fileName.replaceAll("\\", "/")}`,
-    );
+    const bytes = await readBinaryFile(`${projectStore.folder}/${normalized}`);
     let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {
       byPage: {},
       photoPins: {},
     };
     let annotationWarning = "";
     try {
-      nextAnnotations = await readAnnotationFile(projectStore.folder, fileName);
+      nextAnnotations = await readAnnotationFile(projectStore.folder, normalized);
     } catch {
       annotationWarning = "注釈を読み込めなかったため、空の注釈で開きました";
     }
@@ -565,11 +681,11 @@ export async function openProjectPdf(fileName: string): Promise<void> {
             nextAnnotations.pinSlideCountByPage,
           )
         : bytes;
-    await pdfStore.load(fileName, drawingBytes);
+    await pdfStore.load(normalized, drawingBytes);
     if (seq !== openPdfSeq) {
       return;
     }
-    projectStore.currentPdf = fileName;
+    projectStore.currentPdf = normalized;
     projectStore.error = "";
     pdfStore.status = annotationWarning;
     sendCurrentPdf();
@@ -653,12 +769,16 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
   if (files.length === 0) {
     return;
   }
-  const usable = files.filter(
-    (file) =>
-      isZipBasename(file.name) || isProjectPdfBasename(file.name) || isCadDrawingBasename(file.name),
-  );
+  const usable = files.filter((file) => {
+    if (kind === "cad") {
+      return isCadDrawingBasename(file.name);
+    }
+    return (
+      isZipBasename(file.name) || isProjectPdfBasename(file.name) || isCadDrawingBasename(file.name)
+    );
+  });
   if (usable.length === 0) {
-    setPdfOpenError("PDFファイル名が不正です");
+    setPdfOpenError(kind === "cad" ? "JWW/JWCファイルを選んでください" : "PDFファイル名が不正です");
     return;
   }
   const persisted = await persistCurrentAnnotations();
@@ -686,20 +806,27 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
 export async function importCadBytesIntoOpenProject(
   name: string,
   bytes: Uint8Array,
-  kind: ProjectPdfKind,
+  _kind: ProjectPdfKind,
 ): Promise<string> {
   const folder = projectStore.folder;
   if (!folder) {
     throw new Error("プロジェクトが開かれていません");
   }
-  const converted = await convertCadBytesToPdf(name, bytes);
-  const relPath = joinProjectPdfRelPath(kind, converted.pdfName);
-  const destPath = `${folder}/${relPath}`;
-  if (await pathExists(destPath)) {
-    throw new Error("同じ名前のPDFが既にあります");
+  const pdfName = cadPdfBasename(name);
+  if (!isCadDrawingBasename(name) || !pdfName) {
+    throw new Error("PDFファイル名が不正です");
   }
-  await writeBinaryFile(destPath, converted.bytes);
-  return relPath;
+  const cadRel = `${PROJECT_PDF_DIRS.cad}/${name}`;
+  const pdfRel = joinProjectPdfRelPath("drawing", pdfName);
+  const cadDest = `${folder}/${cadRel}`;
+  const pdfDest = `${folder}/${pdfRel}`;
+  if ((await pathExists(cadDest)) || (await pathExists(pdfDest))) {
+    throw new Error("同じ名前のファイルが既にあります");
+  }
+  const converted = await convertCadBytesToPdf(name, bytes);
+  await writeBinaryFile(cadDest, bytes);
+  await writeBinaryFile(pdfDest, converted.bytes);
+  return pdfRel;
 }
 
 async function importPickedPdfIntoOpenProject(

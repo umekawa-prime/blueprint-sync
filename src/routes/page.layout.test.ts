@@ -71,4 +71,21 @@ describe("editor shell layout", () => {
     expect(page).toContain("drawingLayerHiddenClass(cameraOpen)");
     expect(page.lastIndexOf("CameraCapture")).toBeGreaterThan(page.lastIndexOf("PdfViewer"));
   });
+
+  it("lists jww drawings separately with a delete control and hover title", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    expect(sidebar).toContain("図面 JWW");
+    expect(sidebar).toContain('onclick={() => onAddPdf("cad")}');
+    expect(sidebar).toContain("listSidebarCadFiles(projectStore.pdfs)");
+    expect(sidebar).toContain("title={projectPdfDisplayName(file)}");
+    expect(sidebar).toContain("removeProjectPdf");
+    expect(sidebar).toContain("aria-label={`${projectPdfDisplayName(file)} を削除`}");
+  });
+
+  it("renames sidebar files from a right-click menu", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    expect(sidebar).toContain("oncontextmenu");
+    expect(sidebar).toContain("名前を変更");
+    expect(sidebar).toContain("renameProjectFile");
+  });
 });

@@ -30,4 +30,11 @@ describe("webDemoFs", () => {
     expect(webHas(`${WEB_DEMO_FOLDER}/図面/追加図.pdf`)).toBe(true);
     expect(webReadBytes(`${WEB_DEMO_FOLDER}/図面/追加図.pdf`)).toEqual(new Uint8Array([2]));
   });
+
+  it("lists jww sources beside converted drawing pdfs", () => {
+    webPut(`${WEB_DEMO_FOLDER}/図面/1F.pdf`, new Uint8Array([1]));
+    webPut(`${WEB_DEMO_FOLDER}/図面JWW/1F.jww`, new Uint8Array([2]));
+
+    expect(webListPdfs(WEB_DEMO_FOLDER)).toEqual(["図面/1F.pdf", "図面JWW/1F.jww"]);
+  });
 });

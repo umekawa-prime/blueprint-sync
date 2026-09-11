@@ -16,8 +16,10 @@
   import { broadcastAnnotation } from "$lib/utils/connectionActions";
   import { imageBlobFromPicked, pickImagesFromDisk, readFileAsBytes } from "$lib/utils/fileAccess";
   import { createPhotoPinAssets } from "$lib/utils/imageResize";
+  import { bytesForStandaloneViewer, isCadDrawingBasename } from "$lib/utils/cadImport";
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
-  import { firstDroppedPdf, firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
+  import { firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
+  import { isZipBasename } from "$lib/utils/zipPdf";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
   import {
     addStraightPoint,
@@ -752,8 +754,7 @@
   }
 
   function droppedFileFromEvent(event: DragEvent): File | null {
-    const files = event.dataTransfer?.files;
-    return projectStore.isOpen ? firstDroppedPdfOrZip(files) : firstDroppedPdf(files);
+    return firstDroppedPdfOrZip(event.dataTransfer?.files);
   }
 
   function droppedPathFromEvent(event: DragEvent): string | null {
@@ -763,10 +764,22 @@
     if (!path) {
       return null;
     }
-    if (!projectStore.isOpen && !path.toLowerCase().endsWith(".pdf")) {
+    const name = path.split(/[/\\]/).pop() ?? "";
+    if (
+      !projectStore.isOpen &&
+      !path.toLowerCase().endsWith(".pdf") &&
+      !isCadDrawingBasename(name)
+    ) {
       return null;
     }
     return path;
+  }
+
+  async function loadStandaloneBytes(name: string, bytes: Uint8Array) {
+    annotationStore.clear();
+    const loaded = await bytesForStandaloneViewer(name, bytes);
+    await pdfStore.load(loaded.name, loaded.bytes);
+    sendCurrentPdf();
   }
 
   async function onPdfFileDrop(event: DragEvent) {
@@ -787,20 +800,18 @@
         await importTauriPdfIntoProject(path!);
         return;
       }
+      const droppedName = file?.name ?? path?.split(/[/\\]/).pop() ?? "";
+      if (isZipBasename(droppedName)) {
+        pdfStore.status = "ZIP はプロジェクトを開いてから取り込んでください";
+        return;
+      }
       if (path) {
         const { invoke } = await import("@tauri-apps/api/core");
         const bytes = await invoke<number[]>("read_file_bytes", { path });
-        annotationStore.clear();
-        await pdfStore.load(
-          path.split(/[/\\]/).pop() ?? "document.pdf",
-          Uint8Array.from(bytes),
-        );
-        sendCurrentPdf();
+        await loadStandaloneBytes(path.split(/[/\\]/).pop() ?? "document.pdf", Uint8Array.from(bytes));
         return;
       }
-      annotationStore.clear();
-      await pdfStore.load(file!.name, await readFileAsBytes(file!));
-      sendCurrentPdf();
+      await loadStandaloneBytes(file!.name, await readFileAsBytes(file!));
     } catch (error) {
       pdfStore.status = error instanceof Error ? error.message : "PDFを開けませんでした";
     }
@@ -832,12 +843,10 @@
           }
           const { invoke } = await import("@tauri-apps/api/core");
           const bytes = await invoke<number[]>("read_file_bytes", { path });
-          annotationStore.clear();
-          await pdfStore.load(
+          await loadStandaloneBytes(
             path.split(/[/\\]/).pop() ?? "document.pdf",
             Uint8Array.from(bytes),
           );
-          sendCurrentPdf();
         } catch (error) {
           pdfStore.status =
             error instanceof Error ? error.message : "PDFを開けませんでした";
