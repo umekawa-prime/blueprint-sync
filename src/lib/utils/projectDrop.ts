@@ -82,13 +82,12 @@ export async function importBrowserPdfIntoProject(
       return false;
     }
     try {
-      const imported = await importCadBytesIntoOpenProject(
+      await importCadBytesIntoOpenProject(
         file.name,
         await readFileAsBytes(file),
         kind,
       );
       projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-      await openProjectPdf(imported);
       return true;
     } catch (error) {
       setDropError(error instanceof Error ? error.message : "図面を読み込めませんでした");
@@ -137,9 +136,8 @@ export async function importTauriPdfIntoProject(
       return false;
     }
     try {
-      const imported = await importCadBytesIntoOpenProject(name, await readBinaryFile(path), kind);
+      await importCadBytesIntoOpenProject(name, await readBinaryFile(path), kind);
       projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-      await openProjectPdf(imported);
       return true;
     } catch (error) {
       setDropError(error instanceof Error ? error.message : "図面を読み込めませんでした");

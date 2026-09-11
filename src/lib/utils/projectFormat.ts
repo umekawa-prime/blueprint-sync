@@ -247,14 +247,14 @@ export function listPdfsOfKind(names: string[], kind: ProjectPdfKind): string[] 
 }
 
 export function annotationFileName(pdfName: string): string {
-  if (!isProjectPdfRelPath(pdfName)) {
+  if (!isProjectFileRelPath(pdfName)) {
     throw new Error("Invalid annotation file name");
   }
   return `${normalizeRelPath(pdfName).replaceAll("/", "__")}.json`;
 }
 
 export function legacyAnnotationFileName(pdfName: string): string {
-  if (!isProjectPdfRelPath(pdfName)) {
+  if (!isProjectFileRelPath(pdfName)) {
     throw new Error("Invalid annotation file name");
   }
   return `${normalizeRelPath(pdfName)}.json`;

@@ -480,7 +480,39 @@ describe("projectActions", () => {
     expect(projectStore.currentPdf).toBe("図面/A.pdf");
   });
 
-  it("copies a picked jww into 図面JWW and writes the converted pdf into 図面", async () => {
+  it("copies a picked jww into 図面JWW without converting it to pdf", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "1F.jww",
+        path: "/downloads/1F.jww",
+        bytes: new Uint8Array(),
+      },
+    ]);
+    mockReadBinaryFile.mockResolvedValue(Uint8Array.from([10, 11, 12]));
+    mockPathExists.mockResolvedValue(false);
+    mockListProjectPdfs.mockResolvedValue(["図面JWW/1F.jww"]);
+
+    await importPdfIntoProject();
+
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/downloads/1F.jww");
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面JWW/1F.jww",
+      Uint8Array.from([10, 11, 12]),
+    );
+    expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).not.toHaveBeenCalledWith(
+      "/projects/a/図面/1F.pdf",
+      expect.anything(),
+    );
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("");
+    expect(projectStore.pdfs).toEqual(["図面JWW/1F.jww"]);
+  });
+
+  it("adds a jww even when the converted drawing pdf already exists", async () => {
     projectStore.folder = "/projects/a";
     mockOpenPdfsFromDisk.mockResolvedValue([
       {
@@ -495,32 +527,25 @@ describe("projectActions", () => {
       }
       return Uint8Array.from([1, 2, 3]);
     });
-    mockConvertCadBytesToPdf.mockResolvedValue({
-      pdfName: "1F.pdf",
-      bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
-    });
-    mockPathExists.mockResolvedValue(false);
+    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面/1F.pdf");
     mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf", "図面JWW/1F.jww"]);
 
     await importPdfIntoProject();
 
-    expect(mockReadBinaryFile).toHaveBeenCalledWith("/downloads/1F.jww");
-    expect(mockConvertCadBytesToPdf).toHaveBeenCalledWith("1F.jww", Uint8Array.from([10, 11, 12]));
     expect(mockWriteBinaryFile).toHaveBeenCalledWith(
       "/projects/a/図面JWW/1F.jww",
       Uint8Array.from([10, 11, 12]),
     );
-    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+    expect(mockWriteBinaryFile).not.toHaveBeenCalledWith(
       "/projects/a/図面/1F.pdf",
-      Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+      expect.anything(),
     );
-    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
-    expect(mockDeleteFile).not.toHaveBeenCalled();
-    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
-    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+    expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("");
   });
 
-  it("rejects a jww when the converted pdf already exists", async () => {
+  it("rejects a jww when the same jww is already in the project", async () => {
     projectStore.folder = "/projects/a";
     mockOpenPdfsFromDisk.mockResolvedValue([
       {
@@ -530,37 +555,17 @@ describe("projectActions", () => {
       },
     ]);
     mockReadBinaryFile.mockResolvedValue(Uint8Array.from([10, 11, 12]));
-    mockConvertCadBytesToPdf.mockResolvedValue({
-      pdfName: "1F.pdf",
-      bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
-    });
-    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面/1F.pdf");
+    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面JWW/1F.jww");
 
     await expect(importPdfIntoProject()).rejects.toThrow("同じ名前のファイルが既にあります");
 
     expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+    expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
   });
 
-  it("opens the paired drawing pdf when a jww is selected", async () => {
+  it("opens a jww by converting in memory without writing a pdf", async () => {
     projectStore.folder = "/projects/a";
-    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面/1F.pdf");
-
-    await openProjectPdf("図面JWW/1F.jww");
-
-    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面/1F.pdf");
-    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
-    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
-  });
-
-  it("converts a jww when the paired drawing pdf is missing", async () => {
-    projectStore.folder = "/projects/a";
-    mockPathExists.mockResolvedValue(false);
-    mockReadBinaryFile.mockImplementation(async (path: string) => {
-      if (path === "/projects/a/図面JWW/1F.jww") {
-        return Uint8Array.from([10, 11, 12]);
-      }
-      return Uint8Array.from([1, 2, 3]);
-    });
+    mockReadBinaryFile.mockResolvedValue(Uint8Array.from([10, 11, 12]));
     mockConvertCadBytesToPdf.mockResolvedValue({
       pdfName: "1F.pdf",
       bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
@@ -568,13 +573,14 @@ describe("projectActions", () => {
 
     await openProjectPdf("図面JWW/1F.jww");
 
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面JWW/1F.jww");
     expect(mockConvertCadBytesToPdf).toHaveBeenCalledWith("1F.jww", Uint8Array.from([10, 11, 12]));
-    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
-      "/projects/a/図面/1F.pdf",
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).toHaveBeenCalledWith(
+      "図面JWW/1F.jww",
       Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
     );
-    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
-    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
+    expect(projectStore.currentPdf).toBe("図面JWW/1F.jww");
   });
 
   it("moves a picked schedule pdf into 工程表 and opens it", async () => {

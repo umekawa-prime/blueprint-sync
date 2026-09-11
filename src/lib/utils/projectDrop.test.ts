@@ -259,11 +259,11 @@ describe("projectDrop", () => {
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
 
-  it("converts a browser-dropped jww into 図面JWW without deleting the source", async () => {
+  it("copies a browser-dropped jww into 図面JWW without converting or opening it", async () => {
     const file = new File([new Uint8Array([10, 11])], "1F.jww");
     mockReadFileAsBytes.mockResolvedValue(Uint8Array.from([10, 11]));
-    mockImportCadBytesIntoOpenProject.mockResolvedValue("図面/1F.pdf");
-    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf", "図面JWW/1F.jww"]);
+    mockImportCadBytesIntoOpenProject.mockResolvedValue("図面JWW/1F.jww");
+    mockListProjectPdfs.mockResolvedValue(["図面JWW/1F.jww"]);
 
     await expect(importBrowserPdfIntoProject(file)).resolves.toBe(true);
 
@@ -274,13 +274,13 @@ describe("projectDrop", () => {
     );
     expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockDeleteFile).not.toHaveBeenCalled();
-    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/1F.pdf");
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
 
-  it("converts a tauri-dropped jwc into 図面JWW without deleting the cad file", async () => {
+  it("copies a tauri-dropped jwc into 図面JWW without converting or deleting the cad file", async () => {
     mockReadBinaryFile.mockResolvedValue(Uint8Array.from([7, 8, 9]));
-    mockImportCadBytesIntoOpenProject.mockResolvedValue("図面/旧図.pdf");
-    mockListProjectPdfs.mockResolvedValue(["図面/旧図.pdf", "図面JWW/旧図.jwc"]);
+    mockImportCadBytesIntoOpenProject.mockResolvedValue("図面JWW/旧図.jwc");
+    mockListProjectPdfs.mockResolvedValue(["図面JWW/旧図.jwc"]);
 
     await expect(importTauriPdfIntoProject("/downloads/旧図.jwc")).resolves.toBe(true);
 
@@ -292,6 +292,6 @@ describe("projectDrop", () => {
     );
     expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockDeleteFile).not.toHaveBeenCalled();
-    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/旧図.pdf");
+    expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
 });

@@ -5,7 +5,7 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
-import { cadPdfBasename, convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
+import { convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
 import { isTauriRuntime, usesSandboxProjects } from "./platform";
 import {
   createProjectMeta,
@@ -17,7 +17,6 @@ import {
   isProjectPdfBasename,
   isProjectPdfRelPath,
   joinProjectPdfRelPath,
-  pairedDrawingPdfRelPath,
   PROJECT_PDF_DIRS,
   projectPdfDisplayName,
   projectPdfKindDir,
@@ -447,7 +446,7 @@ export async function removeProjectPdf(relPath: string): Promise<void> {
     throw new Error("PDFファイル名が不正です");
   }
   await deleteFile(`${folder}/${relPath}`);
-  if (isProjectPdfRelPath(relPath)) {
+  if (isProjectFileRelPath(relPath)) {
     const note = annotationPath(folder, relPath);
     try {
       await deleteFile(note);
@@ -496,7 +495,7 @@ export async function renameProjectFile(relPath: string, nextName: string): Prom
     throw new Error("同じ名前のファイルが既にあります");
   }
   await renameFile(`${folder}/${fromRel}`, destPath);
-  if (isProjectPdfRelPath(fromRel)) {
+  if (isProjectFileRelPath(fromRel)) {
     try {
       await renameFile(annotationPath(folder, fromRel), annotationPath(folder, nextRel));
     } catch {
@@ -613,29 +612,51 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   }
   const normalized = fileName.replaceAll("\\", "/");
   if (isProjectCadRelPath(normalized)) {
-    const paired = pairedDrawingPdfRelPath(normalized);
-    if (!paired) {
-      setPdfOpenError("PDFファイル名が不正です");
+    if (
+      projectStore.currentPdf === normalized &&
+      pdfStore.name === normalized &&
+      pdfStore.document
+    ) {
       return;
     }
-    if (projectStore.currentPdf === paired && pdfStore.name === paired && pdfStore.document) {
+    const seq = ++openPdfSeq;
+    const persisted = await persistCurrentAnnotations();
+    if (!persisted) {
       return;
     }
-    const pdfPath = `${projectStore.folder}/${paired}`;
-    if (!(await pathExists(pdfPath))) {
+    if (seq !== openPdfSeq) {
+      return;
+    }
+    try {
+      const cadBytes = await readBinaryFile(`${projectStore.folder}/${normalized}`);
+      const converted = await convertCadBytesToPdf(projectPdfDisplayName(normalized), cadBytes);
+      let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {
+        byPage: {},
+        photoPins: {},
+      };
+      let annotationWarning = "";
       try {
-        const cadBytes = await readBinaryFile(`${projectStore.folder}/${normalized}`);
-        const converted = await convertCadBytesToPdf(projectPdfDisplayName(normalized), cadBytes);
-        await writeBinaryFile(pdfPath, converted.bytes);
-        projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-      } catch (error) {
-        const message = error instanceof Error ? error.message : "図面を読み込めませんでした";
-        pdfStore.status = message;
-        projectStore.error = message;
+        nextAnnotations = await readAnnotationFile(projectStore.folder, normalized);
+      } catch {
+        annotationWarning = "注釈を読み込めなかったため、空の注釈で開きました";
+      }
+      if (seq !== openPdfSeq) {
         return;
       }
+      annotationStore.importByPage(nextAnnotations.byPage, nextAnnotations.photoPins);
+      await pdfStore.load(normalized, converted.bytes);
+      if (seq !== openPdfSeq) {
+        return;
+      }
+      projectStore.currentPdf = normalized;
+      projectStore.error = "";
+      pdfStore.status = annotationWarning;
+      sendCurrentPdf();
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "図面を読み込めませんでした";
+      pdfStore.status = message;
+      projectStore.error = message;
     }
-    await openProjectPdf(paired);
     return;
   }
   if (!isProjectPdfRelPath(normalized)) {
@@ -800,7 +821,9 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
   projectStore.error = "";
   pdfStore.status = "";
   projectStore.pdfs = await listProjectPdfs(projectStore.folder);
-  await openProjectPdf(imported[0]);
+  if (!isProjectCadRelPath(imported[0])) {
+    await openProjectPdf(imported[0]);
+  }
 }
 
 export async function importCadBytesIntoOpenProject(
@@ -812,21 +835,16 @@ export async function importCadBytesIntoOpenProject(
   if (!folder) {
     throw new Error("プロジェクトが開かれていません");
   }
-  const pdfName = cadPdfBasename(name);
-  if (!isCadDrawingBasename(name) || !pdfName) {
+  if (!isCadDrawingBasename(name)) {
     throw new Error("PDFファイル名が不正です");
   }
   const cadRel = `${PROJECT_PDF_DIRS.cad}/${name}`;
-  const pdfRel = joinProjectPdfRelPath("drawing", pdfName);
   const cadDest = `${folder}/${cadRel}`;
-  const pdfDest = `${folder}/${pdfRel}`;
-  if ((await pathExists(cadDest)) || (await pathExists(pdfDest))) {
+  if (await pathExists(cadDest)) {
     throw new Error("同じ名前のファイルが既にあります");
   }
-  const converted = await convertCadBytesToPdf(name, bytes);
   await writeBinaryFile(cadDest, bytes);
-  await writeBinaryFile(pdfDest, converted.bytes);
-  return pdfRel;
+  return cadRel;
 }
 
 async function importPickedPdfIntoOpenProject(

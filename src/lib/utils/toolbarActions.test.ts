@@ -97,7 +97,18 @@ describe("toolbarActions", () => {
     expect(pdfStore.status).toBe("read failed");
   });
 
-  it("overwrites the open project PDF without a file dialog", async () => {
+  it("does not overwrite a jww with converted pdf bytes", async () => {
+    projectStore.currentPdf = "図面JWW/1F.jww";
+    pdfStore.name = "図面JWW/1F.jww";
+
+    const saved = await saveCurrentPdf();
+
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
+    expect(mockEmbedAnnotationPngOnPdf).not.toHaveBeenCalled();
+    expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
+    expect(annotationStore.dirty).toBe(false);
+    expect(saved).toBe(true);
+  });
     mockWriteBinaryFile.mockResolvedValue(undefined);
 
     const saved = await saveCurrentPdf();

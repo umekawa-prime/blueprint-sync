@@ -6,6 +6,7 @@ import { embedAnnotationPngOnPdf } from "./pdfExport";
 import { appendPhotoPinSlides } from "./pinSlides";
 import { persistCurrentAnnotations, importPdfIntoProject } from "./projectActions";
 import { writeBinaryFile } from "./projectIo";
+import { isProjectCadRelPath } from "./projectFormat";
 
 export async function openPdfIntoCurrentProject(): Promise<void> {
   try {
@@ -26,6 +27,15 @@ export async function saveCurrentPdf(): Promise<boolean> {
   }
 
   try {
+    if (isProjectCadRelPath(projectStore.currentPdf)) {
+      const persisted = await persistCurrentAnnotations();
+      if (persisted) {
+        pdfStore.status = "";
+        annotationStore.dirty = false;
+        return true;
+      }
+      return false;
+    }
     const overlays = await viewerApi.exportOverlays();
     const annotated = await embedAnnotationPngOnPdf(pdfStore.bytes, overlays);
     const output = await appendPhotoPinSlides(
