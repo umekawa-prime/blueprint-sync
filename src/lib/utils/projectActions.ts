@@ -5,6 +5,7 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
+import { convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
 import { isTauriRuntime, usesSandboxProjects } from "./platform";
 import {
   createProjectMeta,
@@ -653,7 +654,8 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
     return;
   }
   const usable = files.filter(
-    (file) => isZipBasename(file.name) || isProjectPdfBasename(file.name),
+    (file) =>
+      isZipBasename(file.name) || isProjectPdfBasename(file.name) || isCadDrawingBasename(file.name),
   );
   if (usable.length === 0) {
     setPdfOpenError("PDFファイル名が不正です");
@@ -681,6 +683,25 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
   await openProjectPdf(imported[0]);
 }
 
+export async function importCadBytesIntoOpenProject(
+  name: string,
+  bytes: Uint8Array,
+  kind: ProjectPdfKind,
+): Promise<string> {
+  const folder = projectStore.folder;
+  if (!folder) {
+    throw new Error("プロジェクトが開かれていません");
+  }
+  const converted = await convertCadBytesToPdf(name, bytes);
+  const relPath = joinProjectPdfRelPath(kind, converted.pdfName);
+  const destPath = `${folder}/${relPath}`;
+  if (await pathExists(destPath)) {
+    throw new Error("同じ名前のPDFが既にあります");
+  }
+  await writeBinaryFile(destPath, converted.bytes);
+  return relPath;
+}
+
 async function importPickedPdfIntoOpenProject(
   file: { name: string; bytes: Uint8Array; path?: string },
   kind: ProjectPdfKind,
@@ -690,6 +711,11 @@ async function importPickedPdfIntoOpenProject(
       file.bytes.length > 0 ? file.bytes : file.path ? await readBinaryFile(file.path) : file.bytes;
     const first = await importZipBytesIntoOpenProject(zipBytes, kind, file.path);
     return [first];
+  }
+  if (isCadDrawingBasename(file.name)) {
+    const sourceBytes =
+      file.bytes.length > 0 ? file.bytes : file.path ? await readBinaryFile(file.path) : file.bytes;
+    return [await importCadBytesIntoOpenProject(file.name, sourceBytes, kind)];
   }
   const relPath = joinProjectPdfRelPath(kind, file.name);
   if (file.path) {

@@ -42,6 +42,8 @@ describe("firstDroppedPdfOrZip", () => {
     const txt = new File(["a"], "notes.txt", { type: "text/plain" });
     const zip = new File(["b"], "plans.zip", { type: "" });
     expect(firstDroppedPdfOrZip([txt, zip])).toBe(zip);
+    const cad = new File(["c"], "1F.jww", { type: "" });
+    expect(firstDroppedPdfOrZip([txt, cad])).toBe(cad);
     expect(firstDroppedPdfOrZip([new File(["a"], "notes.txt")])).toBeNull();
   });
 });
@@ -63,6 +65,7 @@ describe("firstDroppedImportPath", () => {
     expect(firstDroppedImportPath(["/tmp/notes.txt", "/tmp/A.pdf", "/tmp/b.zip"])).toBe(
       "/tmp/A.pdf",
     );
+    expect(firstDroppedImportPath(["/tmp/notes.txt", "/tmp/1F.jww"])).toBe("/tmp/1F.jww");
     expect(firstDroppedImportPath(["/tmp/notes.txt"])).toBeNull();
   });
 });

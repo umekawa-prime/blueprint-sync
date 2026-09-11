@@ -1,3 +1,5 @@
+import { isCadDrawingBasename } from "./cadImport";
+
 export function isDroppedPdfFile(file: { name: string; type?: string }): boolean {
   if (file.type === "application/pdf") {
     return true;
@@ -10,6 +12,11 @@ export function isDroppedZipFile(file: { name: string; type?: string }): boolean
     return true;
   }
   return file.name.toLowerCase().endsWith(".zip");
+}
+
+export function isDroppedCadFile(file: { name: string }): boolean {
+  const name = file.name.split(/[/\\]/).pop() ?? file.name;
+  return isCadDrawingBasename(name);
 }
 
 export function firstDroppedPdf(
@@ -27,7 +34,9 @@ export function firstDroppedPdfOrZip(
   if (!files) {
     return null;
   }
-  return Array.from(files).find((file) => isDroppedPdfFile(file) || isDroppedZipFile(file)) ?? null;
+  return Array.from(files).find(
+    (file) => isDroppedPdfFile(file) || isDroppedZipFile(file) || isDroppedCadFile(file),
+  ) ?? null;
 }
 
 export function filePathsFromUriList(uriList: string): string[] {
@@ -63,7 +72,11 @@ function pathFromDroppedUri(value: string): string | null {
 
 export function isDroppedImportPath(path: string): boolean {
   const name = path.split(/[/\\]/).pop() ?? "";
-  return isDroppedPdfFile({ name, type: "" }) || isDroppedZipFile({ name, type: "" });
+  return (
+    isDroppedPdfFile({ name, type: "" }) ||
+    isDroppedZipFile({ name, type: "" }) ||
+    isCadDrawingBasename(name)
+  );
 }
 
 export function firstDroppedImportPath(paths: string[]): string | null {

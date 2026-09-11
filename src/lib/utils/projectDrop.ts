@@ -1,7 +1,8 @@
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { readFileAsBytes } from "./fileAccess";
-import { openProjectPdf, persistCurrentAnnotations } from "./projectActions";
+import { cadPdfBasename, isCadDrawingBasename } from "./cadImport";
+import { importCadBytesIntoOpenProject, openProjectPdf, persistCurrentAnnotations } from "./projectActions";
 import {
   isProjectPdfBasename,
   joinProjectPdfRelPath,
@@ -75,6 +76,35 @@ export async function importBrowserPdfIntoProject(
   if (isZipBasename(file.name)) {
     return importZipIntoOpenProject(await readFileAsBytes(file), kind);
   }
+  if (isCadDrawingBasename(file.name)) {
+    const pdfName = cadPdfBasename(file.name);
+    if (!pdfName || !projectStore.folder) {
+      return false;
+    }
+    const relPath = joinProjectPdfRelPath(kind, pdfName);
+    const destPath = `${projectStore.folder}/${relPath}`;
+    if (await pathExists(destPath)) {
+      setDropError("同じ名前のPDFが既にあります");
+      return false;
+    }
+    const persisted = await persistCurrentAnnotations();
+    if (!persisted) {
+      return false;
+    }
+    try {
+      const imported = await importCadBytesIntoOpenProject(
+        file.name,
+        await readFileAsBytes(file),
+        kind,
+      );
+      projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+      await openProjectPdf(imported);
+      return true;
+    } catch (error) {
+      setDropError(error instanceof Error ? error.message : "図面を読み込めませんでした");
+      return false;
+    }
+  }
   if (!isProjectPdfBasename(file.name)) {
     setDropError("PDFファイル名が不正です");
     return false;
@@ -110,6 +140,32 @@ export async function importTauriPdfIntoProject(
   const name = path.split(/[/\\]/).pop() ?? "";
   if (isZipBasename(name)) {
     return importZipIntoOpenProject(await readBinaryFile(path), kind, path);
+  }
+  if (isCadDrawingBasename(name)) {
+    const pdfName = cadPdfBasename(name);
+    if (!pdfName || !projectStore.folder) {
+      setDropError("PDFファイル名が不正です");
+      return false;
+    }
+    const relPath = joinProjectPdfRelPath(kind, pdfName);
+    const destPath = `${projectStore.folder}/${relPath}`;
+    if (await pathExists(destPath)) {
+      setDropError("同じ名前のPDFが既にあります");
+      return false;
+    }
+    const persisted = await persistCurrentAnnotations();
+    if (!persisted) {
+      return false;
+    }
+    try {
+      const imported = await importCadBytesIntoOpenProject(name, await readBinaryFile(path), kind);
+      projectStore.pdfs = await listProjectPdfs(projectStore.folder);
+      await openProjectPdf(imported);
+      return true;
+    } catch (error) {
+      setDropError(error instanceof Error ? error.message : "図面を読み込めませんでした");
+      return false;
+    }
   }
   if (!isProjectPdfBasename(name)) {
     setDropError("PDFファイル名が不正です");

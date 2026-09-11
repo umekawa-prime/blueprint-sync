@@ -286,16 +286,16 @@ pub fn pick_explorer_folder() -> ExplorerDialogResult {
 
 pub fn pick_explorer_pdf_or_zip() -> ExplorerDialogResult {
     run_powershell(&explorer_open_script(
-        "PDF または ZIP を選択",
-        Some("PDF / ZIP (*.pdf;*.zip)|*.pdf;*.zip|すべてのファイル (*.*)|*.*"),
+        "図面を選択",
+        Some("PDF / ZIP / JWW / JWC (*.pdf;*.zip;*.jww;*.jwc)|*.pdf;*.zip;*.jww;*.jwc|すべてのファイル (*.*)|*.*"),
         false,
     ))
 }
 
 pub fn pick_explorer_pdfs_or_zips() -> ExplorerDialogResult {
     run_powershell(&explorer_open_script_opts(
-        "PDF または ZIP を選択",
-        Some("PDF / ZIP (*.pdf;*.zip)|*.pdf;*.zip|すべてのファイル (*.*)|*.*"),
+        "図面を選択",
+        Some("PDF / ZIP / JWW / JWC (*.pdf;*.zip;*.jww;*.jwc)|*.pdf;*.zip;*.jww;*.jwc|すべてのファイル (*.*)|*.*"),
         false,
         true,
     ))
@@ -393,7 +393,7 @@ pub fn pick_file_native() -> Option<PathBuf> {
         wsl.then(pick_explorer_pdf_or_zip),
         || {
             rfd::FileDialog::new()
-                .add_filter("PDF / ZIP", &["pdf", "zip"])
+                .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
                 .pick_file()
         },
     )
@@ -406,7 +406,7 @@ pub fn pick_files_native() -> Vec<PathBuf> {
         wsl.then(pick_explorer_pdfs_or_zips),
         || {
             rfd::FileDialog::new()
-                .add_filter("PDF / ZIP", &["pdf", "zip"])
+                .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
                 .pick_files()
                 .unwrap_or_default()
         },
@@ -602,14 +602,15 @@ mod tests {
     #[test]
     fn explorer_open_script_can_multiselect_pdfs() {
         let script = explorer_open_script_opts(
-            "PDF または ZIP を選択",
-            Some("PDF / ZIP (*.pdf;*.zip)|*.pdf;*.zip|すべてのファイル (*.*)|*.*"),
+            "図面を選択",
+            Some("PDF / ZIP / JWW / JWC (*.pdf;*.zip;*.jww;*.jwc)|*.pdf;*.zip;*.jww;*.jwc|すべてのファイル (*.*)|*.*"),
             false,
             true,
         );
         assert!(script.contains("$dialog.Multiselect = $true"), "{script}");
         assert!(script.contains("Write-Output $dialog.FileNames"), "{script}");
-        assert!(!script.contains("$dialog.Multiselect = $false"), "{script}");
+        assert!(script.contains("*.jww"), "{script}");
+        assert!(script.contains("*.jwc"), "{script}");
     }
 
     #[test]

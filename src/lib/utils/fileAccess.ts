@@ -17,7 +17,7 @@ export async function openPdfsFromDisk(): Promise<PickedPdf[]> {
     }));
   }
 
-  return pickFilesInBrowser(".pdf,.zip,application/pdf,application/zip", true);
+  return pickFilesInBrowser(".pdf,.zip,.jww,.jwc,application/pdf,application/zip", true);
 }
 
 export async function openPdfFromDisk(): Promise<PickedPdf | null> {

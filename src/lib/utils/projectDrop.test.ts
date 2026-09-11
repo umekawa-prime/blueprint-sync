@@ -15,6 +15,7 @@ const {
   mockWriteBinaryFile,
   mockDeleteFile,
   mockReadBinaryFile,
+  mockImportCadBytesIntoOpenProject,
 } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
   mockReadFileAsBytes: vi.fn(),
@@ -27,6 +28,7 @@ const {
   mockWriteBinaryFile: vi.fn(),
   mockDeleteFile: vi.fn(),
   mockReadBinaryFile: vi.fn(),
+  mockImportCadBytesIntoOpenProject: vi.fn(),
 }));
 
 vi.mock("@tauri-apps/api/core", () => ({
@@ -47,6 +49,7 @@ vi.mock("./projectActions", async () => {
     ...actual,
     persistCurrentAnnotations: mockPersistCurrentAnnotations,
     openProjectPdf: mockOpenProjectPdf,
+    importCadBytesIntoOpenProject: mockImportCadBytesIntoOpenProject,
   };
 });
 
@@ -254,5 +257,41 @@ describe("projectDrop", () => {
     expect(mockWriteBinaryFile).not.toHaveBeenCalled();
     expect(mockDeleteFile).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
+  });
+
+  it("converts a browser-dropped jww into 図面 without deleting the source", async () => {
+    const file = new File([new Uint8Array([10, 11])], "1F.jww");
+    mockReadFileAsBytes.mockResolvedValue(Uint8Array.from([10, 11]));
+    mockImportCadBytesIntoOpenProject.mockResolvedValue("図面/1F.pdf");
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf"]);
+
+    await expect(importBrowserPdfIntoProject(file)).resolves.toBe(true);
+
+    expect(mockImportCadBytesIntoOpenProject).toHaveBeenCalledWith(
+      "1F.jww",
+      Uint8Array.from([10, 11]),
+      "drawing",
+    );
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/1F.pdf");
+  });
+
+  it("converts a tauri-dropped jwc into 図面 without deleting the cad file", async () => {
+    mockReadBinaryFile.mockResolvedValue(Uint8Array.from([7, 8, 9]));
+    mockImportCadBytesIntoOpenProject.mockResolvedValue("図面/旧図.pdf");
+    mockListProjectPdfs.mockResolvedValue(["図面/旧図.pdf"]);
+
+    await expect(importTauriPdfIntoProject("/downloads/旧図.jwc")).resolves.toBe(true);
+
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/downloads/旧図.jwc");
+    expect(mockImportCadBytesIntoOpenProject).toHaveBeenCalledWith(
+      "旧図.jwc",
+      Uint8Array.from([7, 8, 9]),
+      "drawing",
+    );
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/旧図.pdf");
   });
 });

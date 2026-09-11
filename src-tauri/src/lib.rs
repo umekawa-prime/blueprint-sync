@@ -1,6 +1,7 @@
 mod sync_server;
 mod sandbox;
 mod share;
+mod cad_dxf;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod explorer_dialog;
 
@@ -71,6 +72,11 @@ async fn stop_sync_server(state: State<'_, Arc<SyncServer>>) -> Result<(), Strin
 #[tauri::command]
 fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
     std::fs::read(path).map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+fn parse_cad_to_dxf(bytes: Vec<u8>) -> Result<serde_json::Value, String> {
+    cad_dxf::cad_bytes_to_dxf_json(&bytes)
 }
 
 #[tauri::command]
@@ -479,6 +485,7 @@ pub fn run() {
             stop_sync_server,
             read_file_bytes,
             write_file_bytes,
+            parse_cad_to_dxf,
             pick_pdf_file,
             pick_pdf_files,
             pick_folder,

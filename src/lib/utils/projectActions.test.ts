@@ -31,6 +31,7 @@ const {
   mockRemoveDirAll,
   mockListSandboxProjects,
   mockShareFileBytes,
+  mockConvertCadBytesToPdf,
 } = vi.hoisted(() => ({
   mockOpenPdfsFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
@@ -57,11 +58,20 @@ const {
   mockRemoveDirAll: vi.fn(),
   mockListSandboxProjects: vi.fn(),
   mockShareFileBytes: vi.fn(),
+  mockConvertCadBytesToPdf: vi.fn(),
 }));
 
 vi.mock("./fileAccess", () => ({
   openPdfsFromDisk: mockOpenPdfsFromDisk,
 }));
+
+vi.mock("./cadImport", async () => {
+  const actual = await vi.importActual<typeof import("./cadImport")>("./cadImport");
+  return {
+    ...actual,
+    convertCadBytesToPdf: mockConvertCadBytesToPdf,
+  };
+});
 
 vi.mock("./platform", () => ({
   isTauriRuntime: mockIsTauriRuntime,
@@ -461,6 +471,42 @@ describe("projectActions", () => {
     expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面/A.pdf");
     expect(pdfStore.load).toHaveBeenCalledWith("図面/A.pdf", new Uint8Array([1, 2, 3]));
     expect(projectStore.currentPdf).toBe("図面/A.pdf");
+  });
+
+  it("converts a picked jww into 図面 as pdf without moving the cad file", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "1F.jww",
+        path: "/downloads/1F.jww",
+        bytes: new Uint8Array(),
+      },
+    ]);
+    mockReadBinaryFile.mockImplementation(async (path: string) => {
+      if (path === "/downloads/1F.jww") {
+        return Uint8Array.from([10, 11, 12]);
+      }
+      return Uint8Array.from([1, 2, 3]);
+    });
+    mockConvertCadBytesToPdf.mockResolvedValue({
+      pdfName: "1F.pdf",
+      bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+    });
+    mockPathExists.mockResolvedValue(false);
+    mockListProjectPdfs.mockResolvedValue(["図面/1F.pdf"]);
+
+    await importPdfIntoProject();
+
+    expect(mockReadBinaryFile).toHaveBeenCalledWith("/downloads/1F.jww");
+    expect(mockConvertCadBytesToPdf).toHaveBeenCalledWith("1F.jww", Uint8Array.from([10, 11, 12]));
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面/1F.pdf",
+      Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
+    );
+    expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
+    expect(mockDeleteFile).not.toHaveBeenCalled();
+    expect(pdfStore.load).toHaveBeenCalledWith("図面/1F.pdf", new Uint8Array([1, 2, 3]));
+    expect(projectStore.currentPdf).toBe("図面/1F.pdf");
   });
 
   it("moves a picked schedule pdf into 工程表 and opens it", async () => {
