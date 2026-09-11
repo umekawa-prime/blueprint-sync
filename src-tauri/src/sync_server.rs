@@ -6,8 +6,8 @@ use local_ip_address::list_afinet_netifas;
 use serde::Serialize;
 use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, watch, Mutex};
-use tokio_tungstenite::tungstenite::Message;
 use tokio_tungstenite::accept_async;
+use tokio_tungstenite::tungstenite::Message;
 
 pub const DEFAULT_PORT: u16 = 7840;
 static CLIENT_SEQ: AtomicU64 = AtomicU64::new(1);

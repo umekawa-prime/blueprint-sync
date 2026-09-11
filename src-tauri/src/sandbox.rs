@@ -87,7 +87,11 @@ pub fn list_sandbox_projects(app: AppHandle) -> Result<Vec<RecentProject>, Strin
     let mut items = Vec::new();
     for entry in entries {
         let entry = entry.map_err(|error| error.to_string())?;
-        if !entry.file_type().map_err(|error| error.to_string())?.is_dir() {
+        if !entry
+            .file_type()
+            .map_err(|error| error.to_string())?
+            .is_dir()
+        {
             continue;
         }
         let path = entry.path();

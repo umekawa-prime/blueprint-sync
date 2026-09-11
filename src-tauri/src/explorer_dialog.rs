@@ -30,7 +30,9 @@ pub fn looks_like_windows_path(path: &str) -> bool {
         .or_else(|| trimmed.strip_prefix("//?/"))
         .unwrap_or(trimmed);
     let bytes = stripped.as_bytes();
-    (bytes.len() >= 2 && bytes[1] == b':') || stripped.starts_with(r"\\") || stripped.starts_with("//")
+    (bytes.len() >= 2 && bytes[1] == b':')
+        || stripped.starts_with(r"\\")
+        || stripped.starts_with("//")
 }
 
 pub fn to_local_fs_path(path: &str) -> String {
@@ -206,7 +208,6 @@ $timer.Dispose()
 $form.Dispose()
 "#;
 
-
 fn explorer_open_script(title: &str, filter: Option<&str>, folder_mode: bool) -> String {
     explorer_open_script_opts(title, filter, folder_mode, false)
 }
@@ -220,7 +221,10 @@ fn explorer_open_script_opts(
     let mut script = String::from(EXPLORER_DIALOG_PRELUDE);
     script.push_str("$dialog = New-Object System.Windows.Forms.OpenFileDialog\n");
     script.push_str("$dialog.AutoUpgradeEnabled = $true\n");
-    script.push_str(&format!("$dialog.Title = {}\n", powershell_single_quote(title)));
+    script.push_str(&format!(
+        "$dialog.Title = {}\n",
+        powershell_single_quote(title)
+    ));
     script.push_str(&format!(
         "$dialog.Multiselect = {}\n",
         if multiselect { "$true" } else { "$false" }
@@ -232,7 +236,10 @@ fn explorer_open_script_opts(
         script.push_str("$dialog.ValidateNames = $false\n");
         script.push_str("$dialog.FileName = 'このフォルダーを選択'\n");
     } else if let Some(filter) = filter {
-        script.push_str(&format!("$dialog.Filter = {}\n", powershell_single_quote(filter)));
+        script.push_str(&format!(
+            "$dialog.Filter = {}\n",
+            powershell_single_quote(filter)
+        ));
     }
     script.push_str(EXPLORER_SHOW_DIALOG);
     script.push_str("if ($result -ne [System.Windows.Forms.DialogResult]::OK) { exit 0 }\n");
@@ -259,7 +266,10 @@ fn explorer_save_script(title: &str, default_name: &str, default_dir: Option<&st
     let mut script = String::from(EXPLORER_DIALOG_PRELUDE);
     script.push_str("$dialog = New-Object System.Windows.Forms.SaveFileDialog\n");
     script.push_str("$dialog.AutoUpgradeEnabled = $true\n");
-    script.push_str(&format!("$dialog.Title = {}\n", powershell_single_quote(title)));
+    script.push_str(&format!(
+        "$dialog.Title = {}\n",
+        powershell_single_quote(title)
+    ));
     script.push_str("$dialog.Filter = 'PDF (*.pdf)|*.pdf'\n");
     script.push_str("$dialog.AddExtension = $true\n");
     script.push_str("$dialog.DefaultExt = 'pdf'\n");
@@ -379,38 +389,28 @@ fn finish_native_pick(
 
 pub fn pick_folder_native() -> Option<PathBuf> {
     let wsl = is_wsl();
-    finish_native_pick(
-        wsl,
-        wsl.then(pick_explorer_folder),
-        || rfd::FileDialog::new().pick_folder(),
-    )
+    finish_native_pick(wsl, wsl.then(pick_explorer_folder), || {
+        rfd::FileDialog::new().pick_folder()
+    })
 }
 
 pub fn pick_file_native() -> Option<PathBuf> {
     let wsl = is_wsl();
-    finish_native_pick(
-        wsl,
-        wsl.then(pick_explorer_pdf_or_zip),
-        || {
-            rfd::FileDialog::new()
-                .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
-                .pick_file()
-        },
-    )
+    finish_native_pick(wsl, wsl.then(pick_explorer_pdf_or_zip), || {
+        rfd::FileDialog::new()
+            .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
+            .pick_file()
+    })
 }
 
 pub fn pick_files_native() -> Vec<PathBuf> {
     let wsl = is_wsl();
-    finish_native_picks(
-        wsl,
-        wsl.then(pick_explorer_pdfs_or_zips),
-        || {
-            rfd::FileDialog::new()
-                .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
-                .pick_files()
-                .unwrap_or_default()
-        },
-    )
+    finish_native_picks(wsl, wsl.then(pick_explorer_pdfs_or_zips), || {
+        rfd::FileDialog::new()
+            .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
+            .pick_files()
+            .unwrap_or_default()
+    })
 }
 
 fn finish_native_picks(
@@ -446,16 +446,12 @@ pub fn pick_image_native() -> Option<PathBuf> {
 
 pub fn pick_images_native() -> Vec<PathBuf> {
     let wsl = is_wsl();
-    finish_native_picks(
-        wsl,
-        wsl.then(pick_explorer_images),
-        || {
-            rfd::FileDialog::new()
-                .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
-                .pick_files()
-                .unwrap_or_default()
-        },
-    )
+    finish_native_picks(wsl, wsl.then(pick_explorer_images), || {
+        rfd::FileDialog::new()
+            .add_filter("Images", &["png", "jpg", "jpeg", "webp", "gif", "bmp"])
+            .pick_files()
+            .unwrap_or_default()
+    })
 }
 
 pub fn save_file_native(default_name: &str, default_dir: Option<&str>) -> Option<PathBuf> {
@@ -608,7 +604,10 @@ mod tests {
             true,
         );
         assert!(script.contains("$dialog.Multiselect = $true"), "{script}");
-        assert!(script.contains("Write-Output $dialog.FileNames"), "{script}");
+        assert!(
+            script.contains("Write-Output $dialog.FileNames"),
+            "{script}"
+        );
         assert!(script.contains("*.jww"), "{script}");
         assert!(script.contains("*.jwc"), "{script}");
     }
@@ -622,7 +621,10 @@ mod tests {
             true,
         );
         assert!(script.contains("$dialog.Multiselect = $true"), "{script}");
-        assert!(script.contains("Write-Output $dialog.FileNames"), "{script}");
+        assert!(
+            script.contains("Write-Output $dialog.FileNames"),
+            "{script}"
+        );
         assert!(script.contains("画像を選択"), "{script}");
     }
 

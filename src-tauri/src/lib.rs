@@ -1,17 +1,18 @@
-mod sync_server;
-mod sandbox;
-mod share;
 mod cad_dxf;
+mod cad_font;
 mod cad_pdf;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod explorer_dialog;
+mod sandbox;
+mod share;
+mod sync_server;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::Serialize;
-use tauri::{AppHandle, Emitter, Manager, State};
 use tauri::ipc::Response;
+use tauri::{AppHandle, Emitter, Manager, State};
 
 use crate::sandbox::{
     list_project_files, list_sandbox_projects, remove_dir_all, sandbox_projects_dir, RecentProject,
@@ -267,7 +268,9 @@ fn project_pdf_rel_name(prefix: Option<&str>, name: &str) -> Option<String> {
         return None;
     }
     match prefix {
-        Some(dir) if dir == "図面" || dir == "工程表" || dir == "図面JWW" => Some(format!("{dir}/{name}")),
+        Some(dir) if dir == "図面" || dir == "工程表" || dir == "図面JWW" => {
+            Some(format!("{dir}/{name}"))
+        }
         None => Some(name.to_string()),
         _ => None,
     }
@@ -299,9 +302,7 @@ fn copy_file_into_folder(source: String, folder: String) -> Result<String, Strin
 
     match decide_copy_into_folder(&source_canon, &dest_canon, dest_exists) {
         CopyIntoFolderDecision::SkipSamePath => Ok(dest.to_string_lossy().into_owned()),
-        CopyIntoFolderDecision::NameCollision => {
-            Err("同じ名前のPDFが既にあります".to_string())
-        }
+        CopyIntoFolderDecision::NameCollision => Err("同じ名前のPDFが既にあります".to_string()),
         CopyIntoFolderDecision::Proceed => {
             std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
             std::fs::copy(&source_path, &dest).map_err(|error| error.to_string())?;
@@ -370,7 +371,11 @@ async fn http_get(url: String) -> Result<HttpGetPayload, String> {
         .user_agent("BlueprintSync/0.1")
         .build()
         .map_err(|error| error.to_string())?;
-    let response = client.get(parsed).send().await.map_err(|error| error.to_string())?;
+    let response = client
+        .get(parsed)
+        .send()
+        .await
+        .map_err(|error| error.to_string())?;
     let status = response.status().as_u16();
     let content_type = response
         .headers()
@@ -395,7 +400,10 @@ async fn http_get(url: String) -> Result<HttpGetPayload, String> {
 }
 
 fn recent_path(app: &AppHandle) -> Result<PathBuf, String> {
-    let dir = app.path().app_data_dir().map_err(|error| error.to_string())?;
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
     std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
     Ok(dir.join("recent-projects.json"))
 }
@@ -433,7 +441,8 @@ fn save_pdf_file(
     bytes: Vec<u8>,
     default_dir: Option<String>,
 ) -> Result<bool, String> {
-    let Some(path) = explorer_dialog::save_file_native(&default_name, default_dir.as_deref()) else {
+    let Some(path) = explorer_dialog::save_file_native(&default_name, default_dir.as_deref())
+    else {
         return Ok(false);
     };
 
@@ -619,7 +628,10 @@ mod tests {
 
     #[test]
     fn lists_root_and_kind_prefixed_pdf_names() {
-        assert_eq!(project_pdf_rel_name(None, "A.pdf").as_deref(), Some("A.pdf"));
+        assert_eq!(
+            project_pdf_rel_name(None, "A.pdf").as_deref(),
+            Some("A.pdf")
+        );
         assert_eq!(
             project_pdf_rel_name(Some("図面"), "1F.pdf").as_deref(),
             Some("図面/1F.pdf")
@@ -681,6 +693,9 @@ mod tests {
 
     #[test]
     fn invalid_recent_projects_json_returns_empty_list() {
-        assert_eq!(parse_recent_projects_json("{not json}"), Vec::<RecentProject>::new());
+        assert_eq!(
+            parse_recent_projects_json("{not json}"),
+            Vec::<RecentProject>::new()
+        );
     }
 }

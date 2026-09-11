@@ -1,6 +1,8 @@
 use ezjww_core::dxf::{convert_document_with_options, ConvertOptions, DxfDocument};
 use ezjww_core::format::{detect_format, CadFormat};
-use ezjww_core::jwc::{convert_jwc_document, parse_jwc_document, JwcConvertOptions, JwcCoordinateSpace};
+use ezjww_core::jwc::{
+    convert_jwc_document, parse_jwc_document, JwcConvertOptions, JwcCoordinateSpace,
+};
 use ezjww_core::parser::parse_document;
 
 const CONVERT: ConvertOptions = ConvertOptions {
@@ -13,15 +15,13 @@ pub fn cad_bytes_to_dxf(bytes: &[u8]) -> Result<DxfDocument, String> {
     match detect_format(bytes) {
         None => Err("JWW/JWCファイルではありません".to_string()),
         Some(CadFormat::Jww) => {
-            let document = parse_document(bytes).map_err(|error| {
-                format!("図面を読み込めませんでした: {error}")
-            })?;
+            let document = parse_document(bytes)
+                .map_err(|error| format!("図面を読み込めませんでした: {error}"))?;
             Ok(convert_document_with_options(&document, CONVERT))
         }
         Some(CadFormat::Jwc) => {
-            let document = parse_jwc_document(bytes).map_err(|error| {
-                format!("図面を読み込めませんでした: {error}")
-            })?;
+            let document = parse_jwc_document(bytes)
+                .map_err(|error| format!("図面を読み込めませんでした: {error}"))?;
             let converted = convert_jwc_document(
                 &document,
                 JwcConvertOptions {
@@ -58,10 +58,7 @@ mod tests {
     #[test]
     fn rejects_a_truncated_jww_signature() {
         let error = cad_bytes_to_dxf(b"JwwData.").unwrap_err();
-        assert!(
-            error.starts_with("図面を読み込めませんでした"),
-            "{error}"
-        );
+        assert!(error.starts_with("図面を読み込めませんでした"), "{error}");
     }
 
     #[test]
@@ -91,6 +88,11 @@ mod tests {
             pdf.len() > 10_000,
             "expected drawing content, got {} bytes",
             pdf.len()
+        );
+        let as_text = String::from_utf8_lossy(&pdf);
+        assert!(
+            !as_text.contains("(???"),
+            "CAD Japanese text was replaced with question marks"
         );
     }
 }

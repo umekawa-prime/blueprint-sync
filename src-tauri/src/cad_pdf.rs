@@ -3,6 +3,9 @@ use std::collections::HashSet;
 use std::f64::consts::PI;
 use std::fmt::Write as FmtWrite;
 use std::io::Write as IoWrite;
+use ttf_parser::Face;
+
+use crate::cad_font::{append_text_outlines, loaded_cjk_face};
 
 const MM_TO_PT: f64 = 72.0 / 25.4;
 const MARGIN_MM: f64 = 10.0;
@@ -213,7 +216,12 @@ fn polar(cx: f64, cy: f64, radius: f64, degrees: f64) -> (f64, f64) {
     (cx + radius * rad.cos(), cy + radius * rad.sin())
 }
 
-fn draw_entity(out: &mut String, entity: &DxfEntity, xform: &PageXform) {
+fn draw_entity(
+    out: &mut String,
+    entity: &DxfEntity,
+    xform: &PageXform,
+    cjk_face: Option<&Face<'_>>,
+) {
     match entity {
         DxfEntity::Insert(_) => {}
         DxfEntity::Line(v) => {
@@ -290,8 +298,7 @@ fn draw_entity(out: &mut String, entity: &DxfEntity, xform: &PageXform) {
             let steps = 72;
             for i in 0..=steps {
                 let t = start + (end - start) * (i as f64) / (steps as f64);
-                let wx = v.center_x
-                    + v.major_axis_x * t.cos()
+                let wx = v.center_x + v.major_axis_x * t.cos()
                     - v.major_axis_y * v.minor_ratio * t.sin();
                 let wy = v.center_y
                     + v.major_axis_y * t.cos()
@@ -314,34 +321,7 @@ fn draw_entity(out: &mut String, entity: &DxfEntity, xform: &PageXform) {
             append_circle(out, x, y, 0.8);
             out.push_str(" f\n");
         }
-        DxfEntity::Text(v) => {
-            if !finite(v.x) || !finite(v.y) || v.content.is_empty() {
-                return;
-            }
-            let ascii = pdf_escape(&v.content);
-            if ascii.trim().is_empty() {
-                return;
-            }
-            let (x, y) = xform.map(v.x, v.y);
-            let size = (v.height * MM_TO_PT).max(4.0);
-            let rot = v.rotation * PI / 180.0;
-            let (r, g, b) = aci_rgb(v.color);
-            let a = size * rot.cos();
-            let b_comp = size * rot.sin();
-            let _ = writeln!(
-                out,
-                "BT /F1 1 Tf {} {} {} rg {} {} {} {} {} {} Tm ({ascii}) Tj ET",
-                fmt_n(r),
-                fmt_n(g),
-                fmt_n(b),
-                fmt_n(a),
-                fmt_n(b_comp),
-                fmt_n(-b_comp),
-                fmt_n(a),
-                fmt_n(x),
-                fmt_n(y)
-            );
-        }
+        DxfEntity::Text(v) => draw_text(out, v, xform, cjk_face),
         DxfEntity::Solid(v) => {
             let verts = [(v.x1, v.y1), (v.x2, v.y2), (v.x4, v.y4), (v.x3, v.y3)];
             append_polygon(out, xform, v.color, &verts);
@@ -351,6 +331,61 @@ fn draw_entity(out: &mut String, entity: &DxfEntity, xform: &PageXform) {
             append_polygon(out, xform, v.color, &verts);
         }
     }
+}
+
+fn draw_text(
+    out: &mut String,
+    v: &ezjww_core::dxf::DxfText,
+    xform: &PageXform,
+    cjk_face: Option<&Face<'_>>,
+) {
+    if !finite(v.x) || !finite(v.y) || v.content.is_empty() {
+        return;
+    }
+    let (x, y) = xform.map(v.x, v.y);
+    let em_size = (v.height.abs() * xform.scale).max(0.5);
+    if let Some(face) = cjk_face {
+        set_fill(out, v.color);
+        if append_text_outlines(
+            out,
+            face,
+            &v.content,
+            x,
+            y,
+            em_size,
+            v.width_factor,
+            v.rotation,
+        ) {
+            return;
+        }
+    }
+    let ascii = pdf_escape(&v.content);
+    if ascii.trim().is_empty() {
+        return;
+    }
+    let rot = v.rotation * PI / 180.0;
+    let (r, g, b) = aci_rgb(v.color);
+    let a = em_size * rot.cos();
+    let b_comp = em_size * rot.sin();
+    let width_percent = if v.width_factor.is_finite() && v.width_factor > 0.0 {
+        v.width_factor * 100.0
+    } else {
+        100.0
+    };
+    let _ = writeln!(
+        out,
+        "BT /F1 1 Tf {} {} {} rg {} Tz {} {} {} {} {} {} Tm ({ascii}) Tj ET",
+        fmt_n(r),
+        fmt_n(g),
+        fmt_n(b),
+        fmt_n(width_percent),
+        fmt_n(a),
+        fmt_n(b_comp),
+        fmt_n(-b_comp),
+        fmt_n(a),
+        fmt_n(x),
+        fmt_n(y)
+    );
 }
 
 fn append_polygon(out: &mut String, xform: &PageXform, color: i32, verts: &[(f64, f64)]) {
@@ -497,11 +532,7 @@ pub fn dxf_document_to_pdf(doc: &DxfDocument) -> Result<Vec<u8>, String> {
         page_width = width_mm * scale;
         page_height = height_mm * scale;
     }
-    let margin = if has_geometry {
-        MARGIN_MM * scale
-    } else {
-        0.0
-    };
+    let margin = if has_geometry { MARGIN_MM * scale } else { 0.0 };
     let xform = PageXform {
         min_x,
         min_y,
@@ -509,11 +540,54 @@ pub fn dxf_document_to_pdf(doc: &DxfDocument) -> Result<Vec<u8>, String> {
         margin,
     };
 
+    let cjk_face = loaded_cjk_face();
     let mut content = String::new();
     content.push_str("q\n");
     for entity in entities {
-        draw_entity(&mut content, entity, &xform);
+        draw_entity(&mut content, entity, &xform, cjk_face.as_ref());
     }
     content.push_str("Q\n");
     Ok(build_pdf(page_width, page_height, &content))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::dxf_document_to_pdf;
+    use ezjww_core::dxf::{DxfDocument, DxfEntity, DxfText};
+
+    fn japanese_text_document() -> DxfDocument {
+        DxfDocument {
+            layers: vec![],
+            entities: vec![DxfEntity::Text(DxfText {
+                layer: "0".into(),
+                color: 3,
+                line_type: "CONTINUOUS".into(),
+                x: 10.0,
+                y: 20.0,
+                end_x: 10.0,
+                end_y: 20.0,
+                height: 5.0,
+                width_factor: 1.0,
+                rotation: 0.0,
+                content: "平面図".into(),
+                style: "STANDARD".into(),
+            })],
+            blocks: vec![],
+            unsupported_entities: vec![],
+        }
+    }
+
+    #[test]
+    fn japanese_text_is_not_replaced_with_question_marks() {
+        let pdf = dxf_document_to_pdf(&japanese_text_document()).expect("pdf");
+        let as_text = String::from_utf8_lossy(&pdf);
+        assert!(
+            !as_text.contains("(???"),
+            "Japanese text should be drawn as glyph outlines, not Helvetica question marks"
+        );
+        assert!(
+            as_text.contains(" m\n") && as_text.contains("\nf\n"),
+            "expected outline path operators in the PDF content stream"
+        );
+    }
 }
