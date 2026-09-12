@@ -13,6 +13,7 @@
     startPinDrag,
     tapPhotoPin,
   } from "$lib/utils/photoPinUi";
+  import { numberedPins } from "$lib/utils/pinNumbers";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
 
   let {
@@ -33,6 +34,7 @@
 
   const hover = $derived(pins.find((pin) => pin.id === view.hoverId));
   const modal = $derived(pins.find((pin) => pin.id === view.modalId));
+  const numbered = $derived(numberedPins(pins));
 
   function clearHold() {
     if (holdTimer) {
@@ -111,9 +113,10 @@
 </script>
 
 <div bind:this={layerEl} class="pointer-events-none absolute inset-0 z-[2]">
-  {#each pins as pin (pin.id)}
+  {#each numbered as item (item.pin.id)}
+    {@const pin = item.pin}
     <div
-      class="pointer-events-auto absolute -translate-x-1/2 -translate-y-full {view.draggingId === pin.id
+      class="pointer-events-auto absolute -translate-x-1/2 {view.draggingId === pin.id
         ? 'z-10 scale-110'
         : ''}"
       style="left: {pin.nx * 100}%; top: {pin.ny * 100}%"
@@ -131,8 +134,8 @@
     >
       <button
         type="button"
-        class="flex touch-none flex-col items-center"
-        aria-label={pin.title?.trim() ? `写真ピン ${pin.title}` : "写真ピン"}
+        class="relative flex touch-none flex-col items-center"
+        aria-label={pin.title?.trim() ? `写真ピン ${item.label} ${pin.title}` : `写真ピン ${item.label}`}
         onpointerdown={(event) => onPinPointerDown(event, pin.id)}
         onpointermove={(event) => onPinPointerMove(event, pin.id)}
         onpointerup={onPinPointerUp}
@@ -140,14 +143,19 @@
         oncontextmenu={(event) => event.preventDefault()}
         onclick={() => onPinClick(pin.id)}
       >
-        <span
-          class="block h-11 w-11 overflow-hidden rounded-full border-2 border-white shadow-lg ring-1 ring-slate-900"
-        >
-          <img src={pin.thumbnailDataUrl} alt="" draggable="false" class="h-full w-full object-cover" />
+        <span class="absolute bottom-full left-1/2 flex -translate-x-1/2 flex-col items-center">
+          <span
+            class="block h-11 w-11 overflow-hidden rounded-full border-2 border-white shadow-lg ring-1 ring-slate-900"
+          >
+            <img src={pin.thumbnailDataUrl} alt="" draggable="false" class="h-full w-full object-cover" />
+          </span>
+          <span
+            class="-mt-px h-0 w-0 border-x-[6px] border-t-[10px] border-x-transparent border-t-white"
+          ></span>
         </span>
-        <span
-          class="-mt-px h-0 w-0 border-x-[6px] border-t-[10px] border-x-transparent border-t-white"
-        ></span>
+        <span class="mt-0.5 rounded-full bg-slate-950 px-1.5 text-[12px] font-bold leading-5 text-white">
+          {item.label}
+        </span>
         {#if pin.title?.trim()}
           <span class="mt-1 max-w-24 truncate rounded bg-slate-950/80 px-1 text-[10px] text-cyan-100">
             {pin.title}

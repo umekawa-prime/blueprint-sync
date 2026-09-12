@@ -42,15 +42,16 @@ describe("annotationStore photo pins", () => {
 
     expect(annotationStore.objectsFor(1)).toEqual([]);
     expect(annotationStore.pinsFor(1)).toEqual([
-      {
+      expect.objectContaining({
         id: "pin-1",
         nx: 0.3,
         ny: 0.7,
         title: "",
         thumbnailDataUrl: "data:image/jpeg;base64,thumb",
         imageDataUrl: "data:image/jpeg;base64,full",
-      },
+      }),
     ]);
+    expect(annotationStore.pinsFor(1)[0]?.createdAt).toEqual(expect.any(Number));
     expect(annotationStore.dirty).toBe(true);
   });
 
@@ -92,5 +93,26 @@ describe("annotationStore photo pins", () => {
     annotationStore.updatePhotoPin(0, "pin-1", { nx: 0.8, ny: 0.9 });
     expect(annotationStore.pinsFor(0)[0]?.nx).toBe(0.8);
     expect(annotationStore.pinsFor(0)[0]?.ny).toBe(0.9);
+  });
+
+  it("numbers pins by createdAt and keeps later pins after earlier ones", () => {
+    annotationStore.importByPage({});
+    annotationStore.addPhotoPin(0, {
+      id: "second",
+      nx: 0.2,
+      ny: 0.2,
+      thumbnailDataUrl: "t",
+      imageDataUrl: "f",
+      createdAt: 200,
+    });
+    annotationStore.addPhotoPin(0, {
+      id: "first",
+      nx: 0.1,
+      ny: 0.1,
+      thumbnailDataUrl: "t",
+      imageDataUrl: "f",
+      createdAt: 100,
+    });
+    expect(annotationStore.pinsFor(0).map((pin) => pin.id)).toEqual(["first", "second"]);
   });
 });

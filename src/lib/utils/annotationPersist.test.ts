@@ -24,6 +24,7 @@ describe("annotationPersist", () => {
           title: "",
           thumbnailDataUrl: "data:image/jpeg;base64,aaa",
           imageDataUrl: "data:image/jpeg;base64,bbb",
+          createdAt: 100,
         },
       },
     };
@@ -44,6 +45,7 @@ describe("annotationPersist", () => {
           title: "基礎配筋",
           thumbnailDataUrl: "data:image/jpeg;base64,aaa",
           imageDataUrl: "data:image/jpeg;base64,bbb",
+          createdAt: 100,
         },
       },
     };
@@ -68,6 +70,33 @@ describe("annotationPersist", () => {
     );
     expect(parsed.drawingPageCount).toBe(2);
     expect(parsed.pinSlideCountByPage).toEqual([1, 0]);
+  });
+
+  it("round-trips createdAt and backfills missing values in object order", () => {
+    expect(
+      parseAnnotations(
+        '{"byPage":{},"photoPins":{"0":{"later":{"id":"later","nx":0.1,"ny":0.2,"thumbnailDataUrl":"t","imageDataUrl":"f"},"first":{"id":"first","nx":0.3,"ny":0.4,"thumbnailDataUrl":"t","imageDataUrl":"f"}}}}',
+      ).photoPins[0],
+    ).toEqual({
+      later: {
+        id: "later",
+        nx: 0.1,
+        ny: 0.2,
+        title: "",
+        thumbnailDataUrl: "t",
+        imageDataUrl: "f",
+        createdAt: 1,
+      },
+      first: {
+        id: "first",
+        nx: 0.3,
+        ny: 0.4,
+        title: "",
+        thumbnailDataUrl: "t",
+        imageDataUrl: "f",
+        createdAt: 2,
+      },
+    });
   });
 
   it("treats legacy files without photoPins as empty pins", () => {

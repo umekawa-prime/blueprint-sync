@@ -109,6 +109,8 @@ describe("toolbarActions", () => {
     expect(annotationStore.dirty).toBe(false);
     expect(saved).toBe(true);
   });
+
+  it("overwrites the open project PDF without a file dialog", async () => {
     mockWriteBinaryFile.mockResolvedValue(undefined);
 
     const saved = await saveCurrentPdf();

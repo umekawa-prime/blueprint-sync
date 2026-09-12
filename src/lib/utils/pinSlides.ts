@@ -1,9 +1,10 @@
 import { PDFDocument, rgb } from "pdf-lib";
 import type { PhotoPinRecord } from "./annotationPersist";
+import { numberedPins, pinSlideCaption } from "./pinNumbers";
 
 export type PinSlideStep =
   | { kind: "drawing"; pageIndex: number }
-  | { kind: "pin"; pageIndex: number; pin: PhotoPinRecord };
+  | { kind: "pin"; pageIndex: number; pin: PhotoPinRecord; number: number; caption: string };
 
 export type SlideRect = {
   x: number;
@@ -19,8 +20,14 @@ export function pinSlidePlan(
   const steps: PinSlideStep[] = [];
   for (let pageIndex = 0; pageIndex < drawingPageCount; pageIndex += 1) {
     steps.push({ kind: "drawing", pageIndex });
-    for (const pin of Object.values(pinsByPage[pageIndex] ?? {})) {
-      steps.push({ kind: "pin", pageIndex, pin });
+    for (const item of numberedPins(Object.values(pinsByPage[pageIndex] ?? {}))) {
+      steps.push({
+        kind: "pin",
+        pageIndex,
+        pin: item.pin,
+        number: item.number,
+        caption: pinSlideCaption(item.number, item.pin.title),
+      });
     }
   }
   return steps;
@@ -134,7 +141,7 @@ async function embedTitlePng(
   canvas.height = Math.max(1, Math.round(height * 2));
   const ctx = canvas.getContext("2d");
   if (!ctx) {
-    throw new Error("タイトルを描けませんでした");
+    return null;
   }
   ctx.fillStyle = "#0f172a";
   ctx.font = `${Math.floor(canvas.height * 0.55)}px "Noto Sans JP Variable", sans-serif`;
@@ -163,11 +170,13 @@ export async function appendPhotoPinSlides(
     const { width, height } = template.getSize();
     const page = output.addPage([width, height]);
     page.drawRectangle({ x: 0, y: 0, width, height, color: rgb(1, 1, 1) });
-    const title = step.pin.title?.trim() ?? "";
-    const layout = pinSlideLayout(width, height, title.length > 0);
-    if (title) {
-      const titleImage = await embedTitlePng(output, title, layout.title.width, layout.title.height);
-      page.drawImage(titleImage, layout.title);
+    const caption = step.caption;
+    const layout = pinSlideLayout(width, height, caption.length > 0);
+    if (caption) {
+      const titleImage = await embedTitlePng(output, caption, layout.title.width, layout.title.height);
+      if (titleImage) {
+        page.drawImage(titleImage, layout.title);
+      }
     }
     const photo = await embedPinImage(output, step.pin.imageDataUrl);
     const fitted = containInBox(photo.width, photo.height, layout.image.width, layout.image.height);

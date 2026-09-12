@@ -1,3 +1,5 @@
+import { backfillPinCreatedAt } from "./pinNumbers";
+
 export type PageObjects = Record<string, Record<string, unknown>>;
 
 export type PhotoPinRecord = {
@@ -7,6 +9,7 @@ export type PhotoPinRecord = {
   title?: string;
   thumbnailDataUrl: string;
   imageDataUrl: string;
+  createdAt?: number;
 };
 
 export type AnnotationFile = {
@@ -39,7 +42,8 @@ function isPhotoPinRecord(value: unknown): value is Omit<PhotoPinRecord, "title"
     typeof record.ny === "number" &&
     typeof record.thumbnailDataUrl === "string" &&
     typeof record.imageDataUrl === "string" &&
-    (record.title === undefined || typeof record.title === "string")
+    (record.title === undefined || typeof record.title === "string") &&
+    (record.createdAt === undefined || (typeof record.createdAt === "number" && Number.isFinite(record.createdAt)))
   );
 }
 
@@ -51,6 +55,7 @@ function normalizePhotoPin(pin: Omit<PhotoPinRecord, "title"> & { title?: unknow
     title: typeof pin.title === "string" ? pin.title : "",
     thumbnailDataUrl: pin.thumbnailDataUrl,
     imageDataUrl: pin.imageDataUrl,
+    ...(typeof pin.createdAt === "number" ? { createdAt: pin.createdAt } : {}),
   };
 }
 
@@ -73,7 +78,7 @@ function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinR
         pins[id] = normalizePhotoPin(pin);
       }
     }
-    output[page] = pins;
+    output[page] = backfillPinCreatedAt(pins);
   }
   return output;
 }

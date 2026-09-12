@@ -11,7 +11,7 @@ import {
   appendPhotoPinSlides,
 } from "./pinSlides";
 
-function pin(id: string, title = ""): PhotoPinRecord {
+function pin(id: string, title = "", createdAt?: number): PhotoPinRecord {
   return {
     id,
     nx: 0.5,
@@ -19,6 +19,7 @@ function pin(id: string, title = ""): PhotoPinRecord {
     title,
     thumbnailDataUrl: "data:image/jpeg;base64,aaa",
     imageDataUrl: "data:image/jpeg;base64,bbb",
+    ...(createdAt != null ? { createdAt } : {}),
   };
 }
 
@@ -31,10 +32,22 @@ describe("pinSlidePlan", () => {
       }),
     ).toEqual([
       { kind: "drawing", pageIndex: 0 },
-      { kind: "pin", pageIndex: 0, pin: pin("a", "基礎") },
-      { kind: "pin", pageIndex: 0, pin: pin("b", "配管") },
+      { kind: "pin", pageIndex: 0, pin: pin("a", "基礎"), number: 1, caption: "① 基礎" },
+      { kind: "pin", pageIndex: 0, pin: pin("b", "配管"), number: 2, caption: "② 配管" },
       { kind: "drawing", pageIndex: 1 },
-      { kind: "pin", pageIndex: 1, pin: pin("c") },
+      { kind: "pin", pageIndex: 1, pin: pin("c"), number: 1, caption: "①" },
+    ]);
+  });
+
+  it("orders pin slides by createdAt, not object insertion", () => {
+    expect(
+      pinSlidePlan(1, {
+        0: { later: pin("later", "後", 200), earlier: pin("earlier", "先", 50) },
+      }),
+    ).toEqual([
+      { kind: "drawing", pageIndex: 0 },
+      { kind: "pin", pageIndex: 0, pin: pin("earlier", "先", 50), number: 1, caption: "① 先" },
+      { kind: "pin", pageIndex: 0, pin: pin("later", "後", 200), number: 2, caption: "② 後" },
     ]);
   });
 

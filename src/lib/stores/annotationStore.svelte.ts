@@ -1,5 +1,6 @@
 import { historyStore } from "$lib/stores/historyStore.svelte";
 import type { PageObjects, PhotoPinRecord } from "$lib/utils/annotationPersist";
+import { backfillPinCreatedAt, nextPinCreatedAt, numberedPins } from "$lib/utils/pinNumbers";
 
 class AnnotationStore {
   byPage = $state<Record<number, PageObjects>>({});
@@ -12,7 +13,7 @@ class AnnotationStore {
   }
 
   pinsFor(page: number): PhotoPinRecord[] {
-    return Object.values(this.photoPins[page] ?? {});
+    return numberedPins(Object.values(this.photoPins[page] ?? {})).map((item) => item.pin);
   }
 
   upsert(page: number, id: string, object: Record<string, unknown>) {
@@ -24,7 +25,11 @@ class AnnotationStore {
 
   addPhotoPin(page: number, pin: PhotoPinRecord) {
     const current = { ...(this.photoPins[page] ?? {}) };
-    current[pin.id] = { ...pin, title: pin.title ?? "" };
+    current[pin.id] = {
+      ...pin,
+      title: pin.title ?? "",
+      createdAt: pin.createdAt ?? nextPinCreatedAt(Object.values(current)),
+    };
     this.photoPins = { ...this.photoPins, [page]: current };
     this.dirty = true;
   }
@@ -113,10 +118,11 @@ class AnnotationStore {
     const normalized: Record<number, Record<string, PhotoPinRecord>> = {};
     for (const [key, pins] of Object.entries(photoPins)) {
       const page = Number(key);
-      normalized[page] = {};
-      for (const [id, pin] of Object.entries(pins)) {
-        normalized[page][id] = { ...pin, title: pin.title ?? "" };
-      }
+      normalized[page] = backfillPinCreatedAt(
+        Object.fromEntries(
+          Object.entries(pins).map(([id, pin]) => [id, { ...pin, title: pin.title ?? "" }]),
+        ),
+      );
     }
     this.byPage = byPage;
     this.photoPins = normalized;

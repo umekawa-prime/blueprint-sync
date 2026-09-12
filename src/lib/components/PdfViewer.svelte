@@ -49,6 +49,7 @@
   import { sendCurrentPdf } from "$lib/utils/connectionActions";
   import type { EditCommand } from "$lib/utils/editHistory";
   import { staggeredPinPosition } from "$lib/utils/photoPinUi";
+  import { renderPinMarkerOverlay } from "$lib/utils/pinMarkers";
   import PhotoPinLayer from "$lib/components/PhotoPinLayer.svelte";
 
   let viewportEl: HTMLDivElement | undefined = $state();
@@ -99,12 +100,27 @@
         format: "png",
         multiplier: 2,
       });
+      const canvasWidth = fabricCanvas.getWidth();
+      const canvasHeight = fabricCanvas.getHeight();
       overlays.push({
         pageIndex,
         pngBytes: dataUrlToBytes(dataUrl),
-        canvasWidth: fabricCanvas.getWidth(),
-        canvasHeight: fabricCanvas.getHeight(),
+        canvasWidth,
+        canvasHeight,
       });
+      const pinPng = await renderPinMarkerOverlay(
+        annotationStore.pinsFor(pageIndex),
+        canvasWidth * 2,
+        canvasHeight * 2,
+      );
+      if (pinPng) {
+        overlays.push({
+          pageIndex,
+          pngBytes: pinPng,
+          canvasWidth,
+          canvasHeight,
+        });
+      }
     }
 
     await pdfStore.setPage(previous);
@@ -992,7 +1008,7 @@
       <canvas bind:this={fabricCanvasEl}></canvas>
     </div>
     <PhotoPinLayer
-      pins={Object.values(annotationStore.photoPins[pdfStore.pageIndex] ?? {})}
+      pins={annotationStore.pinsFor(pdfStore.pageIndex)}
       onTitleChange={(id, title) => annotationStore.updatePhotoPin(pdfStore.pageIndex, id, { title })}
       onMove={(id, nx, ny) => annotationStore.updatePhotoPin(pdfStore.pageIndex, id, { nx, ny })}
     />
