@@ -1,11 +1,12 @@
 <script lang="ts">
   import WindowControls from "$lib/components/WindowControls.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
-  import { isDesktopTauriRuntime, usesSandboxProjects } from "$lib/utils/platform";
-  import { closeProjectTab, openProjectTab, switchProjectTab } from "$lib/utils/projectActions";
+  import { isDesktopTauriRuntime } from "$lib/utils/platform";
+  import { closeProjectTab, showProjectHome, switchProjectTab } from "$lib/utils/projectActions";
   import { toggleMaximizeAppWindow } from "$lib/utils/windowActions";
 
   const desktopChrome = isDesktopTauriRuntime();
+  const homeActive = $derived(projectStore.activeTabId === null);
 
   function onTitleBarDoubleClick() {
     void toggleMaximizeAppWindow();
@@ -45,16 +46,16 @@
           </div>
         {/each}
       </div>
-      {#if !usesSandboxProjects()}
-        <button
-          type="button"
-          class="shrink-0 border-l border-slate-800 px-3 text-sm text-cyan-300 hover:bg-slate-900"
-          aria-label="プロジェクトを開く"
-          onclick={() => void openProjectTab()}
-        >
-          +
-        </button>
-      {/if}
+      <button
+        type="button"
+        class="shrink-0 border-l border-slate-800 px-3 text-sm {homeActive
+          ? 'border-t-2 border-t-cyan-400 bg-slate-800 text-cyan-100'
+          : 'border-t-2 border-t-transparent text-cyan-300 hover:bg-slate-900'}"
+        aria-label="プロジェクトを開く"
+        onclick={() => void showProjectHome()}
+      >
+        +
+      </button>
     {:else}
       <div
         class="flex min-w-0 items-center px-3 text-xs font-semibold tracking-wide text-cyan-300"

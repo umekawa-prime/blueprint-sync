@@ -32,3 +32,10 @@ export const CAMERA_OVERLAY_CLASS =
 export function drawingLayerHiddenClass(cameraOpen: boolean): string {
   return cameraOpen ? "hidden" : "";
 }
+
+export function pageSidebarClass(isPhone: boolean): string {
+  if (isPhone) {
+    return "flex h-28 shrink-0 flex-row gap-2 overflow-x-auto border-t border-slate-700 bg-slate-900 px-2 py-2";
+  }
+  return "flex w-36 shrink-0 flex-col gap-2 overflow-y-auto border-r border-slate-700 bg-slate-900 px-2 py-2";
+}

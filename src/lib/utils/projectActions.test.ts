@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import { annotationStore } from "$lib/stores/annotationStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
+import { viewerApi } from "$lib/stores/viewerApi";
 import type { ProjectMeta, RecentProject } from "./projectFormat";
 
 const {
@@ -32,6 +33,7 @@ const {
   mockListSandboxProjects,
   mockShareFileBytes,
   mockConvertCadBytesToPdf,
+  mockOpenCadFileInJwCad,
   mockRenameFile,
 } = vi.hoisted(() => ({
   mockOpenPdfsFromDisk: vi.fn(),
@@ -61,6 +63,7 @@ const {
   mockListSandboxProjects: vi.fn(),
   mockShareFileBytes: vi.fn(),
   mockConvertCadBytesToPdf: vi.fn(),
+  mockOpenCadFileInJwCad: vi.fn(),
 }));
 
 vi.mock("./fileAccess", () => ({
@@ -72,6 +75,7 @@ vi.mock("./cadImport", async () => {
   return {
     ...actual,
     convertCadBytesToPdf: mockConvertCadBytesToPdf,
+    openCadFileInJwCad: mockOpenCadFileInJwCad,
   };
 });
 
@@ -136,13 +140,16 @@ import {
   openProject,
   openProjectPdf,
   openProjectTab,
+  showProjectHome,
   persistCurrentAnnotations,
+  switchProjectTab,
   refreshProjectPdfs,
   removeProjectLink,
   removeProjectPdf,
   renameProjectFile,
   importIncomingFile,
   shareCurrentProject,
+  convertCadFileToDrawingPdf,
 } from "./projectActions";
 
 function sampleMeta(overrides: Partial<ProjectMeta> = {}): ProjectMeta {
@@ -181,6 +188,7 @@ describe("projectActions", () => {
     vi.spyOn(pdfStore, "load").mockResolvedValue();
     vi.spyOn(pdfStore, "clear");
     vi.spyOn(annotationStore, "clear");
+    viewerApi.discardOverlays = () => undefined;
   });
 
   it("reset clears open tabs", () => {
@@ -563,24 +571,64 @@ describe("projectActions", () => {
     expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
   });
 
-  it("opens a jww by converting in memory without writing a pdf", async () => {
+  it("opens a jww in Jw_cad without loading a converted pdf", async () => {
     projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/A.pdf";
+    mockOpenCadFileInJwCad.mockResolvedValue(undefined);
+
+    await openProjectPdf("図面JWW/1F.jww");
+
+    expect(mockOpenCadFileInJwCad).toHaveBeenCalledWith("/projects/a/図面JWW/1F.jww");
+    expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("図面/A.pdf");
+    expect(pdfStore.status).toBe("");
+  });
+
+  it("surfaces Jw_cad launch errors on the status bar", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenCadFileInJwCad.mockRejectedValue(new Error("Jw_cad が見つかりません"));
+
+    await openProjectPdf("図面JWW/1F.jww");
+
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(pdfStore.status).toBe("Jw_cad が見つかりません");
+    expect(projectStore.error).toBe("Jw_cad が見つかりません");
+  });
+
+  it("converts a jww into 図面 without opening the new pdf", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/A.pdf";
+    mockPathExists.mockResolvedValue(false);
     mockReadBinaryFile.mockResolvedValue(Uint8Array.from([10, 11, 12]));
     mockConvertCadBytesToPdf.mockResolvedValue({
       pdfName: "1F.pdf",
       bytes: Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
     });
+    mockListProjectPdfs.mockResolvedValue(["図面/A.pdf", "図面/1F.pdf", "図面JWW/1F.jww"]);
 
-    await openProjectPdf("図面JWW/1F.jww");
+    await convertCadFileToDrawingPdf("図面JWW/1F.jww");
 
     expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/図面JWW/1F.jww");
     expect(mockConvertCadBytesToPdf).toHaveBeenCalledWith("1F.jww", Uint8Array.from([10, 11, 12]));
-    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
-    expect(pdfStore.load).toHaveBeenCalledWith(
-      "図面JWW/1F.jww",
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面/1F.pdf",
       Uint8Array.from([0x25, 0x50, 0x44, 0x46]),
     );
-    expect(projectStore.currentPdf).toBe("図面JWW/1F.jww");
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("図面/A.pdf");
+    expect(projectStore.pdfs).toEqual(["図面/A.pdf", "図面/1F.pdf", "図面JWW/1F.jww"]);
+  });
+
+  it("does not overwrite an existing drawing pdf when converting a jww", async () => {
+    projectStore.folder = "/projects/a";
+    mockPathExists.mockImplementation(async (path: string) => path === "/projects/a/図面/1F.pdf");
+
+    await expect(convertCadFileToDrawingPdf("図面JWW/1F.jww")).rejects.toThrow(
+      "同じ名前のPDFが既にあります",
+    );
+    expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
   });
 
   it("moves a picked schedule pdf into 工程表 and opens it", async () => {
@@ -1080,6 +1128,93 @@ describe("projectActions", () => {
 
     expect(projectStore.tabs).toEqual([]);
     expect(projectStore.isOpen).toBe(false);
+  });
+
+  it("shows the home screen from plus without closing open tabs", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    const tabId = projectStore.activeTabId;
+
+    await showProjectHome();
+
+    expect(projectStore.isOpen).toBe(false);
+    expect(projectStore.folder).toBe("");
+    expect(projectStore.meta).toBeNull();
+    expect(projectStore.tabs).toHaveLength(1);
+    expect(projectStore.tabs[0].id).toBe(tabId);
+    expect(projectStore.tabs[0].session).not.toBeNull();
+    expect(projectStore.activeTabId).toBeNull();
+    expect(pdfStore.clear).toHaveBeenCalled();
+    expect(annotationStore.clear).toHaveBeenCalled();
+  });
+
+  it("restores a parked tab after showing home", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    const tabId = projectStore.activeTabId;
+
+    await showProjectHome();
+    await switchProjectTab(tabId!);
+
+    expect(projectStore.isOpen).toBe(true);
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.activeTabId).toBe(tabId);
+  });
+
+  it("restores a parked tab even if the canvas was already unmounted", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    const tabId = projectStore.activeTabId;
+    await showProjectHome();
+    viewerApi.discardOverlays = () => {
+      throw new Error("Cannot read properties of undefined (reading 'clearRect')");
+    };
+
+    await expect(switchProjectTab(tabId!)).resolves.toBeUndefined();
+
+    expect(projectStore.isOpen).toBe(true);
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.activeTabId).toBe(tabId);
+    viewerApi.discardOverlays = () => undefined;
+  });
+
+  it("opens another project from home into a new tab", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+
+    await showProjectHome();
+    mockReadProjectMeta.mockResolvedValue(sampleMeta({ name: "現場B" }));
+    await openProject("/projects/b");
+
+    expect(projectStore.tabs).toHaveLength(2);
+    expect(projectStore.folder).toBe("/projects/b");
+    expect(projectStore.isOpen).toBe(true);
+  });
+
+  it("does not leave the project when annotation persist fails on plus", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+    await openProject("/projects/a");
+    projectStore.currentPdf = "A.pdf";
+    mockWriteAnnotationFile.mockRejectedValue(new Error("write failed"));
+
+    await showProjectHome();
+
+    expect(projectStore.isOpen).toBe(true);
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.activeTabId).toBeTruthy();
+  });
+
+  it("is a no-op when already on the home screen", async () => {
+    await showProjectHome();
+
+    expect(projectStore.tabs).toEqual([]);
+    expect(projectStore.isOpen).toBe(false);
+    expect(mockWriteAnnotationFile).not.toHaveBeenCalled();
   });
 
   it("creates a named sandbox project without a folder picker", async () => {

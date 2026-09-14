@@ -5,7 +5,7 @@
   import { toolStore, type Tool } from "$lib/stores/toolStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
   import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
-  import { broadcastPage } from "$lib/utils/connectionActions";
+  import { selectPdfPage } from "$lib/utils/pageNavigation";
   import { saveCurrentPdf, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
   import { zoomStep } from "$lib/utils/viewerMenu";
@@ -108,10 +108,7 @@
     <div class="mx-1 h-6 w-px bg-slate-700"></div>
     <button
       class="toolbar-btn"
-      onclick={() => {
-        pdfStore.prevPage();
-        broadcastPage(Math.max(0, pdfStore.pageIndex - 1));
-      }}
+      onclick={() => void selectPdfPage(pdfStore.pageIndex - 1)}
       disabled={pdfStore.pageIndex <= 0}
     >
       ←
@@ -119,10 +116,7 @@
     <span class="min-w-16 text-center text-xs text-slate-300">{pdfStore.pageLabel}</span>
     <button
       class="toolbar-btn"
-      onclick={() => {
-        pdfStore.nextPage();
-        broadcastPage(Math.min(pdfStore.pageCount - 1, pdfStore.pageIndex + 1));
-      }}
+      onclick={() => void selectPdfPage(pdfStore.pageIndex + 1)}
       disabled={pdfStore.pageIndex >= pdfStore.pageCount - 1}
     >
       →
@@ -217,10 +211,7 @@
     <div class="mb-2 flex flex-wrap items-center gap-2">
       <button
         class="toolbar-btn"
-        onclick={() => {
-          pdfStore.prevPage();
-          broadcastPage(Math.max(0, pdfStore.pageIndex - 1));
-        }}
+        onclick={() => void selectPdfPage(pdfStore.pageIndex - 1)}
         disabled={pdfStore.pageIndex <= 0}
       >
         ←
@@ -228,10 +219,7 @@
       <span class="min-w-16 text-center text-xs text-slate-300">{pdfStore.pageLabel}</span>
       <button
         class="toolbar-btn"
-        onclick={() => {
-          pdfStore.nextPage();
-          broadcastPage(Math.min(pdfStore.pageCount - 1, pdfStore.pageIndex + 1));
-        }}
+        onclick={() => void selectPdfPage(pdfStore.pageIndex + 1)}
         disabled={pdfStore.pageIndex >= pdfStore.pageCount - 1}
       >
         →

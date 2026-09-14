@@ -44,6 +44,14 @@ export async function convertCadBytesToPdf(
   return { pdfName, bytes: converted };
 }
 
+export async function openCadFileInJwCad(path: string): Promise<void> {
+  if (!isTauriRuntime()) {
+    throw new Error("Jw_cad は Windows のデスクトップ版で開けます");
+  }
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("open_cad_in_jwcad", { path });
+}
+
 export async function bytesForStandaloneViewer(
   name: string,
   bytes: Uint8Array,

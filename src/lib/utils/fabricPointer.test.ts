@@ -17,8 +17,9 @@ describe("pointerFromEvent", () => {
 });
 
 describe("shouldCaptureViewportPointer", () => {
-  it("captures only while panning so the pen can draw on the canvas", () => {
+  it("captures while panning or middle-mouse dragging so the pen can still draw", () => {
     expect(shouldCaptureViewportPointer("pan")).toBe(true);
+    expect(shouldCaptureViewportPointer("select", 1)).toBe(true);
     expect(shouldCaptureViewportPointer("pen")).toBe(false);
     expect(shouldCaptureViewportPointer("select")).toBe(false);
     expect(shouldCaptureViewportPointer("text")).toBe(false);

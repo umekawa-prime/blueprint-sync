@@ -5,7 +5,7 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { sendCurrentPdf } from "./connectionActions";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
-import { convertCadBytesToPdf, isCadDrawingBasename } from "./cadImport";
+import { convertCadBytesToPdf, isCadDrawingBasename, openCadFileInJwCad } from "./cadImport";
 import { isTauriRuntime, usesSandboxProjects } from "./platform";
 import {
   createProjectMeta,
@@ -17,6 +17,7 @@ import {
   isProjectPdfBasename,
   isProjectPdfRelPath,
   joinProjectPdfRelPath,
+  pairedDrawingPdfRelPath,
   PROJECT_PDF_DIRS,
   projectPdfDisplayName,
   projectPdfKindDir,
@@ -125,8 +126,16 @@ function captureLiveSession(): TabSession {
   };
 }
 
+function discardViewerOverlays() {
+  try {
+    viewerApi.discardOverlays();
+  } catch {
+    // PdfViewer may already be unmounted (home screen).
+  }
+}
+
 async function applyLiveSession(session: TabSession): Promise<void> {
-  viewerApi.discardOverlays();
+  discardViewerOverlays();
   projectStore.folder = session.folder;
   projectStore.meta = session.meta;
   projectStore.pdfs = [...session.pdfs];
@@ -182,7 +191,7 @@ async function parkActiveTab(): Promise<boolean> {
     projectStore.activeTabId,
     captureLiveSession(),
   );
-  viewerApi.discardOverlays();
+  discardViewerOverlays();
   return true;
 }
 
@@ -380,6 +389,24 @@ export async function openProjectTab(): Promise<void> {
     return;
   }
   await createProjectAt(folder);
+}
+
+export async function showProjectHome(): Promise<void> {
+  if (!projectStore.isOpen || !projectStore.activeTabId) {
+    return;
+  }
+  const parked = await parkActiveTab();
+  if (!parked) {
+    return;
+  }
+  projectStore.folder = "";
+  projectStore.meta = null;
+  projectStore.pdfs = [];
+  projectStore.currentPdf = "";
+  projectStore.error = "";
+  projectStore.activeTabId = null;
+  pdfStore.clear();
+  annotationStore.clear();
 }
 
 export async function closeProject(): Promise<void> {
@@ -612,48 +639,12 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   }
   const normalized = fileName.replaceAll("\\", "/");
   if (isProjectCadRelPath(normalized)) {
-    if (
-      projectStore.currentPdf === normalized &&
-      pdfStore.name === normalized &&
-      pdfStore.document
-    ) {
-      return;
-    }
-    const seq = ++openPdfSeq;
-    const persisted = await persistCurrentAnnotations();
-    if (!persisted) {
-      return;
-    }
-    if (seq !== openPdfSeq) {
-      return;
-    }
     try {
-      const cadBytes = await readBinaryFile(`${projectStore.folder}/${normalized}`);
-      const converted = await convertCadBytesToPdf(projectPdfDisplayName(normalized), cadBytes);
-      let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {
-        byPage: {},
-        photoPins: {},
-      };
-      let annotationWarning = "";
-      try {
-        nextAnnotations = await readAnnotationFile(projectStore.folder, normalized);
-      } catch {
-        annotationWarning = "注釈を読み込めなかったため、空の注釈で開きました";
-      }
-      if (seq !== openPdfSeq) {
-        return;
-      }
-      annotationStore.importByPage(nextAnnotations.byPage, nextAnnotations.photoPins);
-      await pdfStore.load(normalized, converted.bytes);
-      if (seq !== openPdfSeq) {
-        return;
-      }
-      projectStore.currentPdf = normalized;
+      await openCadFileInJwCad(`${projectStore.folder}/${normalized}`);
       projectStore.error = "";
-      pdfStore.status = annotationWarning;
-      sendCurrentPdf();
+      pdfStore.status = "";
     } catch (error) {
-      const message = error instanceof Error ? error.message : "図面を読み込めませんでした";
+      const message = error instanceof Error ? error.message : "Jw_cad を起動できませんでした";
       pdfStore.status = message;
       projectStore.error = message;
     }
@@ -717,18 +708,42 @@ export async function openProjectPdf(fileName: string): Promise<void> {
   }
 }
 
+export async function convertCadFileToDrawingPdf(relPath: string): Promise<void> {
+  const folder = projectStore.folder;
+  if (!folder) {
+    throw new Error("プロジェクトが開かれていません");
+  }
+  const normalized = relPath.replaceAll("\\", "/");
+  const destRel = pairedDrawingPdfRelPath(normalized);
+  if (!destRel) {
+    throw new Error("JWW/JWCファイルではありません");
+  }
+  const destPath = `${folder}/${destRel}`;
+  if (await pathExists(destPath)) {
+    throw new Error("同じ名前のPDFが既にあります");
+  }
+  const cadBytes = await readBinaryFile(`${folder}/${normalized}`);
+  const converted = await convertCadBytesToPdf(projectPdfDisplayName(normalized), cadBytes);
+  await writeBinaryFile(destPath, converted.bytes);
+  projectStore.pdfs = await listProjectPdfs(folder);
+  projectStore.error = "";
+  pdfStore.status = "";
+}
+
 async function makeDemoPdf(title: string): Promise<Uint8Array> {
   const { PDFDocument, StandardFonts, rgb } = await import("pdf-lib");
   const document = await PDFDocument.create();
-  const page = document.addPage([720, 1020]);
   const font = await document.embedFont(StandardFonts.Helvetica);
-  page.drawText(title, {
-    x: 64,
-    y: 920,
-    size: 28,
-    font,
-    color: rgb(0.1, 0.15, 0.2),
-  });
+  for (let pageIndex = 0; pageIndex < 3; pageIndex += 1) {
+    const page = document.addPage([720, 1020]);
+    page.drawText(`${title}  p.${pageIndex + 1}`, {
+      x: 64,
+      y: 920,
+      size: 28,
+      font,
+      color: rgb(0.1, 0.15, 0.2),
+    });
+  }
   return new Uint8Array(await document.save());
 }
 

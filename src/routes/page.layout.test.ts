@@ -9,6 +9,16 @@ describe("editor shell layout", () => {
     expect(page.indexOf("ProjectTabBar")).toBeLessThan(page.indexOf("ProjectHome"));
   });
 
+  it("shows the startup home when the tab bar plus is pressed", () => {
+    const tabBar = readFileSync(path.resolve("src/lib/components/ProjectTabBar.svelte"), "utf8");
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    expect(tabBar).toContain("showProjectHome");
+    expect(tabBar).not.toContain("openProjectTab");
+    expect(page).toContain("{#if !projectStore.isOpen}");
+    expect(page).toContain("<ProjectHome />");
+    expect(page).toContain("projectStore.isOpen || projectStore.tabs.length > 0");
+  });
+
   it("uses a Chrome-style custom title bar on desktop Tauri", () => {
     const conf = readFileSync(path.resolve("src-tauri/tauri.conf.json"), "utf8");
     const capabilities = readFileSync(
@@ -87,5 +97,51 @@ describe("editor shell layout", () => {
     expect(sidebar).toContain("oncontextmenu");
     expect(sidebar).toContain("名前を変更");
     expect(sidebar).toContain("renameProjectFile");
+    expect(sidebar).toContain("PDFに変換");
+    expect(sidebar).toContain("convertCadFileToDrawingPdf");
+    expect(sidebar).toContain("isProjectCadRelPath");
+  });
+
+  it("lets the PDF preview pan and zoom like a map instead of document scrolling", () => {
+    const viewer = readFileSync(path.resolve("src/lib/components/PdfViewer.svelte"), "utf8");
+    expect(viewer).toContain("overflow-hidden");
+    expect(viewer).toContain("overscroll-none");
+    expect(viewer).toContain("cameraCssTransform");
+    expect(viewer).toContain("applyWheel");
+    expect(viewer).not.toContain("overflow-auto");
+    expect(viewer).not.toContain("mx-auto");
+  });
+
+  it("shows a PowerPoint-style page filmstrip beside the PDF canvas", () => {
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    const sidebar = readFileSync(path.resolve("src/lib/components/PageSidebar.svelte"), "utf8");
+    const toolbar = readFileSync(path.resolve("src/lib/components/Toolbar.svelte"), "utf8");
+    expect(page).toContain('import PageSidebar from "$lib/components/PageSidebar.svelte"');
+    expect(page).toContain("<PageSidebar");
+    expect(page.indexOf("<PageSidebar")).toBeLessThan(page.indexOf("<PdfViewer"));
+    expect(sidebar).toContain("selectPdfPage");
+    expect(sidebar).toContain("renderPdfThumbnails");
+    expect(sidebar).toContain('aria-label="ページ一覧"');
+    expect(sidebar).toContain("pdfStore.pageCount");
+    expect(sidebar).toContain("aria-current");
+    expect(toolbar).toContain("selectPdfPage");
+    expect(toolbar).not.toContain("broadcastPage(Math.min");
+  });
+
+  it("opens the project folder in Cursor from the bottom of the sidebar", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    expect(sidebar).toContain("Cursorで開く");
+    expect(sidebar).toContain("openCurrentProjectInCursor");
+    expect(sidebar.indexOf("Cursorで開く")).toBeLessThan(sidebar.indexOf("プロジェクトを閉じる"));
+  });
+
+  it("opens Jw_cad help from a button at the bottom of the sidebar", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    const help = readFileSync(path.resolve("src/lib/components/JwCadHelpPanel.svelte"), "utf8");
+    expect(sidebar.indexOf("プロジェクトを閉じる")).toBeLessThan(sidebar.indexOf("操作方法"));
+    expect(sidebar).toContain('import JwCadHelpPanel from "$lib/components/JwCadHelpPanel.svelte"');
+    expect(help).toContain("このアプリと Jw_cad");
+    expect(help).toContain("Jw_cad の基本");
+    expect(help).toContain("PDFに変換");
   });
 });

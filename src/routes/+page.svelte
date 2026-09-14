@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import CameraCapture from "$lib/components/CameraCapture.svelte";
   import ConnectionPanel from "$lib/components/ConnectionPanel.svelte";
+  import PageSidebar from "$lib/components/PageSidebar.svelte";
   import PdfViewer from "$lib/components/PdfViewer.svelte";
   import ProjectTabBar from "$lib/components/ProjectTabBar.svelte";
   import ProjectHome from "$lib/components/ProjectHome.svelte";
@@ -72,7 +73,7 @@
 <div class="flex h-full flex-col bg-slate-950 text-slate-100">
   {#if !viewportStore.isPhone}
     <ProjectTabBar />
-  {:else if projectStore.isOpen}
+  {:else if projectStore.isOpen || projectStore.tabs.length > 0}
     <div class="flex h-10 shrink-0 items-center gap-2 border-b border-slate-700 bg-slate-950 px-2">
       <button
         class="rounded border border-slate-600 px-2 py-1 text-xs"
@@ -114,9 +115,16 @@
           />
         {/if}
 
-        <div class="relative flex min-h-0 flex-1 flex-col">
-          <PdfViewer />
-          <ConnectionPanel bind:open={connectionOpen} />
+        <div class="relative flex min-h-0 flex-1 {viewportStore.isPhone ? 'flex-col' : ''}">
+          <PageSidebar />
+          <div
+            class="relative flex min-h-0 min-w-0 flex-1 flex-col {viewportStore.isPhone
+              ? 'order-1'
+              : ''}"
+          >
+            <PdfViewer />
+            <ConnectionPanel bind:open={connectionOpen} />
+          </div>
         </div>
 
         <StatusBar />

@@ -1,6 +1,8 @@
 mod cad_dxf;
 mod cad_font;
 mod cad_pdf;
+mod cursor_app;
+mod jwcad;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod explorer_dialog;
 mod sandbox;
@@ -92,6 +94,16 @@ fn read_file_bytes(path: String) -> Result<Vec<u8>, String> {
 #[tauri::command]
 fn parse_cad_to_dxf(bytes: Vec<u8>) -> Result<serde_json::Value, String> {
     cad_dxf::cad_bytes_to_dxf_json(&bytes)
+}
+
+#[tauri::command]
+fn open_cad_in_jwcad(path: String) -> Result<(), String> {
+    jwcad::open_cad_in_jwcad(path)
+}
+
+#[tauri::command]
+fn open_folder_in_cursor(path: String) -> Result<(), String> {
+    cursor_app::open_folder_in_cursor(path)
 }
 
 #[tauri::command]
@@ -563,6 +575,8 @@ pub fn run() {
             write_file_bytes,
             parse_cad_to_dxf,
             convert_cad_to_pdf,
+            open_cad_in_jwcad,
+            open_folder_in_cursor,
             pick_pdf_file,
             pick_pdf_files,
             pick_folder,

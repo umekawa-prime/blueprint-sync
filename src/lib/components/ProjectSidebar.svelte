@@ -4,6 +4,7 @@
   import {
     addProjectLink,
     closeProject,
+    convertCadFileToDrawingPdf,
     importPdfIntoProject,
     importOneDriveLinkIntoProject,
     openProjectLink,
@@ -13,15 +14,18 @@
     renameProjectFile,
     shareCurrentProject,
   } from "$lib/utils/projectActions";
+  import { openCurrentProjectInCursor } from "$lib/utils/cursorOpen";
   import {
     displayLinkTitle,
     folderDisplayName,
+    isProjectCadRelPath,
     listPdfsOfKind,
     listSidebarCadFiles,
     projectPdfDisplayName,
     projectRenameStem,
     type ProjectPdfKind,
   } from "$lib/utils/projectFormat";
+  import JwCadHelpPanel from "$lib/components/JwCadHelpPanel.svelte";
 
   let url = $state("");
   let title = $state("");
@@ -30,6 +34,7 @@
   let renamingFile = $state("");
   let renameValue = $state("");
   let renameInputEl = $state<HTMLInputElement | null>(null);
+  let helpOpen = $state(false);
 
   $effect(() => {
     if (!renamingFile || !renameInputEl) {
@@ -127,6 +132,15 @@
     contextMenu = { file, x: event.clientX, y: event.clientY };
   }
 
+  async function onConvertCad(file: string) {
+    contextMenu = null;
+    try {
+      await convertCadFileToDrawingPdf(file);
+    } catch (error) {
+      pdfStore.status = message(error, "PDF の変換に失敗しました");
+    }
+  }
+
   function startRename(file: string) {
     contextMenu = null;
     renamingFile = file;
@@ -157,6 +171,14 @@
       await closeProject();
     } catch (error) {
       projectStore.error = message(error, "プロジェクトを閉じられませんでした");
+    }
+  }
+
+  async function onOpenInCursor() {
+    try {
+      await openCurrentProjectInCursor();
+    } catch (error) {
+      pdfStore.status = message(error, "Cursor を起動できませんでした");
     }
   }
 </script>
@@ -352,8 +374,24 @@
   >
     プロジェクトを共有
   </button>
+  <button
+    type="button"
+    class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
+    onclick={() => void onOpenInCursor()}
+  >
+    Cursorで開く
+  </button>
   <button class="border-t border-slate-800 px-3 py-2 text-xs text-slate-400" onclick={onCloseProject}>
     プロジェクトを閉じる
+  </button>
+  <button
+    type="button"
+    class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
+    onclick={() => {
+      helpOpen = true;
+    }}
+  >
+    操作方法
   </button>
 </aside>
 
@@ -375,5 +413,22 @@
     >
       名前を変更
     </button>
+    {#if isProjectCadRelPath(menuFile)}
+      <button
+        type="button"
+        class="block w-full px-3 py-1.5 text-left text-slate-100 hover:bg-slate-700"
+        role="menuitem"
+        onclick={(event) => {
+          event.stopPropagation();
+          void onConvertCad(menuFile);
+        }}
+      >
+        PDFに変換
+      </button>
+    {/if}
   </div>
+{/if}
+
+{#if helpOpen}
+  <JwCadHelpPanel onClose={() => (helpOpen = false)} />
 {/if}

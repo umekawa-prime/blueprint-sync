@@ -4,6 +4,7 @@ import {
   drawingLayerHiddenClass,
   isPhoneWidth,
   isTabletWidth,
+  pageSidebarClass,
   PHONE_MAX_WIDTH,
   SAFE_AREA_PADDING_STYLE,
   safeAreaPaddingCss,
@@ -45,5 +46,14 @@ describe("chromeLayout", () => {
   it("hides the drawing surface while the camera is open so Android WebView cannot paint canvas over it", () => {
     expect(drawingLayerHiddenClass(true)).toBe("hidden");
     expect(drawingLayerHiddenClass(false)).toBe("");
+  });
+
+  it("uses a PowerPoint-style filmstrip: vertical on desktop, horizontal on phone", () => {
+    expect(pageSidebarClass(false)).toContain("flex-col");
+    expect(pageSidebarClass(false)).toContain("overflow-y-auto");
+    expect(pageSidebarClass(false)).not.toContain("flex-row");
+    expect(pageSidebarClass(true)).toContain("flex-row");
+    expect(pageSidebarClass(true)).toContain("overflow-x-auto");
+    expect(pageSidebarClass(true)).not.toContain("flex-col");
   });
 });

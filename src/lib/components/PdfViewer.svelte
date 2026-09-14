@@ -42,6 +42,18 @@
     shouldStartLongPress,
     viewerMenuSize,
   } from "$lib/utils/viewerMenu";
+  import {
+    applyWheel,
+    cameraCssTransform,
+    centerInViewport,
+    clampCamera,
+    panBy,
+    pinchCamera,
+    scaleSerializedObjects,
+    shouldPanWithPointer,
+    zoomAroundPoint,
+    type MapCamera,
+  } from "$lib/utils/mapViewport";
   import { fabricToNormalized, pdfPageNumber } from "$lib/utils/pdfCoords";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
@@ -56,6 +68,15 @@
   let pdfCanvasEl: HTMLCanvasElement | undefined = $state();
   let fabricCanvasEl: HTMLCanvasElement | undefined = $state();
   let fabricCanvas: Canvas | undefined;
+  let camera = $state<MapCamera>({ x: 0, y: 0, zoom: 1 });
+  let renderedZoom = $state(1);
+  let contentSize = $state({ width: 0, height: 0 });
+  let panDrag = $state<{ pointerId: number; x: number; y: number } | undefined>(undefined);
+  let shouldCenter = true;
+  let zoomRenderTimer: ReturnType<typeof setTimeout> | undefined;
+  let pinchStart:
+    | { zoom: number; x: number; y: number; cx: number; cy: number; dist: number }
+    | undefined;
   let applyingRemote = false;
   let applyingHistory = false;
   let overlaysStale = false;
@@ -276,19 +297,28 @@
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("pointerdown", onWindowPointerDown);
     viewportEl?.addEventListener("pointerdown", onPointerDownCapture, true);
+    viewportEl?.addEventListener("wheel", onWheel, { passive: false });
+    viewportEl?.addEventListener("touchmove", onTouchMove, { passive: false });
 
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("pointerdown", onWindowPointerDown);
       viewportEl?.removeEventListener("pointerdown", onPointerDownCapture, true);
+      viewportEl?.removeEventListener("wheel", onWheel);
+      viewportEl?.removeEventListener("touchmove", onTouchMove);
     };
   });
 
   onDestroy(() => {
     clearLongPress();
+    if (zoomRenderTimer) {
+      clearTimeout(zoomRenderTimer);
+    }
     persistCurrentPage();
     fabricCanvas?.dispose();
+    fabricCanvas = undefined;
+    viewerApi.reset();
     unlistenDrag?.();
   });
 
@@ -308,8 +338,30 @@
   $effect(() => {
     pdfStore.document;
     pdfStore.pageIndex;
-    pdfStore.zoom;
+    shouldCenter = true;
     void renderCurrentPage();
+  });
+
+  $effect(() => {
+    const zoom = pdfStore.zoom;
+    untrack(() => {
+      if (camera.zoom !== zoom) {
+        const origin = viewportCenter();
+        camera = clampToView(zoomAroundPoint(camera, origin.x, origin.y, zoom));
+      }
+      if (!pdfStore.document || renderedZoom === zoom) {
+        return;
+      }
+      if (zoomRenderTimer) {
+        clearTimeout(zoomRenderTimer);
+      }
+      zoomRenderTimer = setTimeout(() => {
+        if (renderedZoom === pdfStore.zoom) {
+          return;
+        }
+        void renderCurrentPage();
+      }, 180);
+    });
   });
 
   $effect(() => {
@@ -604,6 +656,12 @@
       return;
     }
     const token = ++renderToken;
+    const previousWidth = fabricCanvas?.getWidth() ?? 0;
+    const zoomOnly =
+      Boolean(fabricCanvas) &&
+      previousWidth > 0 &&
+      persistedPage === pdfStore.pageIndex &&
+      !shouldCenter;
     untrack(() => persistCurrentPage());
     try {
       const page = await pdfStore.document.getPage(pageNumber);
@@ -615,12 +673,33 @@
         return;
       }
       if (fabricCanvas) {
+        const factor = previousWidth > 0 ? size.width / previousWidth : 1;
         fabricCanvas.setDimensions({
           width: Math.floor(size.width),
           height: Math.floor(size.height),
         });
+        if (zoomOnly && Math.abs(factor - 1) > 0.001) {
+          const nextByPage: typeof annotationStore.byPage = {};
+          for (const [key, objects] of Object.entries(annotationStore.byPage)) {
+            nextByPage[Number(key)] = scaleSerializedObjects(objects, factor);
+          }
+          annotationStore.byPage = nextByPage;
+        }
         persistedPage = pdfStore.pageIndex;
         await restorePageObjects();
+      }
+      contentSize = { width: size.width, height: size.height };
+      renderedZoom = pdfStore.zoom;
+      if (shouldCenter) {
+        camera = centerInViewport(
+          size.width,
+          size.height,
+          viewportEl?.clientWidth ?? size.width,
+          viewportEl?.clientHeight ?? size.height,
+          pdfStore.zoom,
+          pdfStore.zoom,
+        );
+        shouldCenter = false;
       }
     } catch (error) {
       if (token !== renderToken) {
@@ -874,17 +953,47 @@
     }
   }
 
+  function viewportCenter() {
+    return {
+      x: (viewportEl?.clientWidth ?? 0) / 2,
+      y: (viewportEl?.clientHeight ?? 0) / 2,
+    };
+  }
+
+  function viewportPoint(event: { clientX: number; clientY: number }) {
+    const rect = viewportEl?.getBoundingClientRect();
+    return {
+      x: event.clientX - (rect?.left ?? 0),
+      y: event.clientY - (rect?.top ?? 0),
+    };
+  }
+
+  function clampToView(next: MapCamera): MapCamera {
+    if (!viewportEl || contentSize.width <= 0) {
+      return next;
+    }
+    return clampCamera(
+      next,
+      contentSize.width,
+      contentSize.height,
+      viewportEl.clientWidth,
+      viewportEl.clientHeight,
+      renderedZoom,
+    );
+  }
+
   function onWheel(event: WheelEvent) {
-    if (!event.ctrlKey && !event.metaKey) {
+    if (!pdfStore.document) {
       return;
     }
     event.preventDefault();
-    const next = pdfStore.zoom + (event.deltaY > 0 ? -0.1 : 0.1);
-    pdfStore.setZoom(next);
+    const origin = viewportPoint(event);
+    const next = clampToView(applyWheel(camera, event, origin));
+    camera = next;
+    if (next.zoom !== pdfStore.zoom) {
+      pdfStore.setZoom(next.zoom);
+    }
   }
-
-  let pinchStart = 0;
-  let pinchZoom = 1;
 
   function onPointerDownCapture(event: PointerEvent) {
     const next = toolForPointerType(event.pointerType, toolStore.current);
@@ -919,13 +1028,27 @@
         openViewerMenu(longPressAt.x, longPressAt.y);
       }, LONG_PRESS_MS);
     }
-    if (!shouldCaptureViewportPointer(toolStore.current)) {
+    if (!pdfStore.document) {
+      return;
+    }
+    if (shouldPanWithPointer(toolStore.current, event.button)) {
+      event.preventDefault();
+      panDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+      (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
+      return;
+    }
+    if (!shouldCaptureViewportPointer(toolStore.current, event.button)) {
       return;
     }
     (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
   }
 
   function onPointerMove(event: PointerEvent) {
+    if (panDrag && event.pointerId === panDrag.pointerId) {
+      camera = clampToView(panBy(camera, event.clientX - panDrag.x, event.clientY - panDrag.y));
+      panDrag = { pointerId: panDrag.pointerId, x: event.clientX, y: event.clientY };
+      return;
+    }
     if (!longPressTimer) {
       return;
     }
@@ -934,8 +1057,11 @@
     }
   }
 
-  function onPointerUp() {
+  function onPointerUp(event: PointerEvent) {
     clearLongPress();
+    if (panDrag?.pointerId === event.pointerId) {
+      panDrag = undefined;
+    }
   }
 
   function onContextMenu(event: MouseEvent) {
@@ -947,17 +1073,41 @@
   }
 
   function onTouchStart(event: TouchEvent) {
-    if (event.touches.length === 2) {
-      pinchStart = distance(event.touches[0], event.touches[1]);
-      pinchZoom = pdfStore.zoom;
+    if (event.touches.length === 2 && viewportEl) {
+      const a = event.touches[0];
+      const b = event.touches[1];
+      const rect = viewportEl.getBoundingClientRect();
+      pinchStart = {
+        zoom: camera.zoom,
+        x: camera.x,
+        y: camera.y,
+        cx: (a.clientX + b.clientX) / 2 - rect.left,
+        cy: (a.clientY + b.clientY) / 2 - rect.top,
+        dist: distance(a, b),
+      };
     }
   }
 
   function onTouchMove(event: TouchEvent) {
-    if (event.touches.length === 2 && pinchStart > 0) {
+    if (event.touches.length === 2 && pinchStart && pinchStart.dist > 0 && viewportEl) {
       event.preventDefault();
-      const current = distance(event.touches[0], event.touches[1]);
-      pdfStore.setZoom(pinchZoom * (current / pinchStart));
+      const a = event.touches[0];
+      const b = event.touches[1];
+      const rect = viewportEl.getBoundingClientRect();
+      camera = clampToView(
+        pinchCamera(pinchStart, {
+          cx: (a.clientX + b.clientX) / 2 - rect.left,
+          cy: (a.clientY + b.clientY) / 2 - rect.top,
+          scale: distance(a, b) / pinchStart.dist,
+        }),
+      );
+      pdfStore.setZoom(camera.zoom);
+    }
+  }
+
+  function onTouchEnd(event: TouchEvent) {
+    if (event.touches.length < 2) {
+      pinchStart = undefined;
     }
   }
 
@@ -978,16 +1128,18 @@
 
 <div
   bind:this={viewportEl}
-  class="relative min-h-0 flex-1 overflow-auto bg-slate-950"
-  class:cursor-grab={toolStore.current === "pan"}
-  onwheel={onWheel}
+  class="relative min-h-0 flex-1 touch-none overflow-hidden overscroll-none bg-slate-950"
+  class:cursor-grab={toolStore.current === "pan" && !panDrag}
+  class:cursor-grabbing={Boolean(panDrag)}
   onpointerdown={onPointerDown}
   onpointermove={onPointerMove}
   onpointerup={onPointerUp}
   onpointercancel={onPointerUp}
+  onauxclick={(event) => event.preventDefault()}
   oncontextmenu={onContextMenu}
   ontouchstart={onTouchStart}
-  ontouchmove={onTouchMove}
+  ontouchend={onTouchEnd}
+  ontouchcancel={onTouchEnd}
   ondragenter={allowPdfDrop}
   ondragover={allowPdfDrop}
   ondrop={onPdfFileDrop}
@@ -1002,7 +1154,11 @@
     </div>
   {/if}
 
-  <div class="relative mx-auto w-fit" class:pointer-events-none={!pdfStore.document && !pdfStore.bytes}>
+  <div
+    class="relative w-fit origin-top-left will-change-transform"
+    class:pointer-events-none={!pdfStore.document && !pdfStore.bytes}
+    style="transform: {cameraCssTransform(camera, renderedZoom)}"
+  >
     <canvas bind:this={pdfCanvasEl} class="block bg-white shadow-2xl"></canvas>
     <div class="absolute top-0 left-0 z-[1] touch-none">
       <canvas bind:this={fabricCanvasEl}></canvas>

@@ -11,8 +11,8 @@ export function pointerFromEvent(canvas: PointerCanvas, event: PointerEvent): Sc
   return { x: point.x, y: point.y };
 }
 
-export function shouldCaptureViewportPointer(tool: Tool): boolean {
-  return tool === "pan";
+export function shouldCaptureViewportPointer(tool: Tool, button = 0): boolean {
+  return tool === "pan" || button === 1;
 }
 
 export function toolForPointerType(pointerType: string, current: Tool): Tool {

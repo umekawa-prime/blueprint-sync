@@ -18,6 +18,7 @@ import {
   cadPdfBasename,
   convertCadBytesToPdf,
   isCadDrawingBasename,
+  openCadFileInJwCad,
 } from "./cadImport";
 
 describe("isCadDrawingBasename", () => {
@@ -88,6 +89,29 @@ describe("bytesForStandaloneViewer", () => {
       name: "A.pdf",
       bytes: source,
     });
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+});
+
+describe("openCadFileInJwCad", () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockIsTauri.mockReturnValue(true);
+    mockInvoke.mockResolvedValue(undefined);
+  });
+
+  it("asks rust to open the project cad file in Jw_cad", async () => {
+    await openCadFileInJwCad("C:/projects/a/図面JWW/1F.jww");
+    expect(mockInvoke).toHaveBeenCalledWith("open_cad_in_jwcad", {
+      path: "C:/projects/a/図面JWW/1F.jww",
+    });
+  });
+
+  it("refuses to launch Jw_cad outside the desktop runtime", async () => {
+    mockIsTauri.mockReturnValue(false);
+    await expect(openCadFileInJwCad("C:/projects/a/図面JWW/1F.jww")).rejects.toThrow(
+      "Jw_cad は Windows のデスクトップ版で開けます",
+    );
     expect(mockInvoke).not.toHaveBeenCalled();
   });
 });
