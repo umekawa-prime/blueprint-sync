@@ -2,11 +2,13 @@
   import { connectionStore } from "$lib/stores/connectionStore.svelte";
   import { historyStore } from "$lib/stores/historyStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
+  import { todoStore } from "$lib/stores/todoStore.svelte";
   import { toolStore, type Tool } from "$lib/stores/toolStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
   import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
   import { selectPdfPage } from "$lib/utils/pageNavigation";
   import { saveCurrentPdf, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
+  import { toggleTodoPanel } from "$lib/utils/todoActions";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
   import { zoomStep } from "$lib/utils/viewerMenu";
   import { toast } from "svelte-sonner";
@@ -200,6 +202,9 @@
     {#if onSharePdf}
       <button class="toolbar-btn" onclick={onSharePdf} disabled={!pdfStore.bytes}>この図面を共有</button>
     {/if}
+    <button class="toolbar-btn" class:active={todoStore.panelOpen} onclick={() => toggleTodoPanel()}>
+      課題{todoStore.activeCount > 0 ? ` ${todoStore.activeCount}` : ""}
+    </button>
     <button class="toolbar-btn ml-auto" class:active={connectionStore.status !== "idle"} onclick={onToggleConnection}>
       接続
     </button>
@@ -252,6 +257,9 @@
       {#if onSharePdf}
         <button class="toolbar-btn" onclick={onSharePdf} disabled={!pdfStore.bytes}>この図面を共有</button>
       {/if}
+      <button class="toolbar-btn" class:active={todoStore.panelOpen} onclick={() => toggleTodoPanel()}>
+        課題{todoStore.activeCount > 0 ? ` ${todoStore.activeCount}` : ""}
+      </button>
       <button class="toolbar-btn" class:active={connectionStore.status !== "idle"} onclick={onToggleConnection}>接続</button>
     </div>
   </div>

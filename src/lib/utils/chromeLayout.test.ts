@@ -8,6 +8,7 @@ import {
   PHONE_MAX_WIDTH,
   SAFE_AREA_PADDING_STYLE,
   safeAreaPaddingCss,
+  todoPanelClass,
 } from "./chromeLayout";
 
 describe("chromeLayout", () => {
@@ -55,5 +56,12 @@ describe("chromeLayout", () => {
     expect(pageSidebarClass(true)).toContain("flex-row");
     expect(pageSidebarClass(true)).toContain("overflow-x-auto");
     expect(pageSidebarClass(true)).not.toContain("flex-col");
+  });
+
+  it("puts the Backlog-style issue list in a right column on desktop and a full overlay on phone", () => {
+    expect(todoPanelClass(false)).toContain("w-[22rem]");
+    expect(todoPanelClass(false)).toContain("border-l");
+    expect(todoPanelClass(true)).toContain("absolute");
+    expect(todoPanelClass(true)).toContain("inset-0");
   });
 });

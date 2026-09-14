@@ -18,6 +18,7 @@ import {
   isProjectPdfRelPath,
   joinProjectPdfRelPath,
   pairedDrawingPdfRelPath,
+  parseProjectWorkflowStatus,
   PROJECT_PDF_DIRS,
   projectPdfDisplayName,
   projectPdfKindDir,
@@ -25,6 +26,8 @@ import {
   renamedProjectRelPath,
   type ProjectMeta,
   type ProjectPdfKind,
+  type ProjectWorkflowStatus,
+  type RecentProject,
 } from "./projectFormat";
 import {
   deleteFile,
@@ -72,6 +75,7 @@ import {
   rememberLiveTab,
   type TabSession,
 } from "./projectTabs";
+import { loadProjectTodos, resetTodoState } from "./todoActions";
 
 function requireTauri() {
   if (!isTauriRuntime() && !isWebDemo()) {
@@ -80,9 +84,29 @@ function requireTauri() {
 }
 
 async function remember(name: string, path: string, id?: string) {
-  const next = rememberRecent(projectStore.recents, { id, name, path });
+  const status = parseProjectWorkflowStatus(
+    projectStore.meta?.status ?? projectStore.recents.find((item) => item.path === path)?.status,
+  );
+  const next = rememberRecent(projectStore.recents, { id, name, path, status });
   projectStore.recents = next;
   await saveRecentProjects(next);
+}
+
+function patchProjectStatus(items: RecentProject[], folder: string, status: ProjectWorkflowStatus) {
+  return items.map((item) => (item.path === folder ? { ...item, status } : item));
+}
+
+async function hydrateProjectWorkflow(items: RecentProject[]): Promise<RecentProject[]> {
+  const result: RecentProject[] = [];
+  for (const item of items) {
+    try {
+      const meta = await readProjectMeta(item.path);
+      result.push({ ...item, status: parseProjectWorkflowStatus(meta.status) });
+    } catch {
+      result.push({ ...item, status: "open" });
+    }
+  }
+  return result;
 }
 
 function setProjectImportError(error: unknown): Error {
@@ -148,10 +172,12 @@ async function applyLiveSession(session: TabSession): Promise<void> {
     pdfStore.pageIndex = session.pdf.pageIndex;
     pdfStore.zoom = session.pdf.zoom;
     pdfStore.status = session.pdf.status;
+    await loadProjectTodos(session.folder);
     return;
   }
   pdfStore.clear();
   pdfStore.status = session.pdf.status;
+  await loadProjectTodos(session.folder);
 }
 
 function registerLiveTab(): void {
@@ -214,13 +240,29 @@ export async function loadRecentsIntoStore(): Promise<void> {
     }
   }
   const next = kept.slice(0, 8);
-  projectStore.recents = next;
+  projectStore.recents = await hydrateProjectWorkflow(next);
   if (next.length !== items.length) {
     await saveRecentProjects(next);
   }
   if (usesSandboxProjects()) {
-    projectStore.sandboxProjects = await listSandboxProjects();
+    projectStore.sandboxProjects = await hydrateProjectWorkflow(await listSandboxProjects());
   }
+}
+
+export async function setProjectWorkflowStatus(
+  folder: string,
+  status: ProjectWorkflowStatus,
+): Promise<void> {
+  requireTauri();
+  const nextStatus = parseProjectWorkflowStatus(status);
+  const meta = await readProjectMeta(folder);
+  const nextMeta = { ...meta, status: nextStatus };
+  await writeProjectMeta(folder, nextMeta);
+  if (projectStore.folder === folder) {
+    projectStore.meta = nextMeta;
+  }
+  projectStore.recents = patchProjectStatus(projectStore.recents, folder, nextStatus);
+  projectStore.sandboxProjects = patchProjectStatus(projectStore.sandboxProjects, folder, nextStatus);
 }
 
 export async function createProject(name?: string): Promise<void> {
@@ -265,6 +307,7 @@ async function createProjectAt(folder: string, meta?: ProjectMeta): Promise<void
   annotationStore.clear();
   await remember(nextMeta.name, folder, nextMeta.id);
   registerLiveTab();
+  await loadProjectTodos(folder);
   await openFirstProjectPdf();
 }
 
@@ -296,6 +339,7 @@ export async function openProject(folder?: string): Promise<void> {
     annotationStore.clear();
     await remember(meta.name, selected, meta.id);
     registerLiveTab();
+    await loadProjectTodos(selected);
     await openFirstProjectPdf();
   } catch (error) {
     const message = error instanceof Error ? error.message : "プロジェクトを開けませんでした";
@@ -352,6 +396,7 @@ export async function closeProjectTab(tabId: string): Promise<void> {
     projectStore.reset();
     pdfStore.clear();
     annotationStore.clear();
+    resetTodoState();
     return;
   }
   projectStore.tabs = result.tabs;
@@ -407,6 +452,7 @@ export async function showProjectHome(): Promise<void> {
   projectStore.activeTabId = null;
   pdfStore.clear();
   annotationStore.clear();
+  resetTodoState();
 }
 
 export async function closeProject(): Promise<void> {
@@ -421,6 +467,7 @@ export async function closeProject(): Promise<void> {
   projectStore.reset();
   pdfStore.clear();
   annotationStore.clear();
+  resetTodoState();
 }
 
 export async function addProjectLink(url: string, title: string): Promise<void> {
@@ -757,6 +804,20 @@ export async function startWebDemo(): Promise<void> {
   webPut(`${folder}/図面/既存図.pdf`, await makeDemoPdf("Drawing A"));
   webPut(`${folder}/図面/追加図.pdf`, await makeDemoPdf("Drawing B"));
   webPut(`${folder}/工程表/週間工程.pdf`, await makeDemoPdf("Schedule"));
+  webPut(
+    `${folder}/TODO.md`,
+    new TextEncoder().encode(`# TODO
+
+## 未対応
+- [ ] TODO-1 現場で寸法を確認する 期限:2026-09-20
+
+## 処理中
+- [ ] TODO-2 図面の赤字を反映する
+
+## 処理済み
+- [x] TODO-3 キックオフを実施する
+`),
+  );
   const meta = createProjectMeta("デモプロジェクト");
   projectStore.folder = folder;
   projectStore.meta = meta;
@@ -765,6 +826,7 @@ export async function startWebDemo(): Promise<void> {
   projectStore.error = "";
   pdfStore.status = "ブラウザデモ: 図面名をクリックして切り替えてください";
   registerLiveTab();
+  await loadProjectTodos(folder);
   await openProjectPdf("図面/既存図.pdf");
 }
 

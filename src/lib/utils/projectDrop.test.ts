@@ -78,6 +78,7 @@ describe("projectDrop", () => {
       id: "project-1",
       name: "現場A",
       createdAt: "2026-08-30T08:00:00.000Z",
+      status: "open",
       links: [],
     };
     projectStore.folder = "/projects/a";

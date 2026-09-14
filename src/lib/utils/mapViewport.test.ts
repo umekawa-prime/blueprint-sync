@@ -8,6 +8,7 @@ import {
   pinchCamera,
   scaleSerializedObject,
   shouldPanWithPointer,
+  shouldHandleWheelAsViewport,
   wheelIntent,
   zoomAroundPoint,
 } from "./mapViewport";
@@ -53,6 +54,32 @@ describe("wheelIntent", () => {
     expect(
       wheelIntent({ deltaX: 18, deltaY: 12, deltaMode: 0, ctrlKey: false, metaKey: false }),
     ).toBe("pan");
+    expect(
+      wheelIntent({ deltaX: 4, deltaY: -6, deltaMode: 0, ctrlKey: true, metaKey: false }),
+    ).toBe("zoom");
+  });
+});
+
+describe("shouldHandleWheelAsViewport", () => {
+  it("handles trackpad pinch even when the cursor is not over the page", () => {
+    expect(
+      shouldHandleWheelAsViewport(
+        { deltaX: 2, deltaY: -4, deltaMode: 0, ctrlKey: true, metaKey: false },
+        false,
+      ),
+    ).toBe(true);
+    expect(
+      shouldHandleWheelAsViewport(
+        { deltaX: 20, deltaY: -10, deltaMode: 0, ctrlKey: false, metaKey: false },
+        false,
+      ),
+    ).toBe(false);
+    expect(
+      shouldHandleWheelAsViewport(
+        { deltaX: 20, deltaY: -10, deltaMode: 0, ctrlKey: false, metaKey: false },
+        true,
+      ),
+    ).toBe(true);
   });
 });
 
@@ -74,6 +101,25 @@ describe("applyWheel", () => {
         { x: 0, y: 0 },
       ),
     ).toEqual({ x: -15, y: 16, zoom: 1 });
+  });
+
+  it("zooms from a precision-touchpad pinch made of small ctrl+wheel ticks", () => {
+    const firstTick = applyWheel(
+      { x: 0, y: 0, zoom: 1 },
+      { deltaX: 0, deltaY: -1, deltaMode: 0, ctrlKey: true, metaKey: false },
+      { x: 100, y: 80 },
+    );
+    expect(firstTick.zoom).toBeGreaterThan(1);
+
+    let camera = { x: 0, y: 0, zoom: 1 };
+    for (let i = 0; i < 12; i += 1) {
+      camera = applyWheel(
+        camera,
+        { deltaX: 0, deltaY: -1, deltaMode: 0, ctrlKey: true, metaKey: false },
+        { x: 100, y: 80 },
+      );
+    }
+    expect(camera.zoom).toBeGreaterThan(1.1);
   });
 });
 
@@ -112,6 +158,14 @@ describe("shouldPanWithPointer", () => {
     expect(shouldPanWithPointer("select", 1)).toBe(true);
     expect(shouldPanWithPointer("pen", 0)).toBe(false);
     expect(shouldPanWithPointer("select", 0)).toBe(false);
+  });
+
+  it("pans with one finger while the select tool is active on a touch screen", () => {
+    expect(shouldPanWithPointer("select", 0, "touch")).toBe(true);
+    expect(shouldPanWithPointer("select", 0, "mouse")).toBe(false);
+    expect(shouldPanWithPointer("select", 0, "pen")).toBe(false);
+    expect(shouldPanWithPointer("pen", 0, "touch")).toBe(false);
+    expect(shouldPanWithPointer("pan", 0, "touch")).toBe(true);
   });
 });
 

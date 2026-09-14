@@ -44,6 +44,7 @@ function sampleMeta(): ProjectMeta {
     id: "project-1",
     name: "現場A",
     createdAt: "2026-08-30T08:00:00.000Z",
+    status: "open",
     links: [{ id: "link-1", title: "共有", url: "https://example.com" }],
   };
 }

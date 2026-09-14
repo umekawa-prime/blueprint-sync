@@ -12,11 +12,15 @@ import {
   listPdfFileNames,
   listPdfsOfKind,
   parseProjectJson,
+  parseProjectWorkflowStatus,
   PROJECT_PDF_DIRS,
+  PROJECT_WORKFLOW_STATUSES,
   projectPdfKind,
+  projectWorkflowLabel,
   rememberRecent,
   renamedProjectRelPath,
   serializeProjectJson,
+  splitProjectsByWorkflow,
   isProjectCadRelPath,
   listCadFiles,
   listSidebarCadFiles,
@@ -70,7 +74,66 @@ describe("project.json", () => {
       id: "x",
       name: "n",
       createdAt: "t",
+      status: "open",
       links: [{ id: "1", title: "ok", url: "https://1drv.ms/f/s!abc" }],
+    });
+  });
+
+  it("defaults missing workflow status to 未着手 and keeps a valid status", () => {
+    const withoutStatus = parseProjectJson(
+      JSON.stringify({
+        id: "x",
+        name: "n",
+        createdAt: "t",
+        links: [],
+      }),
+    );
+    expect(withoutStatus.status).toBe("open");
+    expect(createProjectMeta("現場A", new Date("2026-08-30T08:00:00.000Z")).status).toBe("open");
+
+    const withStatus = parseProjectJson(
+      JSON.stringify({
+        id: "x",
+        name: "n",
+        createdAt: "t",
+        status: "reviewing",
+        links: [],
+      }),
+    );
+    expect(withStatus.status).toBe("reviewing");
+    expect(parseProjectJson(serializeProjectJson(withStatus)).status).toBe("reviewing");
+  });
+});
+
+describe("project workflow status", () => {
+  it("labels Backlog-like project states in Japanese", () => {
+    expect(PROJECT_WORKFLOW_STATUSES.map(projectWorkflowLabel)).toEqual([
+      "未着手",
+      "詳細確認中",
+      "発注待ち",
+      "対応中",
+      "完了",
+    ]);
+    expect(parseProjectWorkflowStatus("closed")).toBe("closed");
+    expect(parseProjectWorkflowStatus("waiting_order")).toBe("waiting_order");
+    expect(parseProjectWorkflowStatus("unknown")).toBe("open");
+  });
+
+  it("moves completed projects into a separate list", () => {
+    expect(
+      splitProjectsByWorkflow([
+        { path: "/a", name: "a", status: "open" },
+        { path: "/b", name: "b", status: "closed" },
+        { path: "/c", name: "c", status: "in_progress" },
+        { path: "/d", name: "d" },
+      ]),
+    ).toEqual({
+      active: [
+        { path: "/a", name: "a", status: "open" },
+        { path: "/c", name: "c", status: "in_progress" },
+        { path: "/d", name: "d" },
+      ],
+      completed: [{ path: "/b", name: "b", status: "closed" }],
     });
   });
 });

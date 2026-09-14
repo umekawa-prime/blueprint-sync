@@ -52,6 +52,21 @@ describe("editor shell layout", () => {
     expect(home).toContain("新規作成");
   });
 
+  it("lets the home list change project workflow status and keeps completed items separate", () => {
+    const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
+    expect(home).not.toContain("最近使ったプロジェクト");
+    expect(home).toContain("setProjectWorkflowStatus");
+    expect(home).toContain("splitProjectsByWorkflow");
+    expect(home).toContain("PROJECT_WORKFLOW_STATUSES");
+    expect(home).toContain(">完了</h2>");
+  });
+
+  it("lets the home list open a project folder in Cursor", () => {
+    const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
+    expect(home).toContain("openFolderInCursor");
+    expect(home).toContain("Cursorで開く");
+  });
+
   it("puts a text color palette beside the text tool, separate from the pen palette", () => {
     const toolbar = readFileSync(path.resolve("src/lib/components/Toolbar.svelte"), "utf8");
     const palette = readFileSync(path.resolve("src/lib/components/TextPalette.svelte"), "utf8");
@@ -126,6 +141,32 @@ describe("editor shell layout", () => {
     expect(sidebar).toContain("aria-current");
     expect(toolbar).toContain("selectPdfPage");
     expect(toolbar).not.toContain("broadcastPage(Math.min");
+  });
+
+  it("opens a Backlog-style issue list stored in the project's TODO.md", () => {
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    const toolbar = readFileSync(path.resolve("src/lib/components/Toolbar.svelte"), "utf8");
+    const panel = readFileSync(path.resolve("src/lib/components/TodoPanel.svelte"), "utf8");
+    expect(page).toContain('import TodoPanel from "$lib/components/TodoPanel.svelte"');
+    expect(page).toContain("todoStore.panelOpen");
+    expect(sidebar).toContain("課題");
+    expect(toolbar).toContain("課題");
+    expect(panel).toContain("TODO_FILTERS");
+    expect(panel).toContain("課題の件名を入力して追加");
+    expect(panel).toContain("statusLabel");
+    expect(panel).toContain("保存");
+    expect(panel).not.toContain('type="date"');
+    expect(panel).toContain("DatePicker");
+    const picker = readFileSync(path.resolve("src/lib/components/DatePicker.svelte"), "utf8");
+    expect(picker).toContain("calendarMonthGrid");
+    expect(picker).toContain("日付を選択");
+    expect(picker).not.toContain('type="date"');
+    const markdown = readFileSync(path.resolve("src/lib/utils/todoMarkdown.ts"), "utf8");
+    expect(markdown).toContain("完了以外");
+    expect(markdown).toContain("未対応");
+    expect(markdown).toContain("処理中");
+    expect(markdown).toContain("処理済み");
   });
 
   it("opens the project folder in Cursor from the bottom of the sidebar", () => {

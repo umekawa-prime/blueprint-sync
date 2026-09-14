@@ -476,9 +476,30 @@ fn save_pdf_file(
 fn allow_webview_camera(window: &tauri::WebviewWindow) {
     let _ = window.with_webview(|platform| {
         unsafe {
-            let Ok(webview) = platform.controller().CoreWebView2() else {
+            let controller = platform.controller();
+            let Ok(webview) = controller.CoreWebView2() else {
                 return;
             };
+            // Trackpad pinch arrives as synthetic ctrl+wheel. Tauri leaves
+            // IsZoomControlEnabled=false, which swallows that gesture.
+            if let Ok(settings) = webview.Settings() {
+                let _ = settings.SetIsZoomControlEnabled(true);
+            }
+            let mut zoom_token = 0_i64;
+            let zoom_handler = webview2_com::ZoomFactorChangedEventHandler::create(Box::new(
+                |changed, _| {
+                    let Some(changed) = changed else {
+                        return Ok(());
+                    };
+                    let mut factor = 0.0;
+                    changed.ZoomFactor(&mut factor)?;
+                    if (factor - 1.0).abs() > 0.001 {
+                        changed.SetZoomFactor(1.0)?;
+                    }
+                    Ok(())
+                },
+            ));
+            let _ = controller.add_ZoomFactorChanged(&zoom_handler, &mut zoom_token);
             let mut token = 0_i64;
             let handler = webview2_com::PermissionRequestedEventHandler::create(Box::new(
                 |_, args| {

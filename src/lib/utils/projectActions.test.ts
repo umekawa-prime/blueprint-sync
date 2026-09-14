@@ -125,6 +125,11 @@ vi.mock("@tauri-apps/plugin-opener", () => ({
   openUrl: mockOpenUrl,
 }));
 
+vi.mock("./todoActions", () => ({
+  loadProjectTodos: vi.fn(async () => {}),
+  resetTodoState: vi.fn(),
+}));
+
 vi.mock("./connectionActions", () => ({
   sendCurrentPdf: mockSendCurrentPdf,
 }));
@@ -150,6 +155,7 @@ import {
   importIncomingFile,
   shareCurrentProject,
   convertCadFileToDrawingPdf,
+  setProjectWorkflowStatus,
 } from "./projectActions";
 
 function sampleMeta(overrides: Partial<ProjectMeta> = {}): ProjectMeta {
@@ -157,6 +163,7 @@ function sampleMeta(overrides: Partial<ProjectMeta> = {}): ProjectMeta {
     id: "project-1",
     name: "現場A",
     createdAt: "2026-08-30T08:00:00.000Z",
+    status: "open",
     links: [],
     ...overrides,
   };
@@ -208,7 +215,7 @@ describe("projectActions", () => {
 
     await loadRecentsIntoStore();
 
-    expect(projectStore.recents).toEqual([sampleRecent("/keep", "keep")]);
+    expect(projectStore.recents).toEqual([{ ...sampleRecent("/keep", "keep"), status: "open" }]);
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([sampleRecent("/keep", "keep")]);
   });
 
@@ -221,8 +228,64 @@ describe("projectActions", () => {
 
     await loadRecentsIntoStore();
 
-    expect(projectStore.recents).toEqual(items.slice(0, 8));
+    expect(projectStore.recents).toEqual(
+      items.slice(0, 8).map((item) => ({ ...item, status: "open" })),
+    );
     expect(mockSaveRecentProjects).toHaveBeenCalledWith(items.slice(0, 8));
+  });
+
+  it("hydrates recents with workflow status from project.json", async () => {
+    mockLoadRecentProjects.mockResolvedValue([sampleRecent("/keep", "keep")]);
+    mockPathExists.mockResolvedValue(true);
+    mockReadProjectMeta.mockResolvedValue(sampleMeta({ name: "keep", status: "in_progress" }));
+
+    await loadRecentsIntoStore();
+
+    expect(projectStore.recents).toEqual([
+      { name: "keep", path: "/keep", status: "in_progress" },
+    ]);
+  });
+
+  it("defaults recents to 未着手 when project.json cannot be read", async () => {
+    mockLoadRecentProjects.mockResolvedValue([sampleRecent("/keep", "keep")]);
+    mockPathExists.mockResolvedValue(true);
+    mockReadProjectMeta.mockRejectedValue(new Error("Invalid project.json"));
+
+    await loadRecentsIntoStore();
+
+    expect(projectStore.recents).toEqual([{ name: "keep", path: "/keep", status: "open" }]);
+  });
+
+  it("writes workflow status without opening the project", async () => {
+    const meta = sampleMeta();
+    projectStore.recents = [{ name: "現場A", path: "/projects/a", status: "open" }];
+    projectStore.sandboxProjects = [{ id: "project-1", name: "現場A", path: "/projects/a", status: "open" }];
+    mockReadProjectMeta.mockResolvedValue(meta);
+
+    await setProjectWorkflowStatus("/projects/a", "closed");
+
+    expect(mockWriteProjectMeta).toHaveBeenCalledWith("/projects/a", { ...meta, status: "closed" });
+    expect(projectStore.recents).toEqual([
+      { name: "現場A", path: "/projects/a", status: "closed" },
+    ]);
+    expect(projectStore.sandboxProjects).toEqual([
+      { id: "project-1", name: "現場A", path: "/projects/a", status: "closed" },
+    ]);
+    expect(projectStore.folder).toBe("");
+    expect(projectStore.meta).toBeNull();
+  });
+
+  it("keeps the open project's meta in sync when its workflow status changes", async () => {
+    const meta = sampleMeta();
+    projectStore.folder = "/projects/a";
+    projectStore.meta = meta;
+    projectStore.recents = [{ name: "現場A", path: "/projects/a", status: "open" }];
+    mockReadProjectMeta.mockResolvedValue(meta);
+
+    await setProjectWorkflowStatus("/projects/a", "reviewing");
+
+    expect(projectStore.meta).toEqual({ ...meta, status: "reviewing" });
+    expect(projectStore.folder).toBe("/projects/a");
   });
 
   it("creates a project and remembers it", async () => {
@@ -259,7 +322,7 @@ describe("projectActions", () => {
     expect(pdfStore.clear).toHaveBeenCalled();
     expect(annotationStore.clear).toHaveBeenCalled();
     expect(mockSaveRecentProjects).toHaveBeenCalledWith([
-      { id: "project-1", name: "現場A", path: "/projects/a" },
+      { id: "project-1", name: "現場A", path: "/projects/a", status: "open" },
     ]);
   });
 

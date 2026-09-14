@@ -15,6 +15,8 @@
     shareCurrentProject,
   } from "$lib/utils/projectActions";
   import { openCurrentProjectInCursor } from "$lib/utils/cursorOpen";
+  import { toggleTodoPanel } from "$lib/utils/todoActions";
+  import { todoStore } from "$lib/stores/todoStore.svelte";
   import {
     displayLinkTitle,
     folderDisplayName,
@@ -368,6 +370,13 @@
     </ul>
   </section>
 
+  <button
+    type="button"
+    class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
+    onclick={() => toggleTodoPanel(true)}
+  >
+    課題{todoStore.activeCount > 0 ? `（${todoStore.activeCount}）` : ""}
+  </button>
   <button
     class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
     onclick={() => void shareCurrentProject()}

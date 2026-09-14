@@ -51,4 +51,9 @@ describe("pdfStore.load", () => {
     expect(pdfStore.pageIndex).toBe(0);
     expect(pdfStore.document).toEqual(second);
   });
+
+  it("keeps sub-percent zoom so pinch ticks can accumulate", () => {
+    pdfStore.setZoom(1.015);
+    expect(pdfStore.zoom).toBe(1.015);
+  });
 });

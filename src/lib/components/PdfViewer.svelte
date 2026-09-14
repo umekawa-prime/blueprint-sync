@@ -50,6 +50,7 @@
     panBy,
     pinchCamera,
     scaleSerializedObjects,
+    shouldHandleWheelAsViewport,
     shouldPanWithPointer,
     zoomAroundPoint,
     type MapCamera,
@@ -74,6 +75,7 @@
   let panDrag = $state<{ pointerId: number; x: number; y: number } | undefined>(undefined);
   let shouldCenter = true;
   let zoomRenderTimer: ReturnType<typeof setTimeout> | undefined;
+  const activePointers = new Map<number, { x: number; y: number }>();
   let pinchStart:
     | { zoom: number; x: number; y: number; cx: number; cy: number; dist: number }
     | undefined;
@@ -296,16 +298,26 @@
     window.addEventListener("keydown", onKey);
     window.addEventListener("keyup", onKeyUp);
     window.addEventListener("pointerdown", onWindowPointerDown);
+    window.addEventListener("pointerup", onPointerUpCapture);
+    window.addEventListener("pointercancel", onPointerUpCapture);
+    window.addEventListener("wheel", onWheel, { passive: false, capture: true });
     viewportEl?.addEventListener("pointerdown", onPointerDownCapture, true);
-    viewportEl?.addEventListener("wheel", onWheel, { passive: false });
+    viewportEl?.addEventListener("pointermove", onPointerMoveCapture, true);
+    viewportEl?.addEventListener("pointerup", onPointerUpCapture, true);
+    viewportEl?.addEventListener("pointercancel", onPointerUpCapture, true);
     viewportEl?.addEventListener("touchmove", onTouchMove, { passive: false });
 
     return () => {
       window.removeEventListener("keydown", onKey);
       window.removeEventListener("keyup", onKeyUp);
       window.removeEventListener("pointerdown", onWindowPointerDown);
+      window.removeEventListener("pointerup", onPointerUpCapture);
+      window.removeEventListener("pointercancel", onPointerUpCapture);
+      window.removeEventListener("wheel", onWheel, true);
       viewportEl?.removeEventListener("pointerdown", onPointerDownCapture, true);
-      viewportEl?.removeEventListener("wheel", onWheel);
+      viewportEl?.removeEventListener("pointermove", onPointerMoveCapture, true);
+      viewportEl?.removeEventListener("pointerup", onPointerUpCapture, true);
+      viewportEl?.removeEventListener("pointercancel", onPointerUpCapture, true);
       viewportEl?.removeEventListener("touchmove", onTouchMove);
     };
   });
@@ -345,7 +357,7 @@
   $effect(() => {
     const zoom = pdfStore.zoom;
     untrack(() => {
-      if (camera.zoom !== zoom) {
+      if (Math.abs(camera.zoom - zoom) > 0.0005) {
         const origin = viewportCenter();
         camera = clampToView(zoomAroundPoint(camera, origin.x, origin.y, zoom));
       }
@@ -982,8 +994,28 @@
     );
   }
 
+  function isOverViewport(event: { clientX: number; clientY: number }): boolean {
+    if (!viewportEl) {
+      return false;
+    }
+    const rect = viewportEl.getBoundingClientRect();
+    return (
+      event.clientX >= rect.left &&
+      event.clientX <= rect.right &&
+      event.clientY >= rect.top &&
+      event.clientY <= rect.bottom
+    );
+  }
+
   function onWheel(event: WheelEvent) {
+    const pinch = event.ctrlKey || event.metaKey;
+    if (!shouldHandleWheelAsViewport(event, isOverViewport(event))) {
+      return;
+    }
     if (!pdfStore.document) {
+      if (pinch) {
+        event.preventDefault();
+      }
       return;
     }
     event.preventDefault();
@@ -993,6 +1025,49 @@
     if (next.zoom !== pdfStore.zoom) {
       pdfStore.setZoom(next.zoom);
     }
+  }
+
+  function pinchFromActivePointers() {
+    if (activePointers.size < 2 || !viewportEl) {
+      return undefined;
+    }
+    const [a, b] = [...activePointers.values()];
+    const rect = viewportEl.getBoundingClientRect();
+    return {
+      cx: (a.x + b.x) / 2 - rect.left,
+      cy: (a.y + b.y) / 2 - rect.top,
+      dist: Math.hypot(a.x - b.x, a.y - b.y),
+    };
+  }
+
+  function beginPinchFromPointers() {
+    const pinch = pinchFromActivePointers();
+    if (!pinch || pinch.dist <= 0) {
+      return;
+    }
+    panDrag = undefined;
+    clearLongPress();
+    pinchStart = {
+      zoom: camera.zoom,
+      x: camera.x,
+      y: camera.y,
+      ...pinch,
+    };
+  }
+
+  function movePinchFromPointers() {
+    const pinch = pinchFromActivePointers();
+    if (!pinch || !pinchStart || pinchStart.dist <= 0) {
+      return;
+    }
+    camera = clampToView(
+      pinchCamera(pinchStart, {
+        cx: pinch.cx,
+        cy: pinch.cy,
+        scale: pinch.dist / pinchStart.dist,
+      }),
+    );
+    pdfStore.setZoom(camera.zoom);
   }
 
   function onPointerDownCapture(event: PointerEvent) {
@@ -1011,6 +1086,56 @@
       })
     ) {
       fabricCanvas.isDrawingMode = false;
+    }
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activePointers.size >= 2) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      beginPinchFromPointers();
+      return;
+    }
+    if (
+      !pdfStore.document ||
+      !shouldPanWithPointer(toolStore.current, event.button, event.pointerType)
+    ) {
+      return;
+    }
+    if (menuEl?.contains(event.target as Node)) {
+      return;
+    }
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    if (fabricCanvas && event.pointerType === "touch") {
+      fabricCanvas.skipTargetFind = true;
+      fabricCanvas.selection = false;
+    }
+    if (shouldStartLongPress(event)) {
+      longPressAt = { x: event.clientX, y: event.clientY };
+      clearLongPress();
+      longPressTimer = setTimeout(() => {
+        openViewerMenu(longPressAt.x, longPressAt.y);
+      }, LONG_PRESS_MS);
+    }
+    panDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
+    viewportEl?.setPointerCapture?.(event.pointerId);
+  }
+
+  function onPointerMoveCapture(event: PointerEvent) {
+    if (!activePointers.has(event.pointerId)) {
+      return;
+    }
+    activePointers.set(event.pointerId, { x: event.clientX, y: event.clientY });
+    if (activePointers.size >= 2 && pinchStart) {
+      event.preventDefault();
+      event.stopImmediatePropagation();
+      movePinchFromPointers();
+    }
+  }
+
+  function onPointerUpCapture(event: PointerEvent) {
+    activePointers.delete(event.pointerId);
+    if (activePointers.size < 2) {
+      pinchStart = undefined;
     }
   }
 
@@ -1031,7 +1156,10 @@
     if (!pdfStore.document) {
       return;
     }
-    if (shouldPanWithPointer(toolStore.current, event.button)) {
+    if (pinchStart || activePointers.size >= 2) {
+      return;
+    }
+    if (shouldPanWithPointer(toolStore.current, event.button, event.pointerType)) {
       event.preventDefault();
       panDrag = { pointerId: event.pointerId, x: event.clientX, y: event.clientY };
       (event.currentTarget as HTMLElement).setPointerCapture?.(event.pointerId);
@@ -1044,7 +1172,16 @@
   }
 
   function onPointerMove(event: PointerEvent) {
+    if (pinchStart || activePointers.size >= 2) {
+      return;
+    }
     if (panDrag && event.pointerId === panDrag.pointerId) {
+      if (
+        longPressTimer &&
+        Math.hypot(event.clientX - longPressAt.x, event.clientY - longPressAt.y) > 8
+      ) {
+        clearLongPress();
+      }
       camera = clampToView(panBy(camera, event.clientX - panDrag.x, event.clientY - panDrag.y));
       panDrag = { pointerId: panDrag.pointerId, x: event.clientX, y: event.clientY };
       return;
@@ -1061,6 +1198,7 @@
     clearLongPress();
     if (panDrag?.pointerId === event.pointerId) {
       panDrag = undefined;
+      applyTool();
     }
   }
 

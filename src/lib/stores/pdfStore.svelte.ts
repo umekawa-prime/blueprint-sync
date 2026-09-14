@@ -1,4 +1,5 @@
 import type { PDFDocumentProxy } from "pdfjs-dist";
+import { clampZoom } from "$lib/utils/mapViewport";
 
 async function destroyDocument(document: PDFDocumentProxy | null) {
   try {
@@ -67,7 +68,7 @@ class PdfStore {
   }
 
   setZoom(zoom: number) {
-    this.zoom = Math.min(4, Math.max(0.4, Number(zoom.toFixed(2))));
+    this.zoom = clampZoom(zoom);
   }
 }
 

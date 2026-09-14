@@ -6,16 +6,25 @@
     importIncomingFile,
     loadRecentsIntoStore,
     openProject,
+    setProjectWorkflowStatus,
     startWebDemo,
   } from "$lib/utils/projectActions";
   import { pickImportFiles } from "$lib/utils/fileAccess";
+  import { openFolderInCursor } from "$lib/utils/cursorOpen";
   import {
     isTauriRuntime,
     shouldAutoStartWebDemo,
     shouldOfferBrowserDemo,
     usesSandboxProjects,
   } from "$lib/utils/platform";
-  import { folderDisplayName, type RecentProject } from "$lib/utils/projectFormat";
+  import {
+    folderDisplayName,
+    parseProjectWorkflowStatus,
+    PROJECT_WORKFLOW_STATUSES,
+    projectWorkflowLabel,
+    splitProjectsByWorkflow,
+    type RecentProject,
+  } from "$lib/utils/projectFormat";
 
   let busy = $state(false);
   let ready = $state(false);
@@ -84,10 +93,77 @@
       }
     });
   }
+
+  function onStatusChange(path: string, event: Event) {
+    const status = parseProjectWorkflowStatus((event.currentTarget as HTMLSelectElement).value);
+    void run(() => setProjectWorkflowStatus(path, status));
+  }
 </script>
 
+{#snippet projectRow(recent: RecentProject, title: string)}
+  <li class="flex items-center gap-2 rounded hover:bg-slate-800">
+    <button
+      class="min-w-0 flex-1 px-3 py-2 text-left text-sm"
+      disabled={busy}
+      onclick={() => run(() => openProject(recent.path))}
+    >
+      <div>{title}</div>
+      <div class="truncate text-[11px] text-slate-500">{recent.path}</div>
+    </button>
+    <select
+      class="shrink-0 rounded border border-slate-600 bg-slate-950 px-2 py-1 text-[11px] text-slate-200"
+      disabled={busy}
+      aria-label={`${title} の状態`}
+      value={parseProjectWorkflowStatus(recent.status)}
+      onchange={(event) => onStatusChange(recent.path, event)}
+      onclick={(event) => event.stopPropagation()}
+    >
+      {#each PROJECT_WORKFLOW_STATUSES as status (status)}
+        <option value={status}>{projectWorkflowLabel(status)}</option>
+      {/each}
+    </select>
+    {#if tauri && !sandbox}
+      <button
+        type="button"
+        class="mr-2 inline-flex shrink-0 items-center gap-1 rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+        disabled={busy}
+        title="Cursorで開く"
+        aria-label={`${title} を Cursorで開く`}
+        onclick={(event) => {
+          event.stopPropagation();
+          void run(() => openFolderInCursor(recent.path));
+        }}
+      >
+        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" aria-hidden="true">
+          <path fill="currentColor" d="M4.2 2.1 20 12 11.4 13.7 7.3 22z" />
+        </svg>
+        Cursor
+      </button>
+    {/if}
+  </li>
+{/snippet}
+
+{#snippet projectGroups(items: RecentProject[], titleOf: (item: RecentProject) => string)}
+  {@const grouped = splitProjectsByWorkflow(items)}
+  {#if grouped.active.length > 0}
+    <ul class="space-y-1">
+      {#each grouped.active as recent (recent.path)}
+        {@render projectRow(recent, titleOf(recent))}
+      {/each}
+    </ul>
+  {/if}
+  {#if grouped.completed.length > 0}
+    <h2 class="mb-2 {grouped.active.length > 0 ? 'mt-4' : ''} text-xs text-slate-500">完了</h2>
+    <ul class="space-y-1">
+      {#each grouped.completed as recent (recent.path)}
+        {@render projectRow(recent, titleOf(recent))}
+      {/each}
+    </ul>
+  {/if}
+{/snippet}
+
 <div class="flex h-full flex-col items-center justify-center bg-slate-950 px-6 text-slate-100">
-  <div class="w-full max-w-lg rounded-xl border border-slate-700 bg-slate-900 p-6">
+  <div class="w-full max-w-xl rounded-xl border border-slate-700 bg-slate-900 p-6">
     <h1 class="mb-1 text-xl font-semibold text-cyan-300">Blueprint Sync</h1>
     <p class="mb-6 text-sm text-slate-400">
       {sandbox
@@ -133,21 +209,7 @@
       </button>
 
       {#if openable.length > 0}
-        <h2 class="mb-2 text-xs text-slate-500">この端末のプロジェクト</h2>
-        <ul class="space-y-1">
-          {#each openable as recent (recent.path)}
-            <li>
-              <button
-                class="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-800"
-                disabled={busy}
-                onclick={() => run(() => openProject(recent.path))}
-              >
-                <div>{recent.name || folderDisplayName(recent.path)}</div>
-                <div class="truncate text-[11px] text-slate-500">{recent.path}</div>
-              </button>
-            </li>
-          {/each}
-        </ul>
+        {@render projectGroups(openable, (recent) => recent.name || folderDisplayName(recent.path))}
       {/if}
     {:else}
       <button
@@ -166,21 +228,7 @@
       </button>
 
       {#if projectStore.recents.length > 0}
-        <h2 class="mb-2 text-xs text-slate-500">最近使ったプロジェクト</h2>
-        <ul class="space-y-1">
-          {#each projectStore.recents as recent (recent.path)}
-            <li>
-              <button
-                class="w-full rounded px-3 py-2 text-left text-sm hover:bg-slate-800"
-                disabled={busy}
-                onclick={() => run(() => openProject(recent.path))}
-              >
-                <div>{folderDisplayName(recent.path)}</div>
-                <div class="truncate text-[11px] text-slate-500">{recent.path}</div>
-              </button>
-            </li>
-          {/each}
-        </ul>
+        {@render projectGroups(projectStore.recents, (recent) => folderDisplayName(recent.path))}
       {/if}
     {/if}
 

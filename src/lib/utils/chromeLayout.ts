@@ -39,3 +39,10 @@ export function pageSidebarClass(isPhone: boolean): string {
   }
   return "flex w-36 shrink-0 flex-col gap-2 overflow-y-auto border-r border-slate-700 bg-slate-900 px-2 py-2";
 }
+
+export function todoPanelClass(isPhone: boolean): string {
+  if (isPhone) {
+    return "absolute inset-0 z-30 flex flex-col bg-[#2c333a] text-slate-100";
+  }
+  return "flex w-[22rem] shrink-0 flex-col border-l border-slate-700 bg-[#2c333a] text-slate-100";
+}

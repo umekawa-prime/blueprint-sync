@@ -15,7 +15,7 @@ export type WheelGesture = {
 };
 
 export function clampZoom(zoom: number): number {
-  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(zoom.toFixed(2))));
+  return Math.min(ZOOM_MAX, Math.max(ZOOM_MIN, Number(zoom.toFixed(3))));
 }
 
 export function panBy(camera: MapCamera, dx: number, dy: number): MapCamera {
@@ -58,8 +58,18 @@ export function wheelIntent(event: WheelGesture): "zoom" | "pan" {
   return "pan";
 }
 
+export function shouldHandleWheelAsViewport(
+  event: WheelGesture,
+  overViewport: boolean,
+): boolean {
+  return overViewport || event.ctrlKey || event.metaKey;
+}
+
 export function zoomAfterWheel(current: number, deltaY: number): number {
-  return clampZoom(current * Math.exp(-deltaY * 0.0025));
+  // Precision-touchpad pinch is ctrl+wheel with |deltaY| of about 1–10.
+  // Mouse notches are ~100–120. Keep mouse gain, boost the tiny pinch ticks.
+  const sensitivity = Math.abs(deltaY) < 40 ? 0.02 : 0.0025;
+  return clampZoom(current * Math.exp(-deltaY * sensitivity));
 }
 
 export function applyWheel(
@@ -121,8 +131,21 @@ export function clampCamera(
   };
 }
 
-export function shouldPanWithPointer(tool: string, button: number): boolean {
-  return button === 1 || (tool === "pan" && button === 0);
+export function shouldPanWithPointer(
+  tool: string,
+  button: number,
+  pointerType = "mouse",
+): boolean {
+  if (button === 1) {
+    return true;
+  }
+  if (button !== 0) {
+    return false;
+  }
+  if (tool === "pan") {
+    return true;
+  }
+  return tool === "select" && pointerType === "touch";
 }
 
 export function scaleSerializedObject(

@@ -8,8 +8,10 @@
   import ProjectHome from "$lib/components/ProjectHome.svelte";
   import ProjectSidebar from "$lib/components/ProjectSidebar.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
+  import TodoPanel from "$lib/components/TodoPanel.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
+  import { todoStore } from "$lib/stores/todoStore.svelte";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
   import { imageBlobFromPicked, pickImagesFromDisk } from "$lib/utils/fileAccess";
@@ -125,6 +127,9 @@
             <PdfViewer />
             <ConnectionPanel bind:open={connectionOpen} />
           </div>
+          {#if todoStore.panelOpen}
+            <TodoPanel />
+          {/if}
         </div>
 
         <StatusBar />

@@ -4,10 +4,54 @@ export type ProjectLink = {
   url: string;
 };
 
+export const PROJECT_WORKFLOW_STATUSES = [
+  "open",
+  "reviewing",
+  "waiting_order",
+  "in_progress",
+  "closed",
+] as const;
+
+export type ProjectWorkflowStatus = (typeof PROJECT_WORKFLOW_STATUSES)[number];
+
+const PROJECT_WORKFLOW_LABEL: Record<ProjectWorkflowStatus, string> = {
+  open: "未着手",
+  reviewing: "詳細確認中",
+  waiting_order: "発注待ち",
+  in_progress: "対応中",
+  closed: "完了",
+};
+
+export function parseProjectWorkflowStatus(value: unknown): ProjectWorkflowStatus {
+  return PROJECT_WORKFLOW_STATUSES.includes(value as ProjectWorkflowStatus)
+    ? (value as ProjectWorkflowStatus)
+    : "open";
+}
+
+export function projectWorkflowLabel(status: ProjectWorkflowStatus): string {
+  return PROJECT_WORKFLOW_LABEL[status];
+}
+
+export function splitProjectsByWorkflow<T extends { status?: ProjectWorkflowStatus }>(
+  items: T[],
+): { active: T[]; completed: T[] } {
+  const active: T[] = [];
+  const completed: T[] = [];
+  for (const item of items) {
+    if (parseProjectWorkflowStatus(item.status) === "closed") {
+      completed.push(item);
+    } else {
+      active.push(item);
+    }
+  }
+  return { active, completed };
+}
+
 export type ProjectMeta = {
   id: string;
   name: string;
   createdAt: string;
+  status: ProjectWorkflowStatus;
   links: ProjectLink[];
 };
 
@@ -15,6 +59,7 @@ export type RecentProject = {
   id?: string;
   name: string;
   path: string;
+  status?: ProjectWorkflowStatus;
 };
 
 export function isAllowedLinkUrl(url: string): boolean {
@@ -63,6 +108,7 @@ export function parseProjectJson(raw: string): ProjectMeta {
     id: parsed.id,
     name: parsed.name,
     createdAt: parsed.createdAt,
+    status: parseProjectWorkflowStatus(parsed.status),
     links: parsed.links.map(parseLink).filter((link): link is ProjectLink => link !== null),
   };
 }
@@ -83,6 +129,7 @@ export function createProjectMeta(name: string, now = new Date()): ProjectMeta {
     id: crypto.randomUUID(),
     name: name.trim() || "無題プロジェクト",
     createdAt: now.toISOString(),
+    status: "open",
     links: [],
   };
 }
