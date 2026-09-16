@@ -294,10 +294,15 @@ pub fn pick_explorer_folder() -> ExplorerDialogResult {
     run_powershell(&explorer_open_script("フォルダーを選択", None, true))
 }
 
+const DRAWING_OPEN_FILTER: &str =
+    "PDF / ZIP / JWW / JWC / DXF (*.pdf;*.zip;*.jww;*.jwc;*.dxf;*.dfx)|*.pdf;*.zip;*.jww;*.jwc;*.dxf;*.dfx|すべてのファイル (*.*)|*.*";
+const DRAWING_OPEN_RFD_FILTER: &str = "PDF / ZIP / JWW / JWC / DXF";
+const DRAWING_OPEN_EXTS: &[&str] = &["pdf", "zip", "jww", "jwc", "dxf", "dfx"];
+
 pub fn pick_explorer_pdf_or_zip() -> ExplorerDialogResult {
     run_powershell(&explorer_open_script(
         "図面を選択",
-        Some("PDF / ZIP / JWW / JWC (*.pdf;*.zip;*.jww;*.jwc)|*.pdf;*.zip;*.jww;*.jwc|すべてのファイル (*.*)|*.*"),
+        Some(DRAWING_OPEN_FILTER),
         false,
     ))
 }
@@ -305,7 +310,7 @@ pub fn pick_explorer_pdf_or_zip() -> ExplorerDialogResult {
 pub fn pick_explorer_pdfs_or_zips() -> ExplorerDialogResult {
     run_powershell(&explorer_open_script_opts(
         "図面を選択",
-        Some("PDF / ZIP / JWW / JWC (*.pdf;*.zip;*.jww;*.jwc)|*.pdf;*.zip;*.jww;*.jwc|すべてのファイル (*.*)|*.*"),
+        Some(DRAWING_OPEN_FILTER),
         false,
         true,
     ))
@@ -398,7 +403,7 @@ pub fn pick_file_native() -> Option<PathBuf> {
     let wsl = is_wsl();
     finish_native_pick(wsl, wsl.then(pick_explorer_pdf_or_zip), || {
         rfd::FileDialog::new()
-            .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
+            .add_filter(DRAWING_OPEN_RFD_FILTER, DRAWING_OPEN_EXTS)
             .pick_file()
     })
 }
@@ -407,7 +412,7 @@ pub fn pick_files_native() -> Vec<PathBuf> {
     let wsl = is_wsl();
     finish_native_picks(wsl, wsl.then(pick_explorer_pdfs_or_zips), || {
         rfd::FileDialog::new()
-            .add_filter("PDF / ZIP / JWW / JWC", &["pdf", "zip", "jww", "jwc"])
+            .add_filter(DRAWING_OPEN_RFD_FILTER, DRAWING_OPEN_EXTS)
             .pick_files()
             .unwrap_or_default()
     })
@@ -477,7 +482,7 @@ mod tests {
         explorer_open_script, explorer_open_script_opts, explorer_save_script,
         looks_like_windows_path, map_mnt_to_windows, native_pick_action, parse_dialog_output,
         parse_dialog_paths, powershell_binaries, unix_path_to_windows, windows_path_to_wsl,
-        ExplorerDialogResult, NativePickAction,
+        DRAWING_OPEN_FILTER, ExplorerDialogResult, NativePickAction,
     };
 
     #[test]
@@ -599,7 +604,7 @@ mod tests {
     fn explorer_open_script_can_multiselect_pdfs() {
         let script = explorer_open_script_opts(
             "図面を選択",
-            Some("PDF / ZIP / JWW / JWC (*.pdf;*.zip;*.jww;*.jwc)|*.pdf;*.zip;*.jww;*.jwc|すべてのファイル (*.*)|*.*"),
+            Some(DRAWING_OPEN_FILTER),
             false,
             true,
         );
@@ -610,6 +615,8 @@ mod tests {
         );
         assert!(script.contains("*.jww"), "{script}");
         assert!(script.contains("*.jwc"), "{script}");
+        assert!(script.contains("*.dxf"), "{script}");
+        assert!(script.contains("*.dfx"), "{script}");
     }
 
     #[test]

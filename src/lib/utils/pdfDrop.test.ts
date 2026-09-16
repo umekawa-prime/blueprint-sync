@@ -44,6 +44,10 @@ describe("firstDroppedPdfOrZip", () => {
     expect(firstDroppedPdfOrZip([txt, zip])).toBe(zip);
     const cad = new File(["c"], "1F.jww", { type: "" });
     expect(firstDroppedPdfOrZip([txt, cad])).toBe(cad);
+    const dxf = new File(["d"], "平面.dxf", { type: "" });
+    expect(firstDroppedPdfOrZip([txt, dxf])).toBe(dxf);
+    const dfx = new File(["e"], "配管.dfx", { type: "" });
+    expect(firstDroppedPdfOrZip([txt, dfx])).toBe(dfx);
     expect(firstDroppedPdfOrZip([new File(["a"], "notes.txt")])).toBeNull();
   });
 });
@@ -66,6 +70,8 @@ describe("firstDroppedImportPath", () => {
       "/tmp/A.pdf",
     );
     expect(firstDroppedImportPath(["/tmp/notes.txt", "/tmp/1F.jww"])).toBe("/tmp/1F.jww");
+    expect(firstDroppedImportPath(["/tmp/notes.txt", "/tmp/平面.dxf"])).toBe("/tmp/平面.dxf");
+    expect(firstDroppedImportPath(["/tmp/notes.txt", "/tmp/配管.dfx"])).toBe("/tmp/配管.dfx");
     expect(firstDroppedImportPath(["/tmp/notes.txt"])).toBeNull();
   });
 });

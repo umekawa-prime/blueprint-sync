@@ -10,16 +10,25 @@ function isSafeBasename(name: string): boolean {
   );
 }
 
-export function isCadDrawingBasename(name: string): boolean {
+function hasCadExtension(name: string): boolean {
   const lower = name.toLowerCase();
-  return isSafeBasename(name) && (lower.endsWith(".jww") || lower.endsWith(".jwc"));
+  return (
+    lower.endsWith(".jww") ||
+    lower.endsWith(".jwc") ||
+    lower.endsWith(".dxf") ||
+    lower.endsWith(".dfx")
+  );
+}
+
+export function isCadDrawingBasename(name: string): boolean {
+  return isSafeBasename(name) && hasCadExtension(name);
 }
 
 export function cadPdfBasename(name: string): string | null {
   if (!isCadDrawingBasename(name)) {
     return null;
   }
-  return name.replace(/\.(jww|jwc)$/i, ".pdf");
+  return name.replace(/\.(jww|jwc|dxf|dfx)$/i, ".pdf");
 }
 
 export async function convertCadBytesToPdf(
@@ -31,7 +40,7 @@ export async function convertCadBytesToPdf(
     throw new Error("PDFファイル名が不正です");
   }
   if (!isTauriRuntime()) {
-    throw new Error("JWW/JWC の変換はデスクトップ版で行えます");
+    throw new Error("CAD の変換はデスクトップ版で行えます");
   }
   const { invoke } = await import("@tauri-apps/api/core");
   const pdfBytes = await invoke<number[] | Uint8Array | ArrayBuffer>("convert_cad_to_pdf", {

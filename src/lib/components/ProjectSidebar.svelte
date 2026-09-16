@@ -279,15 +279,15 @@
       </ul>
     {/if}
 
-    <h2 class="mb-2 mt-5 text-xs text-slate-500">図面 JWW</h2>
+    <h2 class="mb-2 mt-5 text-xs text-slate-500">図面 JWW / DXF</h2>
     <button
       class="mb-2 w-full rounded bg-slate-800 px-2 py-1 text-xs"
       onclick={() => onAddPdf("cad")}
     >
-      JWWを追加
+      JWW / DXFを追加
     </button>
     {#if listSidebarCadFiles(projectStore.pdfs).length === 0}
-      <p class="text-xs text-slate-500">「JWWを追加」またはドロップで JWW / JWC を入れてください</p>
+      <p class="text-xs text-slate-500">「JWW / DXFを追加」またはドロップで JWW / JWC / DXF を入れてください</p>
     {:else}
       <ul class="space-y-1">
         {#each listSidebarCadFiles(projectStore.pdfs) as file (file)}

@@ -2,6 +2,7 @@ mod cad_dxf;
 mod cad_font;
 mod cad_pdf;
 mod cursor_app;
+mod dxf_read;
 mod jwcad;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 mod explorer_dialog;
@@ -42,7 +43,11 @@ fn is_visible_pdf_name(name: &str) -> bool {
 
 fn is_visible_cad_name(name: &str) -> bool {
     let lower = name.to_ascii_lowercase();
-    !name.starts_with('.') && (lower.ends_with(".jww") || lower.ends_with(".jwc"))
+    !name.starts_with('.')
+        && (lower.ends_with(".jww")
+            || lower.ends_with(".jwc")
+            || lower.ends_with(".dxf")
+            || lower.ends_with(".dfx"))
 }
 
 enum CopyIntoFolderDecision {
@@ -730,8 +735,17 @@ mod tests {
             project_listed_rel_name(Some("図面JWW"), "旧図.JWC").as_deref(),
             Some("図面JWW/旧図.JWC")
         );
+        assert_eq!(
+            project_listed_rel_name(Some("図面JWW"), "平面.dxf").as_deref(),
+            Some("図面JWW/平面.dxf")
+        );
+        assert_eq!(
+            project_listed_rel_name(Some("図面JWW"), "配管.DFX").as_deref(),
+            Some("図面JWW/配管.DFX")
+        );
         assert_eq!(project_listed_rel_name(Some("図面"), "1F.jww"), None);
         assert_eq!(project_listed_rel_name(None, "1F.jww"), None);
+        assert_eq!(project_listed_rel_name(Some("図面"), "平面.dxf"), None);
     }
 
     #[test]

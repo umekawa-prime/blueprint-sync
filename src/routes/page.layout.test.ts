@@ -102,6 +102,7 @@ describe("editor shell layout", () => {
   it("lists jww drawings separately with a delete control and hover title", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     expect(sidebar).toContain("図面 JWW");
+    expect(sidebar).toContain("DXF");
     expect(sidebar).toContain('onclick={() => onAddPdf("cad")}');
     expect(sidebar).toContain("listSidebarCadFiles(projectStore.pdfs)");
     expect(sidebar).toContain("title={projectPdfDisplayName(file)}");

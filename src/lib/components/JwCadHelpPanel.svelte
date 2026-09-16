@@ -40,8 +40,8 @@
       <section>
         <h3 class="mb-1 text-xs font-semibold tracking-wide text-slate-400">このアプリと Jw_cad</h3>
         <ol class="list-decimal space-y-1 pl-5 text-xs leading-5 text-slate-300">
-          <li>「JWWを追加」でプロジェクトの <span class="text-slate-100">図面JWW</span> にファイルを入れます。</li>
-          <li>サイドバーの JWW / JWC をクリックすると、プロジェクト内のそのファイルを Jw_cad で開きます。</li>
+          <li>「JWW / DXFを追加」でプロジェクトの <span class="text-slate-100">図面JWW</span> にファイルを入れます。</li>
+          <li>サイドバーの JWW / JWC / DXF をクリックすると、プロジェクト内のそのファイルを Jw_cad で開きます。</li>
           <li>Jw_cad で編集したら、Jw_cad 側で上書き保存してください。</li>
           <li>保存したファイルを右クリックし、<span class="text-slate-100">PDFに変換</span> すると <span class="text-slate-100">図面</span> に PDF が追加されます。</li>
           <li>注釈（ペン・写真ピン）は、変換後の PDF を開いて行います。</li>

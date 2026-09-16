@@ -848,7 +848,7 @@ export async function convertCadFileToDrawingPdf(relPath: string): Promise<void>
   const normalized = relPath.replaceAll("\\", "/");
   const destRel = pairedDrawingPdfRelPath(normalized);
   if (!destRel) {
-    throw new Error("JWW/JWCファイルではありません");
+    throw new Error("JWW/JWC/DXFファイルではありません");
   }
   const destPath = `${folder}/${destRel}`;
   if (await pathExists(destPath)) {
@@ -961,7 +961,7 @@ export async function importPdfIntoProject(kind: ProjectPdfKind = "drawing"): Pr
     );
   });
   if (usable.length === 0) {
-    setPdfOpenError(kind === "cad" ? "JWW/JWCファイルを選んでください" : "PDFファイル名が不正です");
+    setPdfOpenError(kind === "cad" ? "JWW/JWC/DXFファイルを選んでください" : "PDFファイル名が不正です");
     return;
   }
   const persisted = await persistCurrentAnnotations();

@@ -934,7 +934,7 @@
     const file = droppedFileFromEvent(event);
     const path = file ? null : droppedPathFromEvent(event);
     if (!file && !path) {
-      pdfStore.status = "PDF / ZIP / JWW / JWC をドロップしてください";
+      pdfStore.status = "PDF / ZIP / JWW / JWC / DXF をドロップしてください";
       return;
     }
     try {
@@ -975,7 +975,7 @@
         }
         const path = firstDroppedImportPath(event.payload.paths);
         if (!path) {
-          pdfStore.status = "PDF / ZIP / JWW / JWC をドロップしてください";
+          pdfStore.status = "PDF / ZIP / JWW / JWC / DXF をドロップしてください";
           return;
         }
         try {

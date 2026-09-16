@@ -596,6 +596,42 @@ describe("projectActions", () => {
     expect(projectStore.pdfs).toEqual(["図面JWW/1F.jww"]);
   });
 
+  it("copies a picked dxf into 図面JWW without converting it to pdf", async () => {
+    projectStore.folder = "/projects/a";
+    mockOpenPdfsFromDisk.mockResolvedValue([
+      {
+        name: "平面.dxf",
+        path: "/downloads/平面.dxf",
+        bytes: new Uint8Array(),
+      },
+    ]);
+    mockReadBinaryFile.mockResolvedValue(Uint8Array.from([10, 11, 12]));
+    mockPathExists.mockResolvedValue(false);
+    mockListProjectPdfs.mockResolvedValue(["図面JWW/平面.dxf"]);
+
+    await importPdfIntoProject("cad");
+
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面JWW/平面.dxf",
+      Uint8Array.from([10, 11, 12]),
+    );
+    expect(mockConvertCadBytesToPdf).not.toHaveBeenCalled();
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.pdfs).toEqual(["図面JWW/平面.dxf"]);
+  });
+
+  it("opens a dxf in Jw_cad without loading a converted pdf", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "図面/A.pdf";
+    mockOpenCadFileInJwCad.mockResolvedValue(undefined);
+
+    await openProjectPdf("図面JWW/平面.dxf");
+
+    expect(mockOpenCadFileInJwCad).toHaveBeenCalledWith("/projects/a/図面JWW/平面.dxf");
+    expect(pdfStore.load).not.toHaveBeenCalled();
+    expect(projectStore.currentPdf).toBe("図面/A.pdf");
+  });
+
   it("adds a jww even when the converted drawing pdf already exists", async () => {
     projectStore.folder = "/projects/a";
     mockOpenPdfsFromDisk.mockResolvedValue([

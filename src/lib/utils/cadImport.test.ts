@@ -22,9 +22,11 @@ import {
 } from "./cadImport";
 
 describe("isCadDrawingBasename", () => {
-  it("accepts jww and jwc basenames and rejects nested or hidden names", () => {
+  it("accepts jww, jwc, dxf, and dfx basenames and rejects nested or hidden names", () => {
     expect(isCadDrawingBasename("1F.jww")).toBe(true);
     expect(isCadDrawingBasename("旧図.JWC")).toBe(true);
+    expect(isCadDrawingBasename("平面.dxf")).toBe(true);
+    expect(isCadDrawingBasename("配管.DFX")).toBe(true);
     expect(isCadDrawingBasename("A.pdf")).toBe(false);
     expect(isCadDrawingBasename(".hidden.jww")).toBe(false);
     expect(isCadDrawingBasename("nested/a.jww")).toBe(false);
@@ -35,6 +37,8 @@ describe("cadPdfBasename", () => {
   it("replaces the cad extension with pdf", () => {
     expect(cadPdfBasename("1F.jww")).toBe("1F.pdf");
     expect(cadPdfBasename("旧図.JWC")).toBe("旧図.pdf");
+    expect(cadPdfBasename("平面.dxf")).toBe("平面.pdf");
+    expect(cadPdfBasename("配管.DFX")).toBe("配管.pdf");
     expect(cadPdfBasename("A.pdf")).toBeNull();
   });
 });
@@ -61,7 +65,7 @@ describe("convertCadBytesToPdf", () => {
     mockIsTauri.mockReturnValue(false);
 
     await expect(convertCadBytesToPdf("1F.jww", Uint8Array.from([1]))).rejects.toThrow(
-      "JWW/JWC の変換はデスクトップ版で行えます",
+      "CAD の変換はデスクトップ版で行えます",
     );
     expect(mockInvoke).not.toHaveBeenCalled();
   });

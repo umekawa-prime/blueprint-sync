@@ -7,7 +7,11 @@ const FALLBACK_JWW: &str = r"C:\jww\jww.exe";
 
 pub fn is_cad_file_path(path: &str) -> bool {
     let lower = path.to_ascii_lowercase();
-    (lower.ends_with(".jww") || lower.ends_with(".jwc")) && !path.trim().is_empty()
+    (lower.ends_with(".jww")
+        || lower.ends_with(".jwc")
+        || lower.ends_with(".dxf")
+        || lower.ends_with(".dfx"))
+        && !path.trim().is_empty()
 }
 
 pub fn exe_from_lnk_bytes(bytes: &[u8]) -> Option<PathBuf> {
@@ -100,7 +104,7 @@ pub fn open_cad_in_jwcad(path: String) -> Result<(), String> {
 #[cfg(windows)]
 fn open_on_windows(path: &str) -> Result<(), String> {
     if !is_cad_file_path(path) {
-        return Err("JWW/JWCファイルではありません".into());
+        return Err("JWW/JWC/DXFファイルではありません".into());
     }
     let file = PathBuf::from(path);
     if !file.is_file() {
@@ -133,9 +137,11 @@ mod tests {
     use std::path::PathBuf;
 
     #[test]
-    fn accepts_jww_and_jwc_paths() {
+    fn accepts_jww_jwc_dxf_and_dfx_paths() {
         assert!(is_cad_file_path(r"C:\proj\図面JWW\1F.jww"));
         assert!(is_cad_file_path(r"C:\proj\図面JWW\旧.JWC"));
+        assert!(is_cad_file_path(r"C:\proj\図面JWW\平面.dxf"));
+        assert!(is_cad_file_path(r"C:\proj\図面JWW\配管.DFX"));
         assert!(!is_cad_file_path(r"C:\proj\図面\1F.pdf"));
         assert!(!is_cad_file_path(""));
     }

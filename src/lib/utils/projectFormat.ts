@@ -161,7 +161,10 @@ function isCadSourceBasename(name: string): boolean {
   const lower = name.toLowerCase();
   return Boolean(
     name &&
-      (lower.endsWith(".jww") || lower.endsWith(".jwc")) &&
+      (lower.endsWith(".jww") ||
+        lower.endsWith(".jwc") ||
+        lower.endsWith(".dxf") ||
+        lower.endsWith(".dfx")) &&
       !name.startsWith(".") &&
       !name.includes("/") &&
       !name.includes("\\") &&
@@ -196,7 +199,7 @@ export function pairedDrawingPdfRelPath(relPath: string): string | null {
   if (!isProjectCadRelPath(relPath)) {
     return null;
   }
-  const pdfName = projectPdfDisplayName(relPath).replace(/\.(jww|jwc)$/i, ".pdf");
+  const pdfName = projectPdfDisplayName(relPath).replace(/\.(jww|jwc|dxf|dfx)$/i, ".pdf");
   return joinProjectPdfRelPath("drawing", pdfName);
 }
 
@@ -205,12 +208,12 @@ export function projectRenameStem(relPath: string): string {
 }
 
 function projectFileExtension(basename: string): string | null {
-  const match = basename.match(/\.(pdf|jww|jwc)$/i);
+  const match = basename.match(/\.(pdf|jww|jwc|dxf|dfx)$/i);
   return match ? match[0] : null;
 }
 
 function projectFileStem(basename: string): string {
-  return basename.replace(/\.(pdf|jww|jwc)$/i, "");
+  return basename.replace(/\.(pdf|jww|jwc|dxf|dfx)$/i, "");
 }
 
 export function renamedProjectRelPath(relPath: string, nextName: string): string | null {

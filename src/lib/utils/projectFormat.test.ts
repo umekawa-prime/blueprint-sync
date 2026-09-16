@@ -219,23 +219,35 @@ describe("project pdf kinds", () => {
     ]);
   });
 
-  it("treats jww/jwc under 図面JWW as cad source files, not pdfs", () => {
+  it("treats jww/jwc/dxf/dfx under 図面JWW as cad source files, not pdfs", () => {
     expect(isProjectCadRelPath("図面JWW/1F.jww")).toBe(true);
     expect(isProjectCadRelPath("図面JWW/旧図.JWC")).toBe(true);
+    expect(isProjectCadRelPath("図面JWW/平面.dxf")).toBe(true);
+    expect(isProjectCadRelPath("図面JWW/配管.DFX")).toBe(true);
     expect(isProjectCadRelPath("図面JWW/1F.pdf")).toBe(false);
     expect(isProjectCadRelPath("図面/1F.jww")).toBe(false);
     expect(isProjectPdfRelPath("図面JWW/1F.jww")).toBe(false);
-    expect(listCadFiles(["図面/A.pdf", "図面JWW/1F.jww", "図面JWW/1F.pdf", "図面JWW/旧図.jwc"])).toEqual([
-      "図面JWW/1F.jww",
-      "図面JWW/旧図.jwc",
-    ]);
+    expect(isProjectPdfRelPath("図面JWW/平面.dxf")).toBe(false);
+    expect(
+      listCadFiles([
+        "図面/A.pdf",
+        "図面JWW/1F.jww",
+        "図面JWW/1F.pdf",
+        "図面JWW/旧図.jwc",
+        "図面JWW/平面.dxf",
+        "図面JWW/配管.dfx",
+      ]),
+    ).toEqual(["図面JWW/1F.jww", "図面JWW/旧図.jwc", "図面JWW/平面.dxf", "図面JWW/配管.dfx"]);
     expect(
       listSidebarCadFiles(["図面/A.pdf", "図面JWW/1F.jww", "図面JWW/1F.pdf", "工程表/C.pdf"]),
     ).toEqual(["図面JWW/1F.jww", "図面JWW/1F.pdf"]);
     expect(pairedDrawingPdfRelPath("図面JWW/1F.jww")).toBe("図面/1F.pdf");
     expect(pairedDrawingPdfRelPath("図面JWW/旧図.JWC")).toBe("図面/旧図.pdf");
+    expect(pairedDrawingPdfRelPath("図面JWW/平面.dxf")).toBe("図面/平面.pdf");
+    expect(pairedDrawingPdfRelPath("図面JWW/配管.DFX")).toBe("図面/配管.pdf");
     expect(pairedDrawingPdfRelPath("図面/1F.pdf")).toBeNull();
     expect(projectRenameStem("図面JWW/1F.jww")).toBe("1F");
+    expect(projectRenameStem("図面JWW/平面.dxf")).toBe("平面");
     expect(projectRenameStem("工程表/週間工程.pdf")).toBe("週間工程");
   });
 });
@@ -245,6 +257,8 @@ describe("renamedProjectRelPath", () => {
     expect(renamedProjectRelPath("図面/1F.pdf", "2F")).toBe("図面/2F.pdf");
     expect(renamedProjectRelPath("図面JWW/1F.jww", "平面図")).toBe("図面JWW/平面図.jww");
     expect(renamedProjectRelPath("図面JWW/旧図.jwc", "旧図.jwc")).toBe("図面JWW/旧図.jwc");
+    expect(renamedProjectRelPath("図面JWW/平面.dxf", "1F")).toBe("図面JWW/1F.dxf");
+    expect(renamedProjectRelPath("図面JWW/配管.dfx", "本管")).toBe("図面JWW/本管.dfx");
     expect(renamedProjectRelPath("工程表/週間工程.pdf", "月間工程.pdf")).toBe("工程表/月間工程.pdf");
   });
 
