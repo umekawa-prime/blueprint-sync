@@ -145,6 +145,22 @@ describe("editor shell layout", () => {
     expect(toolbar).not.toContain("broadcastPage(Math.min");
   });
 
+  it("lets desktop users resize and collapse the left and right sidebars", () => {
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    const dock = readFileSync(path.resolve("src/lib/components/DockPane.svelte"), "utf8");
+    const project = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    const pages = readFileSync(path.resolve("src/lib/components/PageSidebar.svelte"), "utf8");
+    const todo = readFileSync(path.resolve("src/lib/components/TodoPanel.svelte"), "utf8");
+    expect(page).toContain('import DockPane from "$lib/components/DockPane.svelte"');
+    expect(page).toContain('side="left"');
+    expect(page).toContain('side="right"');
+    expect(dock).toContain("sidebarLayoutAfterDrag");
+    expect(dock).toContain('aria-label={`${expandLabel}の幅を変更`}');
+    expect(project).not.toContain("w-72");
+    expect(pages).toContain("chromeStore.pageOpen");
+    expect(todo).not.toContain("w-[22rem]");
+  });
+
   it("opens a Backlog-style issue list stored in the project's TODO.md", () => {
     const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");

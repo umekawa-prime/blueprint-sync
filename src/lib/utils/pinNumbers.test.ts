@@ -14,8 +14,7 @@ function pin(id: string, createdAt?: number, title = ""): PhotoPinRecord {
     nx: 0.5,
     ny: 0.5,
     title,
-    thumbnailDataUrl: "t",
-    imageDataUrl: "f",
+    images: [{ id: `${id}-img-1`, thumbnailDataUrl: "t", imageDataUrl: "f" }],
     ...(createdAt != null ? { createdAt } : {}),
   };
 }
@@ -75,5 +74,12 @@ describe("pinSlideCaption", () => {
     expect(pinSlideCaption(1, "基礎")).toBe("① 基礎");
     expect(pinSlideCaption(2, "  ")).toBe("②");
     expect(pinSlideCaption(3)).toBe("③");
+  });
+
+  it("counts the photos when a pin holds more than one", () => {
+    expect(pinSlideCaption(1, "基礎", 0, 3)).toBe("① 基礎 (1/3)");
+    expect(pinSlideCaption(1, "基礎", 2, 3)).toBe("① 基礎 (3/3)");
+    expect(pinSlideCaption(4, "", 1, 2)).toBe("④ (2/2)");
+    expect(pinSlideCaption(1, "基礎", 0, 1)).toBe("① 基礎");
   });
 });

@@ -2,13 +2,18 @@ import { backfillPinCreatedAt } from "./pinNumbers";
 
 export type PageObjects = Record<string, Record<string, unknown>>;
 
+export type PhotoPinImage = {
+  id: string;
+  thumbnailDataUrl: string;
+  imageDataUrl: string;
+};
+
 export type PhotoPinRecord = {
   id: string;
   nx: number;
   ny: number;
   title?: string;
-  thumbnailDataUrl: string;
-  imageDataUrl: string;
+  images: PhotoPinImage[];
   createdAt?: number;
 };
 
@@ -31,35 +36,86 @@ function isPageObjects(value: unknown): value is PageObjects {
   return true;
 }
 
-function isPhotoPinRecord(value: unknown): value is Omit<PhotoPinRecord, "title"> & { title?: unknown } {
-  if (typeof value !== "object" || value === null || Array.isArray(value)) {
-    return false;
-  }
-  const record = value as Record<string, unknown>;
-  return (
-    typeof record.id === "string" &&
-    typeof record.nx === "number" &&
-    typeof record.ny === "number" &&
-    typeof record.thumbnailDataUrl === "string" &&
-    typeof record.imageDataUrl === "string" &&
-    (record.title === undefined || typeof record.title === "string") &&
-    (record.createdAt === undefined || (typeof record.createdAt === "number" && Number.isFinite(record.createdAt)))
-  );
+export function photoPinImageId(pinId: string, index: number): string {
+  return `${pinId}-img-${index + 1}`;
 }
 
-function normalizePhotoPin(pin: Omit<PhotoPinRecord, "title"> & { title?: unknown }): PhotoPinRecord {
+function parsePhotoPinImage(
+  pinId: string,
+  index: number,
+  value: unknown,
+): PhotoPinImage | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const image = value as Record<string, unknown>;
+  if (typeof image.thumbnailDataUrl !== "string" || typeof image.imageDataUrl !== "string") {
+    return null;
+  }
   return {
-    id: pin.id,
-    nx: pin.nx,
-    ny: pin.ny,
-    title: typeof pin.title === "string" ? pin.title : "",
-    thumbnailDataUrl: pin.thumbnailDataUrl,
-    imageDataUrl: pin.imageDataUrl,
-    ...(typeof pin.createdAt === "number" ? { createdAt: pin.createdAt } : {}),
+    id: typeof image.id === "string" && image.id ? image.id : photoPinImageId(pinId, index),
+    thumbnailDataUrl: image.thumbnailDataUrl,
+    imageDataUrl: image.imageDataUrl,
   };
 }
 
-function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinRecord>> {
+// Pins used to hold exactly one photo as flat `thumbnailDataUrl` / `imageDataUrl`
+// fields. Projects saved by those builds still have to open here.
+function parsePhotoPinImages(pinId: string, record: Record<string, unknown>): PhotoPinImage[] {
+  if (Array.isArray(record.images)) {
+    const images: PhotoPinImage[] = [];
+    for (const value of record.images) {
+      const image = parsePhotoPinImage(pinId, images.length, value);
+      if (image) {
+        images.push(image);
+      }
+    }
+    return images;
+  }
+  if (typeof record.thumbnailDataUrl === "string" && typeof record.imageDataUrl === "string") {
+    return [
+      {
+        id: photoPinImageId(pinId, 0),
+        thumbnailDataUrl: record.thumbnailDataUrl,
+        imageDataUrl: record.imageDataUrl,
+      },
+    ];
+  }
+  return [];
+}
+
+function parsePhotoPin(value: unknown): PhotoPinRecord | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== "string" || typeof record.nx !== "number" || typeof record.ny !== "number") {
+    return null;
+  }
+  if (record.title !== undefined && typeof record.title !== "string") {
+    return null;
+  }
+  if (
+    record.createdAt !== undefined &&
+    (typeof record.createdAt !== "number" || !Number.isFinite(record.createdAt))
+  ) {
+    return null;
+  }
+  const images = parsePhotoPinImages(record.id, record);
+  if (images.length === 0) {
+    return null;
+  }
+  return {
+    id: record.id,
+    nx: record.nx,
+    ny: record.ny,
+    title: typeof record.title === "string" ? record.title : "",
+    images,
+    ...(typeof record.createdAt === "number" ? { createdAt: record.createdAt } : {}),
+  };
+}
+
+export function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinRecord>> {
   if (value === undefined) {
     return {};
   }
@@ -74,8 +130,9 @@ function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinR
     }
     const pins: Record<string, PhotoPinRecord> = {};
     for (const [id, pin] of Object.entries(pageValue)) {
-      if (isPhotoPinRecord(pin)) {
-        pins[id] = normalizePhotoPin(pin);
+      const parsed = parsePhotoPin(pin);
+      if (parsed) {
+        pins[id] = parsed;
       }
     }
     output[page] = backfillPinCreatedAt(pins);

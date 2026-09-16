@@ -1,13 +1,21 @@
 import { describe, expect, it } from "vitest";
 import {
   CAMERA_OVERLAY_CLASS,
+  DEFAULT_CHROME_LAYOUT,
+  PROJECT_SIDEBAR_WIDTH,
+  PAGE_SIDEBAR_WIDTH,
+  TODO_PANEL_WIDTH,
   drawingLayerHiddenClass,
   isPhoneWidth,
   isTabletWidth,
   pageSidebarClass,
+  parseChromeLayout,
   PHONE_MAX_WIDTH,
   SAFE_AREA_PADDING_STYLE,
   safeAreaPaddingCss,
+  serializeChromeLayout,
+  sidebarFrameStyle,
+  sidebarLayoutAfterDrag,
   todoPanelClass,
 } from "./chromeLayout";
 
@@ -59,9 +67,53 @@ describe("chromeLayout", () => {
   });
 
   it("puts the Backlog-style issue list in a right column on desktop and a full overlay on phone", () => {
-    expect(todoPanelClass(false)).toContain("w-[22rem]");
+    expect(todoPanelClass(false)).not.toContain("w-[22rem]");
     expect(todoPanelClass(false)).toContain("border-l");
     expect(todoPanelClass(true)).toContain("absolute");
     expect(todoPanelClass(true)).toContain("inset-0");
+  });
+
+  it("clamps a left sidebar drag to min/max and grows when pulled right", () => {
+    expect(
+      sidebarLayoutAfterDrag(288, 100, 140, "left", PROJECT_SIDEBAR_WIDTH.min, PROJECT_SIDEBAR_WIDTH.max),
+    ).toEqual({ open: true, width: 328 });
+    expect(
+      sidebarLayoutAfterDrag(288, 100, 800, "left", PROJECT_SIDEBAR_WIDTH.min, PROJECT_SIDEBAR_WIDTH.max),
+    ).toEqual({ open: true, width: PROJECT_SIDEBAR_WIDTH.max });
+  });
+
+  it("grows a right sidebar when pulled left and collapses when dragged too narrow", () => {
+    expect(
+      sidebarLayoutAfterDrag(352, 500, 460, "right", TODO_PANEL_WIDTH.min, TODO_PANEL_WIDTH.max),
+    ).toEqual({ open: true, width: 392 });
+    expect(
+      sidebarLayoutAfterDrag(352, 500, 900, "right", TODO_PANEL_WIDTH.min, TODO_PANEL_WIDTH.max),
+    ).toEqual({ open: false, width: 352 });
+  });
+
+  it("keeps the last width when a pane is collapsed", () => {
+    expect(sidebarFrameStyle(true, 288)).toBe("width:288px");
+    expect(sidebarFrameStyle(false, 288)).toBe("width:28px");
+  });
+
+  it("round-trips chrome layout and falls back to defaults", () => {
+    const stored = serializeChromeLayout({
+      projectOpen: false,
+      projectWidth: 320,
+      pageOpen: false,
+      pageWidth: PAGE_SIDEBAR_WIDTH.min,
+      todoOpen: true,
+      todoWidth: 400,
+    });
+    expect(parseChromeLayout(stored)).toEqual({
+      projectOpen: false,
+      projectWidth: 320,
+      pageOpen: false,
+      pageWidth: PAGE_SIDEBAR_WIDTH.min,
+      todoOpen: true,
+      todoWidth: 400,
+    });
+    expect(parseChromeLayout(null)).toEqual(DEFAULT_CHROME_LAYOUT);
+    expect(parseChromeLayout("{")).toEqual(DEFAULT_CHROME_LAYOUT);
   });
 });

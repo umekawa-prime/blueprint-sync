@@ -1,6 +1,7 @@
 import { historyStore } from "$lib/stores/historyStore.svelte";
-import type { PageObjects, PhotoPinRecord } from "$lib/utils/annotationPersist";
-import { backfillPinCreatedAt, nextPinCreatedAt, numberedPins } from "$lib/utils/pinNumbers";
+import type { PageObjects, PhotoPinImage, PhotoPinRecord } from "$lib/utils/annotationPersist";
+import { parsePhotoPins } from "$lib/utils/annotationPersist";
+import { nextPinCreatedAt, numberedPins } from "$lib/utils/pinNumbers";
 
 class AnnotationStore {
   byPage = $state<Record<number, PageObjects>>({});
@@ -43,6 +44,44 @@ class AnnotationStore {
     current[id] = { ...existing, ...patch };
     this.photoPins = { ...this.photoPins, [page]: current };
     this.dirty = true;
+  }
+
+  addPhotoPinImages(page: number, id: string, images: PhotoPinImage[]) {
+    if (images.length === 0) {
+      return;
+    }
+    const current = { ...(this.photoPins[page] ?? {}) };
+    const existing = current[id];
+    if (!existing) {
+      return;
+    }
+    current[id] = { ...existing, images: [...existing.images, ...images] };
+    this.photoPins = { ...this.photoPins, [page]: current };
+    this.dirty = true;
+  }
+
+  // A pin with no photo has nothing to show on the drawing, so dropping the
+  // last one drops the pin.
+  removePhotoPinImage(page: number, id: string, imageId: string): "pin" | "image" | "missing" {
+    const current = { ...(this.photoPins[page] ?? {}) };
+    const existing = current[id];
+    if (!existing) {
+      return "missing";
+    }
+    const images = existing.images.filter((image) => image.id !== imageId);
+    if (images.length === existing.images.length) {
+      return "missing";
+    }
+    if (images.length === 0) {
+      delete current[id];
+      this.photoPins = { ...this.photoPins, [page]: current };
+      this.dirty = true;
+      return "pin";
+    }
+    current[id] = { ...existing, images };
+    this.photoPins = { ...this.photoPins, [page]: current };
+    this.dirty = true;
+    return "image";
   }
 
   removePhotoPin(page: number, id: string) {
@@ -115,17 +154,8 @@ class AnnotationStore {
     byPage: Record<number, PageObjects>,
     photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
   ) {
-    const normalized: Record<number, Record<string, PhotoPinRecord>> = {};
-    for (const [key, pins] of Object.entries(photoPins)) {
-      const page = Number(key);
-      normalized[page] = backfillPinCreatedAt(
-        Object.fromEntries(
-          Object.entries(pins).map(([id, pin]) => [id, { ...pin, title: pin.title ?? "" }]),
-        ),
-      );
-    }
     this.byPage = byPage;
-    this.photoPins = normalized;
+    this.photoPins = parsePhotoPins(photoPins);
     this.dirty = false;
     this.remoteRevision += 1;
     historyStore.clear();

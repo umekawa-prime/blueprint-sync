@@ -1,3 +1,4 @@
+import { chromeStore } from "$lib/stores/chromeStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { todoStore } from "$lib/stores/todoStore.svelte";
 import { pathExists, readTextFile, writeTextFile } from "./projectIo";
@@ -81,4 +82,5 @@ export async function removeProjectTodo(key: string): Promise<void> {
 
 export function toggleTodoPanel(open?: boolean) {
   todoStore.panelOpen = open ?? !todoStore.panelOpen;
+  chromeStore.persist();
 }

@@ -108,7 +108,8 @@ export async function renderPinMarkerOverlay(
   }
   for (const item of numberedPins(pins)) {
     const layout = pinMarkerLayout(item.pin.nx, item.pin.ny, canvas.width, canvas.height);
-    const thumbnail = await loadImage(item.pin.thumbnailDataUrl);
+    const cover = item.pin.images[0];
+    const thumbnail = cover ? await loadImage(cover.thumbnailDataUrl) : null;
     drawPinMarker(ctx, layout, item.label, thumbnail);
   }
   try {

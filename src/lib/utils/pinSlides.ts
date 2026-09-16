@@ -1,10 +1,17 @@
 import { PDFDocument, rgb } from "pdf-lib";
-import type { PhotoPinRecord } from "./annotationPersist";
+import type { PhotoPinImage, PhotoPinRecord } from "./annotationPersist";
 import { numberedPins, pinSlideCaption } from "./pinNumbers";
 
 export type PinSlideStep =
   | { kind: "drawing"; pageIndex: number }
-  | { kind: "pin"; pageIndex: number; pin: PhotoPinRecord; number: number; caption: string };
+  | {
+      kind: "pin";
+      pageIndex: number;
+      pin: PhotoPinRecord;
+      image: PhotoPinImage;
+      number: number;
+      caption: string;
+    };
 
 export type SlideRect = {
   x: number;
@@ -21,13 +28,21 @@ export function pinSlidePlan(
   for (let pageIndex = 0; pageIndex < drawingPageCount; pageIndex += 1) {
     steps.push({ kind: "drawing", pageIndex });
     for (const item of numberedPins(Object.values(pinsByPage[pageIndex] ?? {}))) {
-      steps.push({
-        kind: "pin",
-        pageIndex,
-        pin: item.pin,
-        number: item.number,
-        caption: pinSlideCaption(item.number, item.pin.title),
-      });
+      for (const [imageIndex, image] of item.pin.images.entries()) {
+        steps.push({
+          kind: "pin",
+          pageIndex,
+          pin: item.pin,
+          image,
+          number: item.number,
+          caption: pinSlideCaption(
+            item.number,
+            item.pin.title,
+            imageIndex,
+            item.pin.images.length,
+          ),
+        });
+      }
     }
   }
   return steps;
@@ -38,7 +53,7 @@ export function pinSlideCounts(
   pinsByPage: Record<number, Record<string, PhotoPinRecord>>,
 ): number[] {
   return Array.from({ length: drawingPageCount }, (_, pageIndex) =>
-    Object.keys(pinsByPage[pageIndex] ?? {}).length,
+    Object.values(pinsByPage[pageIndex] ?? {}).reduce((total, pin) => total + pin.images.length, 0),
   );
 }
 
@@ -178,7 +193,7 @@ export async function appendPhotoPinSlides(
         page.drawImage(titleImage, layout.title);
       }
     }
-    const photo = await embedPinImage(output, step.pin.imageDataUrl);
+    const photo = await embedPinImage(output, step.image.imageDataUrl);
     const fitted = containInBox(photo.width, photo.height, layout.image.width, layout.image.height);
     page.drawImage(photo, {
       x: layout.image.x + (layout.image.width - fitted.width) / 2,

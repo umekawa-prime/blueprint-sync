@@ -252,8 +252,8 @@
   </li>
 {/snippet}
 
-<aside class="flex w-72 shrink-0 flex-col border-r border-slate-700 bg-slate-900">
-  <div class="border-b border-slate-800 px-3 py-3">
+<aside class="flex h-full min-h-0 w-full flex-col border-r border-slate-700 bg-slate-900">
+  <div class="border-b border-slate-800 py-3 pr-5 pl-3">
     <div class="text-sm font-semibold text-cyan-300">{folderDisplayName(projectStore.folder)}</div>
     <div class="truncate text-[11px] text-slate-500" title={projectStore.folder}>{projectStore.folder}</div>
   </div>

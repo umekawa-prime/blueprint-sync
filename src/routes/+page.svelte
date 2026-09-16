@@ -2,6 +2,7 @@
   import { onMount } from "svelte";
   import CameraCapture from "$lib/components/CameraCapture.svelte";
   import ConnectionPanel from "$lib/components/ConnectionPanel.svelte";
+  import DockPane from "$lib/components/DockPane.svelte";
   import PageSidebar from "$lib/components/PageSidebar.svelte";
   import PdfViewer from "$lib/components/PdfViewer.svelte";
   import ProjectTabBar from "$lib/components/ProjectTabBar.svelte";
@@ -10,6 +11,7 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import TodoPanel from "$lib/components/TodoPanel.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
+  import { chromeStore } from "$lib/stores/chromeStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
@@ -21,7 +23,8 @@
     bootstrapOpenSession,
   } from "$lib/utils/projectActions";
   import { listenIncomingFiles } from "$lib/utils/incomingShare";
-  import { drawingLayerHiddenClass } from "$lib/utils/chromeLayout";
+  import { drawingLayerHiddenClass, PROJECT_SIDEBAR_WIDTH, TODO_PANEL_WIDTH } from "$lib/utils/chromeLayout";
+  import { toggleTodoPanel } from "$lib/utils/todoActions";
 
   let connectionOpen = $state(false);
   let cameraOpen = $state(false);
@@ -109,7 +112,18 @@
           </div>
         {/if}
       {:else}
-        <ProjectSidebar />
+        <DockPane
+          side="left"
+          open={chromeStore.projectOpen}
+          width={chromeStore.projectWidth}
+          minWidth={PROJECT_SIDEBAR_WIDTH.min}
+          maxWidth={PROJECT_SIDEBAR_WIDTH.max}
+          expandLabel="プロジェクト一覧"
+          onWidth={(next) => chromeStore.setProjectWidth(next)}
+          onOpenChange={(next) => chromeStore.setProjectOpen(next)}
+        >
+          <ProjectSidebar />
+        </DockPane>
       {/if}
       <div class="flex min-w-0 flex-1 flex-col">
         {#if !viewportStore.isPhone}
@@ -131,8 +145,23 @@
             <PdfViewer />
             <ConnectionPanel bind:open={connectionOpen} />
           </div>
-          {#if todoStore.panelOpen}
-            <TodoPanel />
+          {#if viewportStore.isPhone}
+            {#if todoStore.panelOpen}
+              <TodoPanel />
+            {/if}
+          {:else}
+            <DockPane
+              side="right"
+              open={todoStore.panelOpen}
+              width={chromeStore.todoWidth}
+              minWidth={TODO_PANEL_WIDTH.min}
+              maxWidth={TODO_PANEL_WIDTH.max}
+              expandLabel="課題"
+              onWidth={(next) => chromeStore.setTodoWidth(next)}
+              onOpenChange={(next) => toggleTodoPanel(next)}
+            >
+              <TodoPanel />
+            </DockPane>
           {/if}
         </div>
 

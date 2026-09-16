@@ -62,8 +62,14 @@ export function numberedPins(pins: PhotoPinRecord[]): NumberedPhotoPin[] {
     });
 }
 
-export function pinSlideCaption(number: number, title?: string): string {
+export function pinSlideCaption(
+  number: number,
+  title?: string,
+  imageIndex = 0,
+  imageCount = 1,
+): string {
   const label = circledPinLabel(number);
   const trimmed = title?.trim() ?? "";
-  return trimmed ? `${label} ${trimmed}` : label;
+  const suffix = imageCount > 1 ? ` (${imageIndex + 1}/${imageCount})` : "";
+  return trimmed ? `${label} ${trimmed}${suffix}` : `${label}${suffix}`;
 }

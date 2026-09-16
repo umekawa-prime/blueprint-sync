@@ -110,7 +110,7 @@
 </script>
 
 <aside class={todoPanelClass(viewportStore.isPhone)} aria-label="課題">
-  <div class="flex items-center gap-2 border-b border-slate-700 px-3 py-2">
+  <div class="flex items-center gap-2 border-b border-slate-700 py-2 pr-3 pl-5">
     {#if selected}
       <button class="text-xs text-cyan-300" onclick={backToList}>一覧へ</button>
     {:else}

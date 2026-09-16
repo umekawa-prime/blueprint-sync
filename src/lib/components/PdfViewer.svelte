@@ -63,6 +63,7 @@
   import type { EditCommand } from "$lib/utils/editHistory";
   import { staggeredPinPosition } from "$lib/utils/photoPinUi";
   import { renderPinMarkerOverlay } from "$lib/utils/pinMarkers";
+  import type { PhotoPinImage } from "$lib/utils/annotationPersist";
   import PhotoPinLayer from "$lib/components/PhotoPinLayer.svelte";
 
   let viewportEl: HTMLDivElement | undefined = $state();
@@ -87,6 +88,7 @@
     | undefined;
   let unlistenDrag: (() => void) | undefined;
   let lastTap = { x: 120, y: 120 };
+  let pendingPinId: string | null = null;
   let renderToken = 0;
   let menu = $state({ open: false, x: 0, y: 0 });
   let menuEl: HTMLDivElement | undefined = $state();
@@ -151,7 +153,26 @@
     return overlays;
   }
 
+  async function photoPinImageFromFile(file: Blob): Promise<PhotoPinImage> {
+    const assets = await createPhotoPinAssets(file);
+    return {
+      id: crypto.randomUUID(),
+      thumbnailDataUrl: assets.thumbnailDataUrl,
+      imageDataUrl: assets.imageDataUrl,
+    };
+  }
+
   async function addPhotoFromFile(file: Blob, offsetIndex = 0) {
+    // Set only while the camera was opened from a pin, so the shot joins that
+    // pin instead of dropping a new one.
+    const targetPinId = pendingPinId;
+    pendingPinId = null;
+    if (targetPinId) {
+      annotationStore.addPhotoPinImages(pdfStore.pageIndex, targetPinId, [
+        await photoPinImageFromFile(file),
+      ]);
+      return;
+    }
     if (!fabricCanvas) {
       return;
     }
@@ -160,7 +181,7 @@
     if (width <= 0 || height <= 0) {
       return;
     }
-    const assets = await createPhotoPinAssets(file);
+    const image = await photoPinImageFromFile(file);
     const { nx, ny } = staggeredPinPosition(
       fabricToNormalized(lastTap.x, lastTap.y, width, height),
       offsetIndex,
@@ -169,13 +190,30 @@
       id: crypto.randomUUID(),
       nx,
       ny,
-      thumbnailDataUrl: assets.thumbnailDataUrl,
-      imageDataUrl: assets.imageDataUrl,
+      images: [image],
     });
+  }
+
+  async function addImagesToPin(pinId: string) {
+    const picked = await pickImagesFromDisk();
+    if (picked.length === 0) {
+      return;
+    }
+    const images: PhotoPinImage[] = [];
+    for (const item of picked) {
+      images.push(await photoPinImageFromFile(imageBlobFromPicked(item)));
+    }
+    annotationStore.addPhotoPinImages(pdfStore.pageIndex, pinId, images);
+  }
+
+  function captureImageForPin(pinId: string) {
+    pendingPinId = pinId;
+    viewerApi.openCamera();
   }
 
   async function requestInsertImage() {
     closeViewerMenu();
+    pendingPinId = null;
     const picked = await pickImagesFromDisk();
     for (const [index, item] of picked.entries()) {
       await addPhotoFromFile(imageBlobFromPicked(item), index);
@@ -197,6 +235,7 @@
 
   function requestCaptureImage() {
     closeViewerMenu();
+    pendingPinId = null;
     viewerApi.openCamera();
   }
 
@@ -1305,6 +1344,11 @@
       pins={annotationStore.pinsFor(pdfStore.pageIndex)}
       onTitleChange={(id, title) => annotationStore.updatePhotoPin(pdfStore.pageIndex, id, { title })}
       onMove={(id, nx, ny) => annotationStore.updatePhotoPin(pdfStore.pageIndex, id, { nx, ny })}
+      onAddImages={(id) => void addImagesToPin(id)}
+      onCaptureImage={captureImageForPin}
+      onRemoveImage={(id, imageId) =>
+        annotationStore.removePhotoPinImage(pdfStore.pageIndex, id, imageId)}
+      onRemovePin={(id) => annotationStore.removePhotoPin(pdfStore.pageIndex, id)}
     />
   </div>
 </div>

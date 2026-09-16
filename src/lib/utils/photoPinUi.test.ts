@@ -1,15 +1,20 @@
 import { describe, expect, it } from "vitest";
 import {
   PIN_DRAG_HOLD_MS,
+  clampImageIndex,
   clickPhotoPin,
   closePhotoPinModal,
+  closePinMenu,
   hoverPhotoPin,
   idlePhotoPinView,
   leavePhotoPin,
+  openPinMenu,
   pinPositionFromPointer,
   shouldArmPinDrag,
+  showPinImage,
   startPinDrag,
   staggeredPinPosition,
+  stepPinImage,
   tapPhotoPin,
 } from "./photoPinUi";
 
@@ -28,9 +33,8 @@ describe("photoPinUi", () => {
   it("clicking a pin opens the modal and hides the hover preview", () => {
     const hovered = hoverPhotoPin(idlePhotoPinView(), "pin-1");
     expect(clickPhotoPin(hovered, "pin-1")).toEqual({
-      hoverId: null,
+      ...idlePhotoPinView(),
       modalId: "pin-1",
-      draggingId: null,
     });
   });
 
@@ -52,8 +56,8 @@ describe("photoPinUi", () => {
 
   it("uses tap-to-preview then a second tap for the modal on phone", () => {
     const preview = tapPhotoPin(idlePhotoPinView(), "pin-1");
-    expect(preview).toEqual({ hoverId: "pin-1", modalId: null, draggingId: null });
-    expect(tapPhotoPin(preview, "pin-1")).toEqual({ hoverId: null, modalId: "pin-1", draggingId: null });
+    expect(preview).toEqual({ ...idlePhotoPinView(), hoverId: "pin-1" });
+    expect(tapPhotoPin(preview, "pin-1")).toEqual({ ...idlePhotoPinView(), modalId: "pin-1" });
   });
 
   it("staggers stacked pins so multiple attachments stay distinct", () => {
@@ -81,9 +85,51 @@ describe("photoPinUi", () => {
   it("starts a pin drag by clearing preview and modal", () => {
     const modal = clickPhotoPin(idlePhotoPinView(), "pin-1");
     expect(startPinDrag(modal, "pin-2")).toEqual({
-      hoverId: null,
-      modalId: null,
+      ...idlePhotoPinView(),
       draggingId: "pin-2",
     });
+  });
+});
+
+describe("photoPinUi pin menu", () => {
+  it("opens the menu at the pointer and drops the hover preview", () => {
+    const hovered = hoverPhotoPin(idlePhotoPinView(), "pin-1");
+    const menu = openPinMenu(hovered, "pin-1", 120, 80);
+    expect(menu.menu).toEqual({ id: "pin-1", x: 120, y: 80 });
+    expect(menu.hoverId).toBeNull();
+  });
+
+  it("does not reopen the hover preview while the menu is open", () => {
+    const menu = openPinMenu(idlePhotoPinView(), "pin-1", 0, 0);
+    expect(hoverPhotoPin(menu, "pin-1")).toEqual(menu);
+  });
+
+  it("closes the menu without touching the rest of the view", () => {
+    const menu = openPinMenu(idlePhotoPinView(), "pin-1", 0, 0);
+    expect(closePinMenu(menu)).toEqual(idlePhotoPinView());
+    expect(closePinMenu(idlePhotoPinView())).toEqual(idlePhotoPinView());
+  });
+});
+
+describe("photoPinUi image selection", () => {
+  it("opens a pin on its first image", () => {
+    const view = showPinImage(clickPhotoPin(idlePhotoPinView(), "pin-1"), 2, 3);
+    expect(view.imageIndex).toBe(2);
+    expect(clickPhotoPin(view, "pin-1").imageIndex).toBe(0);
+  });
+
+  it("clamps the selected image into the remaining range", () => {
+    expect(clampImageIndex(5, 3)).toBe(2);
+    expect(clampImageIndex(-1, 3)).toBe(0);
+    expect(clampImageIndex(0, 0)).toBe(0);
+    expect(showPinImage(idlePhotoPinView(), 4, 2).imageIndex).toBe(1);
+  });
+
+  it("cycles through images in both directions", () => {
+    const first = idlePhotoPinView();
+    expect(stepPinImage(first, 1, 3).imageIndex).toBe(1);
+    expect(stepPinImage(first, -1, 3).imageIndex).toBe(2);
+    expect(stepPinImage(showPinImage(first, 2, 3), 1, 3).imageIndex).toBe(0);
+    expect(stepPinImage(first, 1, 0).imageIndex).toBe(0);
   });
 });
