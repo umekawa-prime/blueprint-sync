@@ -16,6 +16,8 @@ const {
   mockMoveFileIntoFolder,
   mockLoadRecentProjects,
   mockSaveRecentProjects,
+  mockLoadOpenSession,
+  mockSaveOpenSession,
   mockPathExists,
   mockReadAnnotationFile,
   mockReadBinaryFile,
@@ -45,6 +47,8 @@ const {
   mockMoveFileIntoFolder: vi.fn(),
   mockLoadRecentProjects: vi.fn(),
   mockSaveRecentProjects: vi.fn(),
+  mockLoadOpenSession: vi.fn(),
+  mockSaveOpenSession: vi.fn(),
   mockPathExists: vi.fn(),
   mockReadAnnotationFile: vi.fn(),
   mockReadBinaryFile: vi.fn(),
@@ -95,6 +99,7 @@ vi.mock("./projectIo", () => ({
   initProjectDir: mockInitProjectDir,
   listProjectPdfs: mockListProjectPdfs,
   loadRecentProjects: mockLoadRecentProjects,
+  loadOpenSession: mockLoadOpenSession,
   pathExists: mockPathExists,
   pickFolder: mockPickFolder,
   httpGet: vi.fn(),
@@ -105,6 +110,7 @@ vi.mock("./projectIo", () => ({
   readBinaryFile: mockReadBinaryFile,
   readProjectMeta: mockReadProjectMeta,
   saveRecentProjects: mockSaveRecentProjects,
+  saveOpenSession: mockSaveOpenSession,
   writeAnnotationFile: mockWriteAnnotationFile,
   writeProjectMeta: mockWriteProjectMeta,
   sandboxProjectsDir: mockSandboxProjectsDir,
@@ -141,6 +147,7 @@ import {
   importPdfIntoProject,
   importOneDriveLinkIntoProject,
   loadRecentsIntoStore,
+  bootstrapOpenSession,
   openProjectLink,
   openProject,
   openProjectPdf,
@@ -175,7 +182,10 @@ function sampleRecent(path: string, name = "現場A"): RecentProject {
 
 describe("projectActions", () => {
   beforeEach(() => {
+    const uuidFn = crypto.randomUUID as typeof crypto.randomUUID & { mockRestore?: () => void };
+    uuidFn.mockRestore?.();
     projectStore.reset();
+    projectStore.bootstrapped = false;
     projectStore.recents = [];
     annotationStore.clear();
     pdfStore.clear();
@@ -192,6 +202,9 @@ describe("projectActions", () => {
     mockReadBinaryFile.mockResolvedValue(new Uint8Array([1, 2, 3]));
     mockWriteAnnotationFile.mockResolvedValue(undefined);
     mockWriteProjectMeta.mockResolvedValue(undefined);
+    mockLoadOpenSession.mockResolvedValue({ folders: [], activeFolder: null });
+    mockSaveOpenSession.mockResolvedValue(undefined);
+    mockLoadRecentProjects.mockResolvedValue([]);
     vi.spyOn(pdfStore, "load").mockResolvedValue();
     vi.spyOn(pdfStore, "clear");
     vi.spyOn(annotationStore, "clear");
@@ -1326,5 +1339,97 @@ describe("projectActions", () => {
     await expect(importIncomingFile("現場A.bpsync.zip", zip, true)).resolves.toBe("ok");
     expect(mockRemoveDirAll).toHaveBeenCalledWith("/data/projects/project-1");
     expect(mockWriteBinaryFile).toHaveBeenCalled();
+  });
+
+  it("saves the open session after opening a project", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue([]);
+
+    await openProject("/projects/a");
+
+    expect(mockSaveOpenSession).toHaveBeenCalledWith({
+      folders: ["/projects/a"],
+      activeFolder: "/projects/a",
+    });
+  });
+
+  it("clears the open session when the last tab is closed", async () => {
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue([]);
+    await openProject("/projects/a");
+    mockSaveOpenSession.mockClear();
+
+    await closeProject();
+
+    expect(mockSaveOpenSession).toHaveBeenCalledWith({ folders: [], activeFolder: null });
+  });
+
+  it("restores the cached open project on bootstrap", async () => {
+    mockLoadOpenSession.mockResolvedValue({
+      folders: ["/projects/a"],
+      activeFolder: "/projects/a",
+    });
+    mockPathExists.mockResolvedValue(true);
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue(["A.pdf"]);
+
+    await bootstrapOpenSession();
+
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.bootstrapped).toBe(true);
+  });
+
+  it("opens cached tabs and activates the saved folder", async () => {
+    mockLoadOpenSession.mockResolvedValue({
+      folders: ["/projects/a", "/projects/b"],
+      activeFolder: "/projects/a",
+    });
+    mockPathExists.mockResolvedValue(true);
+    mockReadProjectMeta.mockImplementation(async (folder: string) =>
+      sampleMeta({
+        id: folder,
+        name: folder === "/projects/a" ? "現場A" : "現場B",
+      }),
+    );
+    mockListProjectPdfs.mockResolvedValue([]);
+
+    await bootstrapOpenSession();
+
+    expect(projectStore.tabs.map((tab) => tab.folder)).toEqual(["/projects/a", "/projects/b"]);
+    expect(projectStore.folder).toBe("/projects/a");
+  });
+
+  it("skips cached folders that no longer exist", async () => {
+    mockLoadOpenSession.mockResolvedValue({
+      folders: ["/gone", "/projects/a"],
+      activeFolder: "/gone",
+    });
+    mockPathExists.mockImplementation(async (path: string) => path !== "/gone");
+    mockReadProjectMeta.mockResolvedValue(sampleMeta());
+    mockListProjectPdfs.mockResolvedValue([]);
+
+    await bootstrapOpenSession();
+
+    expect(projectStore.folder).toBe("/projects/a");
+    expect(projectStore.tabs).toHaveLength(1);
+  });
+
+  it("does not restore when the cache is empty", async () => {
+    mockLoadOpenSession.mockResolvedValue({ folders: [], activeFolder: null });
+
+    await bootstrapOpenSession();
+
+    expect(projectStore.folder).toBe("");
+    expect(mockReadProjectMeta).not.toHaveBeenCalled();
+    expect(projectStore.bootstrapped).toBe(true);
+  });
+
+  it("skips restore when not running in Tauri", async () => {
+    mockIsTauriRuntime.mockReturnValue(false);
+
+    await bootstrapOpenSession();
+
+    expect(mockLoadOpenSession).not.toHaveBeenCalled();
+    expect(projectStore.bootstrapped).toBe(true);
   });
 });

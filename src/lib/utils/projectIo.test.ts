@@ -22,6 +22,7 @@ import {
   deleteFile,
   initProjectDir,
   listProjectPdfs,
+  loadOpenSession,
   loadRecentProjects,
   moveFileIntoFolder,
   pathExists,
@@ -32,6 +33,7 @@ import {
   readBinaryFile,
   readProjectMeta,
   readTextFile,
+  saveOpenSession,
   saveRecentProjects,
   writeAnnotationFile,
   writeProjectMeta,
@@ -102,6 +104,31 @@ describe("projectIo", () => {
     await expect(loadRecentProjects()).resolves.toEqual([{ name: "現場A", path: "/picked" }]);
     await expect(saveRecentProjects([{ name: "現場A", path: "/picked" }])).resolves.toBeUndefined();
     await expect(pathExists("/picked")).resolves.toBe(true);
+  });
+
+  it("loads and saves the open project session cache", async () => {
+    mockInvoke.mockResolvedValueOnce({ folders: ["/picked"], activeFolder: "/picked" });
+    mockInvoke.mockResolvedValueOnce(undefined);
+
+    await expect(loadOpenSession()).resolves.toEqual({
+      folders: ["/picked"],
+      activeFolder: "/picked",
+    });
+    await expect(
+      saveOpenSession({ folders: ["/picked"], activeFolder: "/picked" }),
+    ).resolves.toBeUndefined();
+
+    expect(mockInvoke).toHaveBeenNthCalledWith(1, "load_open_session");
+    expect(mockInvoke).toHaveBeenNthCalledWith(2, "save_open_session", {
+      session: { folders: ["/picked"], activeFolder: "/picked" },
+    });
+  });
+
+  it("returns an empty open session in the web demo", async () => {
+    enableWebDemo();
+    await expect(loadOpenSession()).resolves.toEqual({ folders: [], activeFolder: null });
+    await expect(saveOpenSession({ folders: ["/demo"], activeFolder: "/demo" })).resolves.toBeUndefined();
+    expect(mockInvoke).not.toHaveBeenCalled();
   });
 
   it("reads and writes UTF-8 text through byte commands", async () => {

@@ -12,6 +12,7 @@ export type WheelGesture = {
   deltaMode: number;
   ctrlKey: boolean;
   metaKey: boolean;
+  shiftKey?: boolean;
 };
 
 export function clampZoom(zoom: number): number {
@@ -49,13 +50,20 @@ export function wheelIntent(event: WheelGesture): "zoom" | "pan" {
   if (event.ctrlKey || event.metaKey) {
     return "zoom";
   }
-  if (event.deltaMode !== 0) {
-    return "zoom";
-  }
-  if (Math.abs(event.deltaX) < 0.5 && Math.abs(event.deltaY) >= 40) {
-    return "zoom";
-  }
   return "pan";
+}
+
+const WHEEL_LINE_PX = 16;
+const WHEEL_PAGE_PX = 800;
+
+function wheelAxisPixels(delta: number, deltaMode: number): number {
+  if (deltaMode === 1) {
+    return delta * WHEEL_LINE_PX;
+  }
+  if (deltaMode === 2) {
+    return delta * WHEEL_PAGE_PX;
+  }
+  return delta;
 }
 
 export function shouldHandleWheelAsViewport(
@@ -80,7 +88,13 @@ export function applyWheel(
   if (wheelIntent(event) === "zoom") {
     return zoomAroundPoint(camera, origin.x, origin.y, zoomAfterWheel(camera.zoom, event.deltaY));
   }
-  return panBy(camera, -event.deltaX, -event.deltaY);
+  const dx = wheelAxisPixels(event.deltaX, event.deltaMode);
+  const dy = wheelAxisPixels(event.deltaY, event.deltaMode);
+  if (event.shiftKey) {
+    const horizontal = Math.abs(dx) >= Math.abs(dy) ? dx : dy;
+    return panBy(camera, -horizontal, 0);
+  }
+  return panBy(camera, -dx, -dy);
 }
 
 export function pinchCamera(

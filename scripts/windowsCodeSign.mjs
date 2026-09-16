@@ -61,6 +61,49 @@ function extractDeb(name) {
   }
 }
 
+/**
+ * @param {{
+ *   platform?: NodeJS.Platform,
+ *   arch?: string,
+ *   env?: NodeJS.ProcessEnv,
+ *   existsSync?: typeof existsSync,
+ *   readdirSync?: typeof readdirSync,
+ * }} [options]
+ * @returns {string | null}
+ */
+export function findWindowsSignTool(options = {}) {
+  const platform = options.platform ?? process.platform;
+  const arch = options.arch ?? process.arch;
+  const env = options.env ?? process.env;
+  const exists = options.existsSync ?? existsSync;
+  const readDir = options.readdirSync ?? readdirSync;
+  if (platform !== "win32") {
+    return null;
+  }
+
+  const programFilesX86 = env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+  const binRoot = path.join(programFilesX86, "Windows Kits", "10", "bin");
+  if (!exists(binRoot)) {
+    return null;
+  }
+
+  const versions = readDir(binRoot)
+    .map((entry) => (typeof entry === "string" ? entry : entry.name))
+    .filter((name) => /^\d+\./.test(name))
+    .sort()
+    .reverse();
+  const hosts = arch === "arm64" ? ["arm64", "x64", "x86"] : ["x64", "x86"];
+  for (const version of versions) {
+    for (const host of hosts) {
+      const exe = path.join(binRoot, version, host, "signtool.exe");
+      if (exists(exe)) {
+        return exe;
+      }
+    }
+  }
+  return null;
+}
+
 export function ensureOsslSigncode() {
   const bin = path.join(crossPrefix, "usr/bin/osslsigncode");
   if (!existsSync(bin)) {
@@ -123,19 +166,32 @@ export function ensureCodeSignCert() {
   return paths;
 }
 
-export function signPeFile(filePath) {
-  const abs = path.resolve(filePath);
-  if (!existsSync(abs)) {
-    throw new Error(`sign target missing: ${abs}`);
+function signWithSignTool(signtool, abs, pfx, password) {
+  const common = ["sign", "/fd", "SHA256", "/f", pfx, "/p", password, "/d", PUBLISHER];
+  let result = runQuiet(signtool, [
+    ...common,
+    "/tr",
+    "http://timestamp.digicert.com",
+    "/td",
+    "SHA256",
+    abs,
+  ]);
+  if (result.status !== 0) {
+    result = runQuiet(signtool, [...common, abs]);
   }
-  const osslsigncode = ensureOsslSigncode();
-  const paths = ensureCodeSignCert();
-  const password = readFileSync(paths.passFile, "utf8").trim();
+  if (result.status !== 0) {
+    process.stderr.write(result.stdout || "");
+    process.stderr.write(result.stderr || "");
+    throw new Error(`signtool failed for ${abs}`);
+  }
+}
+
+function signWithOsslSigncode(osslsigncode, abs, pfx, password) {
   const signed = `${abs}.signed`;
   const common = [
     "sign",
     "-pkcs12",
-    paths.pfx,
+    pfx,
     "-pass",
     password,
     "-n",
@@ -158,6 +214,21 @@ export function signPeFile(filePath) {
   }
   copyFileSync(signed, abs);
   unlinkSync(signed);
+}
+
+export function signPeFile(filePath) {
+  const abs = path.resolve(filePath);
+  if (!existsSync(abs)) {
+    throw new Error(`sign target missing: ${abs}`);
+  }
+  const paths = ensureCodeSignCert();
+  const password = readFileSync(paths.passFile, "utf8").trim();
+  const signtool = findWindowsSignTool();
+  if (signtool) {
+    signWithSignTool(signtool, abs, paths.pfx, password);
+    return;
+  }
+  signWithOsslSigncode(ensureOsslSigncode(), abs, paths.pfx, password);
 }
 
 export function writeInstallerTrustFiles(destDir) {

@@ -41,21 +41,34 @@ describe("cameraCssTransform", () => {
 });
 
 describe("wheelIntent", () => {
-  it("zooms for mouse wheels and pinch, pans for trackpad swipes", () => {
+  it("zooms only with ctrl/meta, and pans for plain or shift wheels", () => {
     expect(
       wheelIntent({ deltaX: 0, deltaY: 120, deltaMode: 0, ctrlKey: false, metaKey: false }),
-    ).toBe("zoom");
+    ).toBe("pan");
     expect(
       wheelIntent({ deltaX: 0, deltaY: 3, deltaMode: 1, ctrlKey: false, metaKey: false }),
-    ).toBe("zoom");
+    ).toBe("pan");
     expect(
-      wheelIntent({ deltaX: 0, deltaY: 40, deltaMode: 0, ctrlKey: true, metaKey: false }),
-    ).toBe("zoom");
+      wheelIntent({
+        deltaX: 0,
+        deltaY: 120,
+        deltaMode: 0,
+        ctrlKey: false,
+        metaKey: false,
+        shiftKey: true,
+      }),
+    ).toBe("pan");
     expect(
       wheelIntent({ deltaX: 18, deltaY: 12, deltaMode: 0, ctrlKey: false, metaKey: false }),
     ).toBe("pan");
     expect(
+      wheelIntent({ deltaX: 0, deltaY: 40, deltaMode: 0, ctrlKey: true, metaKey: false }),
+    ).toBe("zoom");
+    expect(
       wheelIntent({ deltaX: 4, deltaY: -6, deltaMode: 0, ctrlKey: true, metaKey: false }),
+    ).toBe("zoom");
+    expect(
+      wheelIntent({ deltaX: 0, deltaY: -120, deltaMode: 0, ctrlKey: false, metaKey: true }),
     ).toBe("zoom");
   });
 });
@@ -84,10 +97,10 @@ describe("shouldHandleWheelAsViewport", () => {
 });
 
 describe("applyWheel", () => {
-  it("zooms toward the cursor and pans with trackpad deltas", () => {
+  it("zooms toward the cursor with ctrl+wheel and pans with trackpad deltas", () => {
     const zoomed = applyWheel(
       { x: 0, y: 0, zoom: 1 },
-      { deltaX: 0, deltaY: -120, deltaMode: 0, ctrlKey: false, metaKey: false },
+      { deltaX: 0, deltaY: -120, deltaMode: 0, ctrlKey: true, metaKey: false },
       { x: 100, y: 80 },
     );
     expect(zoomed.zoom).toBeGreaterThan(1);
@@ -101,6 +114,57 @@ describe("applyWheel", () => {
         { x: 0, y: 0 },
       ),
     ).toEqual({ x: -15, y: 16, zoom: 1 });
+  });
+
+  it("pans vertically with a mouse wheel, matching Windows scroll direction", () => {
+    expect(
+      applyWheel(
+        { x: 5, y: 6, zoom: 1 },
+        { deltaX: 0, deltaY: 120, deltaMode: 0, ctrlKey: false, metaKey: false },
+        { x: 0, y: 0 },
+      ),
+    ).toEqual({ x: 5, y: -114, zoom: 1 });
+  });
+
+  it("pans horizontally with shift+wheel, matching Windows shift-scroll", () => {
+    expect(
+      applyWheel(
+        { x: 5, y: 6, zoom: 1 },
+        {
+          deltaX: 0,
+          deltaY: 120,
+          deltaMode: 0,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: true,
+        },
+        { x: 0, y: 0 },
+      ),
+    ).toEqual({ x: -115, y: 6, zoom: 1 });
+    expect(
+      applyWheel(
+        { x: 5, y: 6, zoom: 1 },
+        {
+          deltaX: 120,
+          deltaY: 0,
+          deltaMode: 0,
+          ctrlKey: false,
+          metaKey: false,
+          shiftKey: true,
+        },
+        { x: 0, y: 0 },
+      ),
+    ).toEqual({ x: -115, y: 6, zoom: 1 });
+  });
+
+  it("converts line-mode mouse wheels into a pixel pan", () => {
+    expect(
+      applyWheel(
+        { x: 5, y: 6, zoom: 1 },
+        { deltaX: 0, deltaY: 3, deltaMode: 1, ctrlKey: false, metaKey: false },
+        { x: 0, y: 0 },
+      ),
+    ).toEqual({ x: 5, y: -42, zoom: 1 });
   });
 
   it("zooms from a precision-touchpad pinch made of small ctrl+wheel ticks", () => {

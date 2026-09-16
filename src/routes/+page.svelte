@@ -18,6 +18,7 @@
   import {
     shareCurrentPdf,
     shareCurrentProject,
+    bootstrapOpenSession,
   } from "$lib/utils/projectActions";
   import { listenIncomingFiles } from "$lib/utils/incomingShare";
   import { drawingLayerHiddenClass } from "$lib/utils/chromeLayout";
@@ -65,6 +66,7 @@
     void listenIncomingFiles().then((fn) => {
       unlisten = fn;
     });
+    void bootstrapOpenSession();
     return () => {
       unbind();
       unlisten?.();
@@ -89,7 +91,9 @@
     </div>
   {/if}
 
-  {#if !projectStore.isOpen}
+  {#if !projectStore.bootstrapped}
+    <div class="min-h-0 flex-1"></div>
+  {:else if !projectStore.isOpen}
     <div class="min-h-0 flex-1">
       <ProjectHome />
     </div>

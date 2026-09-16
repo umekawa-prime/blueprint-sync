@@ -37,6 +37,8 @@ import {
   listProjectPdfs,
   listSandboxProjects,
   loadRecentProjects,
+  loadOpenSession,
+  saveOpenSession,
   annotationPath,
   legacyAnnotationPath,
   moveFileIntoFolder,
@@ -73,13 +75,33 @@ import {
   createProjectTab,
   findTabByFolder,
   rememberLiveTab,
+  sameProjectFolder,
   type TabSession,
 } from "./projectTabs";
+import { captureOpenSession } from "./projectSession";
 import { loadProjectTodos, resetTodoState } from "./todoActions";
+
+let restoringSession = false;
 
 function requireTauri() {
   if (!isTauriRuntime() && !isWebDemo()) {
     throw new Error("プロジェクト機能は Tauri アプリ上でのみ利用できます");
+  }
+}
+
+async function persistOpenSession(): Promise<void> {
+  if (restoringSession || !isTauriRuntime()) {
+    return;
+  }
+  try {
+    await saveOpenSession(
+      captureOpenSession({
+        tabs: projectStore.tabs,
+        activeFolder: projectStore.folder || null,
+      }),
+    );
+  } catch {
+    // Opening and closing a project should not fail just because the cache could not be written.
   }
 }
 
@@ -249,6 +271,57 @@ export async function loadRecentsIntoStore(): Promise<void> {
   }
 }
 
+export async function bootstrapOpenSession(): Promise<void> {
+  if (projectStore.bootstrapped) {
+    return;
+  }
+  try {
+    if (!isTauriRuntime()) {
+      return;
+    }
+    await loadRecentsIntoStore();
+    restoringSession = true;
+    let restored = false;
+    try {
+      const session = await loadOpenSession();
+      const existing: string[] = [];
+      for (const folder of session.folders) {
+        if (await pathExists(folder)) {
+          existing.push(folder);
+        }
+      }
+      for (const folder of existing) {
+        try {
+          await openProject(folder);
+        } catch {
+          // Skip folders that disappeared or have a broken project.json.
+        }
+      }
+      const active =
+        session.activeFolder &&
+        existing.some((folder) => sameProjectFolder(folder, session.activeFolder as string))
+          ? session.activeFolder
+          : (existing.at(-1) ?? null);
+      if (active) {
+        const tab = findTabByFolder(projectStore.tabs, active);
+        if (tab) {
+          await switchProjectTab(tab.id);
+        }
+      }
+      restored = true;
+    } catch {
+      // Missing cache commands or a corrupt file should not block the home screen.
+    } finally {
+      restoringSession = false;
+    }
+    if (restored) {
+      await persistOpenSession();
+    }
+  } finally {
+    projectStore.bootstrapped = true;
+  }
+}
+
 export async function setProjectWorkflowStatus(
   folder: string,
   status: ProjectWorkflowStatus,
@@ -309,6 +382,7 @@ async function createProjectAt(folder: string, meta?: ProjectMeta): Promise<void
   registerLiveTab();
   await loadProjectTodos(folder);
   await openFirstProjectPdf();
+  await persistOpenSession();
 }
 
 export async function openProject(folder?: string): Promise<void> {
@@ -341,6 +415,7 @@ export async function openProject(folder?: string): Promise<void> {
     registerLiveTab();
     await loadProjectTodos(selected);
     await openFirstProjectPdf();
+    await persistOpenSession();
   } catch (error) {
     const message = error instanceof Error ? error.message : "プロジェクトを開けませんでした";
     const friendly = message.includes("Invalid project")
@@ -361,11 +436,14 @@ export async function openProject(folder?: string): Promise<void> {
 }
 
 export async function switchProjectTab(tabId: string): Promise<void> {
-  if (tabId === projectStore.activeTabId) {
+  const target = projectStore.tabs.find((tab) => tab.id === tabId);
+  if (!target) {
     return;
   }
-  const target = projectStore.tabs.find((tab) => tab.id === tabId);
-  if (!target?.session) {
+  if (tabId === projectStore.activeTabId && sameProjectFolder(projectStore.folder, target.folder)) {
+    return;
+  }
+  if (!target.session) {
     return;
   }
   const parked = await parkActiveTab();
@@ -377,6 +455,7 @@ export async function switchProjectTab(tabId: string): Promise<void> {
     tab.id === tabId ? { ...tab, session: null } : tab,
   );
   projectStore.activeTabId = tabId;
+  await persistOpenSession();
 }
 
 export async function closeProjectTab(tabId: string): Promise<void> {
@@ -397,15 +476,18 @@ export async function closeProjectTab(tabId: string): Promise<void> {
     pdfStore.clear();
     annotationStore.clear();
     resetTodoState();
+    await persistOpenSession();
     return;
   }
   projectStore.tabs = result.tabs;
   if (result.nextActiveId === projectStore.activeTabId) {
+    await persistOpenSession();
     return;
   }
   const next = result.tabs.find((tab) => tab.id === result.nextActiveId);
   if (!next?.session) {
     projectStore.activeTabId = result.nextActiveId;
+    await persistOpenSession();
     return;
   }
   await applyLiveSession(next.session);
@@ -413,6 +495,7 @@ export async function closeProjectTab(tabId: string): Promise<void> {
     tab.id === next.id ? { ...tab, session: null } : tab,
   );
   projectStore.activeTabId = next.id;
+  await persistOpenSession();
 }
 
 export async function openProjectTab(): Promise<void> {
@@ -444,6 +527,7 @@ export async function showProjectHome(): Promise<void> {
   if (!parked) {
     return;
   }
+  await persistOpenSession();
   projectStore.folder = "";
   projectStore.meta = null;
   projectStore.pdfs = [];
@@ -468,6 +552,7 @@ export async function closeProject(): Promise<void> {
   pdfStore.clear();
   annotationStore.clear();
   resetTodoState();
+  await persistOpenSession();
 }
 
 export async function addProjectLink(url: string, title: string): Promise<void> {

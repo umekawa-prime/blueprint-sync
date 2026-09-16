@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
 
@@ -14,7 +14,9 @@ describe("editor shell layout", () => {
     const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
     expect(tabBar).toContain("showProjectHome");
     expect(tabBar).not.toContain("openProjectTab");
-    expect(page).toContain("{#if !projectStore.isOpen}");
+    expect(page).toContain("bootstrapOpenSession");
+    expect(page).toContain("projectStore.bootstrapped");
+    expect(page).toContain("!projectStore.isOpen");
     expect(page).toContain("<ProjectHome />");
     expect(page).toContain("projectStore.isOpen || projectStore.tabs.length > 0");
   });
@@ -174,6 +176,30 @@ describe("editor shell layout", () => {
     expect(sidebar).toContain("Cursorで開く");
     expect(sidebar).toContain("openCurrentProjectInCursor");
     expect(sidebar.indexOf("Cursorで開く")).toBeLessThan(sidebar.indexOf("プロジェクトを閉じる"));
+  });
+
+  it("pins SvelteKit version.name so the SPA fallback payload id matches the client", () => {
+    const config = readFileSync(path.resolve("svelte.config.js"), "utf8");
+    expect(config).toContain('readFileSync(new URL("./package.json", import.meta.url)');
+    expect(config).toContain("version:");
+    expect(config).toMatch(/name:\s*version/);
+    expect(config).not.toContain("Date.now()");
+  });
+
+  it("keeps the built index.html payload id in sync with start.js", () => {
+    const indexPath = path.resolve("build/index.html");
+    const entryDir = path.resolve("build/_app/immutable/entry");
+    if (!existsSync(indexPath) || !existsSync(entryDir)) {
+      return;
+    }
+    const startFile = readdirSync(entryDir).find((name) => name.startsWith("start."));
+    expect(startFile).toBeTruthy();
+    const htmlId = readFileSync(indexPath, "utf8").match(/__sveltekit_([A-Za-z0-9]+)/)?.[1];
+    const clientId = readFileSync(path.join(entryDir, startFile as string), "utf8").match(
+      /__sveltekit_([A-Za-z0-9]+)/,
+    )?.[1];
+    expect(htmlId).toBeTruthy();
+    expect(htmlId).toBe(clientId);
   });
 
   it("opens Jw_cad help from a button at the bottom of the sidebar", () => {

@@ -6,6 +6,9 @@ import path from "node:path";
  * @param {{
  *   isWindows: boolean,
  *   gnuLinkDirs?: string[],
+ *   clangDir?: string | null,
+ *   clangCl?: string | null,
+ *   clang?: string | null,
  *   msvcLinkerDir?: string | null,
  *   msvcLib?: string | null,
  *   msvcInclude?: string | null,
@@ -27,12 +30,30 @@ export function applyWindowsMsvcEnv(env, options) {
     .filter((dir) => !gnuLinkDirs.has(normalizePath(dir)));
 
   const next = { ...env };
+  const prefix = [];
+  if (options.clangDir) {
+    prefix.push(options.clangDir);
+  }
   if (options.msvcLinkerDir) {
-    const linkerDir = options.msvcLinkerDir;
-    const rest = parts.filter((dir) => normalizePath(dir) !== normalizePath(linkerDir));
-    next.PATH = [linkerDir, ...rest].join(delimiter);
-  } else {
-    next.PATH = parts.join(delimiter);
+    prefix.push(options.msvcLinkerDir);
+  }
+  const prefixNorm = new Set(prefix.map((dir) => normalizePath(dir)));
+  const rest = parts.filter((dir) => !prefixNorm.has(normalizePath(dir)));
+  next.PATH = [...prefix, ...rest].join(delimiter);
+  const clangCc = options.clangCl || options.clang;
+  if (clangCc) {
+    if (!env.CC) {
+      next.CC = clangCc;
+    }
+    if (!env.CXX) {
+      next.CXX = clangCc;
+    }
+    if (!env["CC_aarch64-pc-windows-msvc"]) {
+      next["CC_aarch64-pc-windows-msvc"] = clangCc;
+    }
+    if (!env.CC_aarch64_pc_windows_msvc) {
+      next.CC_aarch64_pc_windows_msvc = clangCc;
+    }
   }
   if (options.msvcLib) {
     next.LIB = options.msvcLib;
@@ -81,6 +102,7 @@ export function discoverWindowsMsvcOptions(env = process.env, io = {}) {
 
   const delimiter = path.delimiter;
   const toolchain = findMsvcToolchain(env, exists, readDir);
+  const clang = findWindowsClangBin(env, exists);
   const gnuLinkDirs = (env.PATH ?? "")
     .split(delimiter)
     .filter(Boolean)
@@ -91,6 +113,9 @@ export function discoverWindowsMsvcOptions(env = process.env, io = {}) {
   return {
     isWindows: true,
     gnuLinkDirs,
+    clangDir: clang.clangDir,
+    clangCl: clang.clangCl,
+    clang: clang.clang,
     msvcLinkerDir: toolchain.linkerDir,
     msvcLib: toolchain.lib,
     msvcInclude: toolchain.include,
@@ -103,6 +128,37 @@ export function discoverWindowsMsvcOptions(env = process.env, io = {}) {
     hasX64MsvcLinker,
     pathDelimiter: delimiter,
   };
+}
+
+/**
+ * @param {Record<string, string | undefined>} env
+ * @param {typeof existsSync} exists
+ */
+export function findWindowsClangBin(env, exists) {
+  const programFiles = env["ProgramFiles"] ?? "C:\\Program Files";
+  const programFilesX86 = env["ProgramFiles(x86)"] ?? "C:\\Program Files (x86)";
+  const dirs = [
+    path.join(programFiles, "LLVM", "bin"),
+    path.join(programFilesX86, "LLVM", "bin"),
+    path.join(programFilesX86, "Microsoft Visual Studio", "2022", "BuildTools", "VC", "Tools", "Llvm", "ARM64", "bin"),
+    path.join(programFilesX86, "Microsoft Visual Studio", "2022", "BuildTools", "VC", "Tools", "Llvm", "bin"),
+    path.join(programFiles, "Microsoft Visual Studio", "2022", "BuildTools", "VC", "Tools", "Llvm", "ARM64", "bin"),
+    path.join(programFiles, "Microsoft Visual Studio", "2022", "BuildTools", "VC", "Tools", "Llvm", "bin"),
+  ];
+  for (const clangDir of dirs) {
+    const clangCl = path.join(clangDir, "clang-cl.exe");
+    const clang = path.join(clangDir, "clang.exe");
+    const hasCl = exists(clangCl);
+    const hasClang = exists(clang);
+    if (hasCl || hasClang) {
+      return {
+        clangDir,
+        clangCl: hasCl ? clangCl : null,
+        clang: hasClang ? clang : null,
+      };
+    }
+  }
+  return { clangDir: null, clangCl: null, clang: null };
 }
 
 /**

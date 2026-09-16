@@ -424,6 +424,45 @@ fn parse_recent_projects_json(raw: &str) -> Vec<RecentProject> {
     serde_json::from_str(raw).unwrap_or_default()
 }
 
+#[derive(serde::Serialize, serde::Deserialize, Clone, Debug, PartialEq, Eq, Default)]
+#[serde(rename_all = "camelCase")]
+struct OpenSession {
+    #[serde(default)]
+    folders: Vec<String>,
+    #[serde(default)]
+    active_folder: Option<String>,
+}
+
+fn open_session_path(app: &AppHandle) -> Result<PathBuf, String> {
+    let dir = app
+        .path()
+        .app_data_dir()
+        .map_err(|error| error.to_string())?;
+    std::fs::create_dir_all(&dir).map_err(|error| error.to_string())?;
+    Ok(dir.join("open-session.json"))
+}
+
+fn parse_open_session_json(raw: &str) -> OpenSession {
+    serde_json::from_str(raw).unwrap_or_default()
+}
+
+#[tauri::command]
+fn load_open_session(app: AppHandle) -> Result<OpenSession, String> {
+    let path = open_session_path(&app)?;
+    if !path.exists() {
+        return Ok(OpenSession::default());
+    }
+    let raw = std::fs::read_to_string(path).map_err(|error| error.to_string())?;
+    Ok(parse_open_session_json(&raw))
+}
+
+#[tauri::command]
+fn save_open_session(app: AppHandle, session: OpenSession) -> Result<(), String> {
+    let path = open_session_path(&app)?;
+    let raw = serde_json::to_string_pretty(&session).map_err(|error| error.to_string())?;
+    std::fs::write(path, raw).map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 fn load_recent_projects(app: AppHandle) -> Result<Vec<RecentProject>, String> {
     let path = recent_path(&app)?;
@@ -611,6 +650,8 @@ pub fn run() {
             http_get,
             load_recent_projects,
             save_recent_projects,
+            load_open_session,
+            save_open_session,
             path_exists,
             save_pdf_file,
             sandbox_projects_dir,
@@ -629,8 +670,8 @@ mod tests {
 
     use super::{
         decide_copy_into_folder, decide_rename_file, is_visible_pdf_name,
-        parse_recent_projects_json, project_listed_rel_name, project_pdf_rel_name,
-        CopyIntoFolderDecision, RecentProject, RenameFileDecision,
+        parse_open_session_json, parse_recent_projects_json, project_listed_rel_name, project_pdf_rel_name,
+        CopyIntoFolderDecision, OpenSession, RecentProject, RenameFileDecision,
     };
 
     #[test]
@@ -732,5 +773,27 @@ mod tests {
             parse_recent_projects_json("{not json}"),
             Vec::<RecentProject>::new()
         );
+    }
+
+    fn sample_open_session() -> OpenSession {
+        OpenSession {
+            folders: vec!["/a".into(), "/b".into()],
+            active_folder: Some("/b".into()),
+        }
+    }
+
+    #[test]
+    fn parses_open_session_json() {
+        assert_eq!(
+            parse_open_session_json(r#"{"folders":["/a","/b"],"activeFolder":"/b"}"#),
+            sample_open_session()
+        );
+    }
+
+    #[test]
+    fn invalid_open_session_json_returns_empty_session() {
+        assert_eq!(parse_open_session_json("{not json}"), OpenSession::default());
+        assert_eq!(parse_open_session_json("{}").folders, Vec::<String>::new());
+        assert_eq!(parse_open_session_json("{}").active_folder, None);
     }
 }

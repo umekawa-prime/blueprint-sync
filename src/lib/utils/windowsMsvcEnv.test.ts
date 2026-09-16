@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   applyWindowsMsvcEnv,
+  findWindowsClangBin,
   rustCommandsNeedWindowsMsvc,
   selectWindowsRustupToolchain,
 } from "../../../scripts/windowsMsvcEnv.mjs";
@@ -47,6 +48,72 @@ describe("applyWindowsMsvcEnv", () => {
     expect(env.LIB).toBe("C:\\VS\\lib\\x64;C:\\Kits\\um\\x64");
     expect(env.INCLUDE).toBe("C:\\VS\\include;C:\\Kits\\ucrt");
     expect(env.RUSTUP_TOOLCHAIN).toBe("stable-x86_64-pc-windows-msvc");
+  });
+
+  it("puts LLVM clang on PATH and sets CC so ring can compile on ARM64 Windows", () => {
+    const env = applyWindowsMsvcEnv(
+      { PATH: "C:\\Windows\\system32" },
+      {
+        isWindows: true,
+        gnuLinkDirs: [],
+        clangDir: "C:\\Program Files\\LLVM\\bin",
+        clangCl: "C:\\Program Files\\LLVM\\bin\\clang-cl.exe",
+        msvcLinkerDir: "C:\\VS\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostarm64\\arm64",
+        pathDelimiter: ";",
+      },
+    );
+
+    expect(env.PATH?.split(";").slice(0, 2)).toEqual([
+      "C:\\Program Files\\LLVM\\bin",
+      "C:\\VS\\VC\\Tools\\MSVC\\14.44.35207\\bin\\Hostarm64\\arm64",
+    ]);
+    expect(env.CC).toBe("C:\\Program Files\\LLVM\\bin\\clang-cl.exe");
+    expect(env.CXX).toBe("C:\\Program Files\\LLVM\\bin\\clang-cl.exe");
+    expect(env["CC_aarch64-pc-windows-msvc"]).toBe("C:\\Program Files\\LLVM\\bin\\clang-cl.exe");
+    expect(env.CC_aarch64_pc_windows_msvc).toBe("C:\\Program Files\\LLVM\\bin\\clang-cl.exe");
+  });
+
+  it("does not override a CC the user already set", () => {
+    const env = applyWindowsMsvcEnv(
+      { PATH: "C:\\Windows\\system32", CC: "C:\\custom\\clang.exe" },
+      {
+        isWindows: true,
+        gnuLinkDirs: [],
+        clangDir: "C:\\Program Files\\LLVM\\bin",
+        clangCl: "C:\\Program Files\\LLVM\\bin\\clang-cl.exe",
+        pathDelimiter: ";",
+      },
+    );
+
+    expect(env.CC).toBe("C:\\custom\\clang.exe");
+    expect(env.PATH?.split(";")[0]).toBe("C:\\Program Files\\LLVM\\bin");
+  });
+});
+
+describe("findWindowsClangBin", () => {
+  it("prefers standalone LLVM clang-cl when it exists", () => {
+    const exists = (candidate) =>
+      candidate === "C:\\Program Files\\LLVM\\bin\\clang-cl.exe" ||
+      candidate === "C:\\Program Files\\LLVM\\bin\\clang.exe";
+
+    expect(
+      findWindowsClangBin(
+        { ProgramFiles: "C:\\Program Files", "ProgramFiles(x86)": "C:\\Program Files (x86)" },
+        exists,
+      ),
+    ).toEqual({
+      clangDir: "C:\\Program Files\\LLVM\\bin",
+      clangCl: "C:\\Program Files\\LLVM\\bin\\clang-cl.exe",
+      clang: "C:\\Program Files\\LLVM\\bin\\clang.exe",
+    });
+  });
+
+  it("returns empty when neither clang nor clang-cl is installed", () => {
+    expect(findWindowsClangBin({ ProgramFiles: "C:\\Program Files" }, () => false)).toEqual({
+      clangDir: null,
+      clangCl: null,
+      clang: null,
+    });
   });
 });
 

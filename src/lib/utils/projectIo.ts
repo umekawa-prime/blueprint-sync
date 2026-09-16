@@ -10,6 +10,7 @@ import {
 import { parseAnnotations, serializeAnnotations } from "./annotationPersist";
 import type { AnnotationFile, PageObjects, PhotoPinRecord } from "./annotationPersist";
 import { isTauriRuntime, usesRfdFileDialog } from "./platform";
+import { EMPTY_OPEN_SESSION, parseOpenSession, type OpenSession } from "./projectSession";
 import { shouldDeleteSourceAfterCopy } from "./projectMove";
 import {
   isWebDemo,
@@ -103,6 +104,21 @@ export async function saveRecentProjects(items: RecentProject[]): Promise<void> 
     return;
   }
   await invoke("save_recent_projects", { items });
+}
+
+export async function loadOpenSession(): Promise<OpenSession> {
+  if (useWebDemoFs()) {
+    return EMPTY_OPEN_SESSION;
+  }
+  const raw = await invoke<OpenSession>("load_open_session");
+  return parseOpenSession(JSON.stringify(raw ?? EMPTY_OPEN_SESSION));
+}
+
+export async function saveOpenSession(session: OpenSession): Promise<void> {
+  if (useWebDemoFs()) {
+    return;
+  }
+  await invoke("save_open_session", { session });
 }
 
 export async function pathExists(path: string): Promise<boolean> {
