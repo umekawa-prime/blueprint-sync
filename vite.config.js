@@ -1,14 +1,29 @@
-import { defineConfig } from "vite";
+import { defineConfig } from "vitest/config";
 import { sveltekit } from "@sveltejs/kit/vite";
 import tailwindcss from "@tailwindcss/vite";
 
-// @ts-expect-error process is a nodejs global
 const host = process.env.TAURI_DEV_HOST;
+
+/** Windows + Vitest 4.1: importing from "vitest" loads a second runner. Use globals instead. */
+/** @returns {import("vite").Plugin} */
+function vitestUseGlobals() {
+  return {
+    name: "vitest-use-globals",
+    enforce: "pre",
+    transform(code, id) {
+      if (!process.env.VITEST || !id.includes(".test.ts")) {
+        return null;
+      }
+      return code.replace(/import\s*\{[^}]*\}\s*from\s*["']vitest["'];?\r?\n/, "");
+    },
+  };
+}
 
 // https://vite.dev/config/
 export default defineConfig(async () => ({
-  plugins: [tailwindcss(), sveltekit()],
+  plugins: [vitestUseGlobals(), tailwindcss(), sveltekit()],
   test: {
+    globals: true,
     environment: "jsdom",
     include: ["src/**/*.{test,spec}.ts"],
   },

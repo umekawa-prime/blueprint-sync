@@ -17,6 +17,7 @@ import { todoStore } from "$lib/stores/todoStore.svelte";
 import {
   addProjectTodo,
   loadProjectTodos,
+  openTodoPanel,
   removeProjectTodo,
   resetTodoState,
   updateProjectTodo,
@@ -70,5 +71,17 @@ describe("todoActions", () => {
 
     await removeProjectTodo("DEMOSITE-1");
     expect(todoStore.items.map((item) => item.key)).toEqual(["DEMOSITE-2"]);
+  });
+
+  it("opens the right panel on the notes or issues view", () => {
+    openTodoPanel("note");
+    expect(todoStore.panelOpen).toBe(true);
+    expect(todoStore.tab).toBe("note");
+    expect(todoStore.selectedKey).toBeNull();
+
+    todoStore.selectedKey = "DEMOSITE-2";
+    openTodoPanel("todo");
+    expect(todoStore.tab).toBe("todo");
+    expect(todoStore.panelOpen).toBe(true);
   });
 });

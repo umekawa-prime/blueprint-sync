@@ -8,7 +8,8 @@
   import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
   import { selectPdfPage } from "$lib/utils/pageNavigation";
   import { saveCurrentPdf, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
-  import { toggleTodoPanel } from "$lib/utils/todoActions";
+  import { openSampleSchedule } from "$lib/utils/scheduleActions";
+  import { openTodoPanel } from "$lib/utils/todoActions";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
   import { zoomStep } from "$lib/utils/viewerMenu";
   import { toast } from "svelte-sonner";
@@ -53,7 +54,7 @@
     try {
       const saved = await saveCurrentPdf();
       if (saved) {
-        toast.success("保存しました");
+        toast.success("出力しました");
       }
     } finally {
       saving = false;
@@ -78,12 +79,12 @@
     disabled={!pdfStore.bytes || saving}
     aria-busy={saving}
   >
-    保存
+    出力
   </button>
   {#if saving}
     <span
       class="inline-block h-4 w-4 animate-spin rounded-full border-2 border-slate-500 border-t-cyan-300"
-      aria-label="保存中"
+      aria-label="出力中"
     ></span>
   {/if}
 
@@ -202,9 +203,10 @@
     {#if onSharePdf}
       <button class="toolbar-btn" onclick={onSharePdf} disabled={!pdfStore.bytes}>この図面を共有</button>
     {/if}
-    <button class="toolbar-btn" class:active={todoStore.panelOpen} onclick={() => toggleTodoPanel()}>
+    <button class="toolbar-btn" class:active={todoStore.panelOpen && todoStore.tab === "todo"} onclick={() => openTodoPanel("todo")}>
       課題{todoStore.activeCount > 0 ? ` ${todoStore.activeCount}` : ""}
     </button>
+    <button type="button" class="toolbar-btn" onclick={() => openSampleSchedule()}>工程表</button>
     <button class="toolbar-btn ml-auto" class:active={connectionStore.status !== "idle"} onclick={onToggleConnection}>
       接続
     </button>
@@ -257,9 +259,10 @@
       {#if onSharePdf}
         <button class="toolbar-btn" onclick={onSharePdf} disabled={!pdfStore.bytes}>この図面を共有</button>
       {/if}
-      <button class="toolbar-btn" class:active={todoStore.panelOpen} onclick={() => toggleTodoPanel()}>
+      <button class="toolbar-btn" class:active={todoStore.panelOpen && todoStore.tab === "todo"} onclick={() => openTodoPanel("todo")}>
         課題{todoStore.activeCount > 0 ? ` ${todoStore.activeCount}` : ""}
       </button>
+      <button type="button" class="toolbar-btn" onclick={() => openSampleSchedule()}>工程表</button>
       <button class="toolbar-btn" class:active={connectionStore.status !== "idle"} onclick={onToggleConnection}>接続</button>
     </div>
   </div>

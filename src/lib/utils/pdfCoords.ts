@@ -25,6 +25,44 @@ export type PdfJsViewport = {
   scale: number;
 };
 
+export type OverlayImagePlacement = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  rotate: number;
+};
+
+export const PDF_DISPLAY_SCALE = 1.2;
+
+export function pdfPageOutputScale(zoom: number, devicePixelRatio: number): number {
+  return Math.max(zoom, 0.01) * (devicePixelRatio || 1);
+}
+
+export function overlayImagePlacement(
+  pageWidth: number,
+  pageHeight: number,
+  rotation: number,
+): OverlayImagePlacement {
+  const angle = ((Math.round(rotation) % 360) + 360) % 360;
+  switch (angle) {
+    case 90:
+      return { x: pageWidth, y: 0, width: pageHeight, height: pageWidth, rotate: 90 };
+    case 180:
+      return {
+        x: pageWidth,
+        y: pageHeight,
+        width: pageWidth,
+        height: pageHeight,
+        rotate: 180,
+      };
+    case 270:
+      return { x: 0, y: pageHeight, width: pageHeight, height: pageWidth, rotate: 270 };
+    default:
+      return { x: 0, y: 0, width: pageWidth, height: pageHeight, rotate: 0 };
+  }
+}
+
 export function fabricToPdfRect(
   rect: FabricRect,
   mapping: CanvasPageMapping,

@@ -32,6 +32,7 @@ class ChromeStore {
     this.pageWidth = stored.pageWidth;
     this.todoWidth = stored.todoWidth;
     todoStore.panelOpen = stored.todoOpen;
+    todoStore.tab = stored.todoTab;
   }
 
   persist() {
@@ -47,6 +48,7 @@ class ChromeStore {
         pageWidth: this.pageWidth,
         todoOpen: todoStore.panelOpen,
         todoWidth: this.todoWidth,
+        todoTab: todoStore.tab,
       }),
     );
   }

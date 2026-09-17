@@ -43,10 +43,14 @@ vi.mock("./projectIo", async () => {
   };
 });
 
-vi.mock("./pdfExport", () => ({
-  embedAnnotationPngOnPdf: mockEmbedAnnotationPngOnPdf,
-  suggestedExportName: vi.fn(),
-}));
+vi.mock("./pdfExport", async () => {
+  const actual = await vi.importActual<typeof import("./pdfExport")>("./pdfExport");
+  return {
+    ...actual,
+    embedAnnotationPngOnPdf: mockEmbedAnnotationPngOnPdf,
+    suggestedExportName: vi.fn(),
+  };
+});
 
 vi.mock("./pinSlides", () => ({
   appendPhotoPinSlides: mockAppendPhotoPinSlides,
@@ -110,15 +114,19 @@ describe("toolbarActions", () => {
     expect(saved).toBe(true);
   });
 
-  it("overwrites the open project PDF without a file dialog", async () => {
+  it("exports an annotated PDF into bp-sync beside the source without overwriting it", async () => {
     mockWriteBinaryFile.mockResolvedValue(undefined);
 
     const saved = await saveCurrentPdf();
 
     expect(mockSavePdfToDisk).not.toHaveBeenCalled();
     expect(mockWriteBinaryFile).toHaveBeenCalledWith(
-      "/projects/a/図面/A.pdf",
+      "/projects/a/図面/bp-sync/A.pdf",
       new Uint8Array([4, 5, 6]),
+    );
+    expect(mockWriteBinaryFile).not.toHaveBeenCalledWith(
+      "/projects/a/図面/A.pdf",
+      expect.anything(),
     );
     expect(mockAppendPhotoPinSlides).toHaveBeenCalledTimes(1);
     expect(mockPersistCurrentAnnotations).toHaveBeenCalledTimes(1);
@@ -143,7 +151,7 @@ describe("toolbarActions", () => {
     const saved = await saveCurrentPdf();
 
     expect(mockWriteBinaryFile).not.toHaveBeenCalled();
-    expect(pdfStore.status).toBe("上書き先のPDFがありません");
+    expect(pdfStore.status).toBe("出力先のPDFがありません");
     expect(saved).toBe(false);
   });
 

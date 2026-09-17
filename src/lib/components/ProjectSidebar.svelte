@@ -3,7 +3,6 @@
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import {
     addProjectLink,
-    closeProject,
     convertCadFileToDrawingPdf,
     importPdfIntoProject,
     importOneDriveLinkIntoProject,
@@ -12,10 +11,9 @@
     removeProjectLink,
     removeProjectPdf,
     renameProjectFile,
-    shareCurrentProject,
   } from "$lib/utils/projectActions";
   import { openCurrentProjectInCursor } from "$lib/utils/cursorOpen";
-  import { toggleTodoPanel } from "$lib/utils/todoActions";
+  import { openTodoPanel } from "$lib/utils/todoActions";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import {
     displayLinkTitle,
@@ -165,14 +163,6 @@
       await renameProjectFile(file, nextName);
     } catch (error) {
       pdfStore.status = message(error, "名前の変更に失敗しました");
-    }
-  }
-
-  async function onCloseProject() {
-    try {
-      await closeProject();
-    } catch (error) {
-      projectStore.error = message(error, "プロジェクトを閉じられませんでした");
     }
   }
 
@@ -373,15 +363,16 @@
   <button
     type="button"
     class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
-    onclick={() => toggleTodoPanel(true)}
+    onclick={() => openTodoPanel("todo")}
   >
     課題{todoStore.activeCount > 0 ? `（${todoStore.activeCount}）` : ""}
   </button>
   <button
+    type="button"
     class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
-    onclick={() => void shareCurrentProject()}
+    onclick={() => openTodoPanel("note")}
   >
-    プロジェクトを共有
+    メモ
   </button>
   <button
     type="button"
@@ -389,9 +380,6 @@
     onclick={() => void onOpenInCursor()}
   >
     Cursorで開く
-  </button>
-  <button class="border-t border-slate-800 px-3 py-2 text-xs text-slate-400" onclick={onCloseProject}>
-    プロジェクトを閉じる
   </button>
   <button
     type="button"

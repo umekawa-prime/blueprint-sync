@@ -2,7 +2,7 @@ import { annotationStore } from "$lib/stores/annotationStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
-import { embedAnnotationPngOnPdf } from "./pdfExport";
+import { embedAnnotationPngOnPdf, exportedPdfPath } from "./pdfExport";
 import { appendPhotoPinSlides } from "./pinSlides";
 import { persistCurrentAnnotations, importPdfIntoProject } from "./projectActions";
 import { writeBinaryFile } from "./projectIo";
@@ -22,7 +22,7 @@ export async function saveCurrentPdf(): Promise<boolean> {
     return false;
   }
   if (!projectStore.folder || !projectStore.currentPdf) {
-    pdfStore.status = "上書き先のPDFがありません";
+    pdfStore.status = "出力先のPDFがありません";
     return false;
   }
 
@@ -43,7 +43,7 @@ export async function saveCurrentPdf(): Promise<boolean> {
       annotationStore.exportPhotoPins(),
       pdfStore.pageCount,
     );
-    const path = `${projectStore.folder}/${projectStore.currentPdf.replaceAll("\\", "/")}`;
+    const path = exportedPdfPath(projectStore.folder, projectStore.currentPdf);
     await writeBinaryFile(path, output);
     const persisted = await persistCurrentAnnotations();
     if (persisted) {
@@ -53,7 +53,7 @@ export async function saveCurrentPdf(): Promise<boolean> {
     }
     return false;
   } catch (error) {
-    pdfStore.status = error instanceof Error ? error.message : "PDFの保存に失敗しました";
+    pdfStore.status = error instanceof Error ? error.message : "PDFの出力に失敗しました";
     return false;
   }
 }

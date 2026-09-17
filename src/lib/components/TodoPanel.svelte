@@ -1,5 +1,6 @@
 <script lang="ts">
   import DatePicker from "$lib/components/DatePicker.svelte";
+  import NotePanel from "$lib/components/NotePanel.svelte";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
   import { todoPanelClass } from "$lib/utils/chromeLayout";
@@ -109,10 +110,12 @@
   }
 </script>
 
-<aside class={todoPanelClass(viewportStore.isPhone)} aria-label="課題">
+<aside class={todoPanelClass(viewportStore.isPhone)} aria-label={todoStore.tab === "note" ? "メモ" : "課題"}>
   <div class="flex items-center gap-2 border-b border-slate-700 py-2 pr-3 pl-5">
-    {#if selected}
+    {#if selected && todoStore.tab === "todo"}
       <button class="text-xs text-cyan-300" onclick={backToList}>一覧へ</button>
+    {:else if todoStore.tab === "note"}
+      <h2 class="text-sm font-semibold">メモ</h2>
     {:else}
       <h2 class="text-sm font-semibold">課題</h2>
       <span class="rounded-full bg-slate-700 px-2 py-0.5 text-[11px] text-slate-200">{todoStore.activeCount}</span>
@@ -120,7 +123,9 @@
     <button class="ml-auto text-xs text-slate-400" onclick={() => toggleTodoPanel(false)}>閉じる</button>
   </div>
 
-  {#if selected}
+  {#if todoStore.tab === "note"}
+    <NotePanel />
+  {:else if selected}
     <div class="flex min-h-0 flex-1 flex-col gap-3 overflow-auto px-3 py-3">
       <p class="text-xs font-semibold text-[#4488c5]">{selected.key}</p>
       <label class="block text-[11px] text-slate-400">

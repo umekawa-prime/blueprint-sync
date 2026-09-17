@@ -19,6 +19,7 @@ export async function renderPdfPage(
   page: PDFPageProxy,
   canvas: HTMLCanvasElement,
   scale: number,
+  outputScale = window.devicePixelRatio || 1,
 ): Promise<{ width: number; height: number }> {
   const viewport = page.getViewport({ scale });
   const context = canvas.getContext("2d");
@@ -26,7 +27,6 @@ export async function renderPdfPage(
     throw new Error("Failed to get 2D context for PDF canvas");
   }
 
-  const outputScale = window.devicePixelRatio || 1;
   canvas.width = Math.floor(viewport.width * outputScale);
   canvas.height = Math.floor(viewport.height * outputScale);
   canvas.style.width = `${Math.floor(viewport.width)}px`;

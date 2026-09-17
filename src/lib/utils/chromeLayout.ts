@@ -56,6 +56,8 @@ export const PROJECT_SIDEBAR_WIDTH = { default: 288, min: 200, max: 480 } as con
 export const PAGE_SIDEBAR_WIDTH = { default: 144, min: 96, max: 280 } as const;
 export const TODO_PANEL_WIDTH = { default: 352, min: 240, max: 560 } as const;
 
+export type ChromeTodoTab = "todo" | "note";
+
 export type ChromeLayoutState = {
   projectOpen: boolean;
   projectWidth: number;
@@ -63,6 +65,7 @@ export type ChromeLayoutState = {
   pageWidth: number;
   todoOpen: boolean;
   todoWidth: number;
+  todoTab: ChromeTodoTab;
 };
 
 export const DEFAULT_CHROME_LAYOUT: ChromeLayoutState = {
@@ -72,6 +75,7 @@ export const DEFAULT_CHROME_LAYOUT: ChromeLayoutState = {
   pageWidth: PAGE_SIDEBAR_WIDTH.default,
   todoOpen: false,
   todoWidth: TODO_PANEL_WIDTH.default,
+  todoTab: "todo",
 };
 
 export const CHROME_LAYOUT_STORAGE_KEY = "blueprint-sync.chromeLayout";
@@ -110,6 +114,10 @@ function readWidth(value: unknown, fallback: number, min: number, max: number): 
   return clampSidebarWidth(typeof value === "number" ? value : fallback, min, max);
 }
 
+function readTodoTab(value: unknown): ChromeTodoTab {
+  return value === "note" ? "note" : "todo";
+}
+
 export function parseChromeLayout(raw: string | null): ChromeLayoutState {
   if (!raw) {
     return { ...DEFAULT_CHROME_LAYOUT };
@@ -142,6 +150,7 @@ export function parseChromeLayout(raw: string | null): ChromeLayoutState {
         TODO_PANEL_WIDTH.min,
         TODO_PANEL_WIDTH.max,
       ),
+      todoTab: readTodoTab(value.todoTab),
     };
   } catch {
     return { ...DEFAULT_CHROME_LAYOUT };
@@ -160,5 +169,6 @@ export function serializeChromeLayout(state: ChromeLayoutState): string {
     pageWidth: clampSidebarWidth(state.pageWidth, PAGE_SIDEBAR_WIDTH.min, PAGE_SIDEBAR_WIDTH.max),
     todoOpen: state.todoOpen,
     todoWidth: clampSidebarWidth(state.todoWidth, TODO_PANEL_WIDTH.min, TODO_PANEL_WIDTH.max),
+    todoTab: readTodoTab(state.todoTab),
   });
 }

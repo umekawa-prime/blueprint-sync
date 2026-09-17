@@ -104,6 +104,7 @@ describe("chromeLayout", () => {
       pageWidth: PAGE_SIDEBAR_WIDTH.min,
       todoOpen: true,
       todoWidth: 400,
+      todoTab: "note",
     });
     expect(parseChromeLayout(stored)).toEqual({
       projectOpen: false,
@@ -112,8 +113,10 @@ describe("chromeLayout", () => {
       pageWidth: PAGE_SIDEBAR_WIDTH.min,
       todoOpen: true,
       todoWidth: 400,
+      todoTab: "note",
     });
     expect(parseChromeLayout(null)).toEqual(DEFAULT_CHROME_LAYOUT);
     expect(parseChromeLayout("{")).toEqual(DEFAULT_CHROME_LAYOUT);
+    expect(parseChromeLayout('{"todoOpen":true}')).toMatchObject({ todoTab: "todo" });
   });
 });

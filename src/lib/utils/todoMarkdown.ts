@@ -26,7 +26,8 @@ const HEADING_STATUS: Record<string, TodoStatus> = {
   完了: "closed",
 };
 
-const KEY_PATTERN = /^[A-Za-z0-9]{1,12}-\d+$/;
+export const TODO_KEY_PATTERN = /^[A-Za-z0-9]{1,12}-\d+$/;
+const KEY_PATTERN = TODO_KEY_PATTERN;
 const DUE_PATTERN = /(?:^|\s)期限:\s*(\d{4}-\d{2}-\d{2})\s*$/;
 
 export function statusLabel(status: TodoStatus): string {

@@ -1,0 +1,63 @@
+{
+  "version": 1,
+  "title": "サンプル新築工事 工程表",
+  "start": "2026-09-01",
+  "end": "2026-10-31",
+  "groups": [
+    {
+      "id": "prep",
+      "name": "準備・仮設",
+      "color": "#22c55e",
+      "tasks": [
+        {
+          "id": "prep-1",
+          "name": "地鎮祭・近隣挨拶",
+          "planned": { "start": "2026-09-01", "end": "2026-09-02" },
+          "actual": { "start": "2026-09-01", "end": "2026-09-02" }
+        },
+        {
+          "id": "prep-2",
+          "name": "仮囲い・事務所",
+          "planned": { "start": "2026-09-03", "end": "2026-09-12" },
+          "actual": { "start": "2026-09-03", "end": "2026-09-11" }
+        }
+      ]
+    },
+    {
+      "id": "foundation",
+      "name": "基礎",
+      "color": "#38bdf8",
+      "tasks": [
+        {
+          "id": "found-1",
+          "name": "掘削",
+          "planned": { "start": "2026-09-08", "end": "2026-09-18" },
+          "actual": { "start": "2026-09-09", "end": "2026-09-17" }
+        },
+        {
+          "id": "found-2",
+          "name": "配筋・コンクリート",
+          "planned": { "start": "2026-09-19", "end": "2026-10-03" },
+          "actual": { "start": "2026-09-20", "end": null }
+        }
+      ]
+    },
+    {
+      "id": "structure",
+      "name": "躯体",
+      "color": "#f59e0b",
+      "tasks": [
+        {
+          "id": "struct-1",
+          "name": "1階躯体",
+          "planned": { "start": "2026-10-05", "end": "2026-10-18" }
+        },
+        {
+          "id": "struct-2",
+          "name": "2階躯体",
+          "planned": { "start": "2026-10-19", "end": "2026-10-31" }
+        }
+      ]
+    }
+  ]
+}

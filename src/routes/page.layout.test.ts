@@ -170,13 +170,25 @@ describe("editor shell layout", () => {
     expect(page).toContain('import TodoPanel from "$lib/components/TodoPanel.svelte"');
     expect(page).toContain("todoStore.panelOpen");
     expect(sidebar).toContain("課題");
+    expect(sidebar).toContain("メモ");
+    expect(sidebar).toContain("openTodoPanel");
+    expect(sidebar).not.toContain("プロジェクトを共有");
+    expect(sidebar).not.toContain("プロジェクトを閉じる");
     expect(toolbar).toContain("課題");
     expect(panel).toContain("TODO_FILTERS");
     expect(panel).toContain("課題の件名を入力して追加");
     expect(panel).toContain("statusLabel");
     expect(panel).toContain("保存");
-    expect(panel).not.toContain('type="date"');
+    expect(panel).not.toContain("setTodoPanelTab");
+    expect(panel).toContain('import NotePanel from "$lib/components/NotePanel.svelte"');
+    const notes = readFileSync(path.resolve("src/lib/components/NotePanel.svelte"), "utf8");
+    expect(notes).toContain("課題化");
+    expect(notes).toContain("行を移動");
+    expect(notes).toContain("promoteNoteLine");
+    expect(notes).toContain("moveProjectNote");
+    expect(notes).not.toContain('type="date"');
     expect(panel).toContain("DatePicker");
+    expect(panel).not.toContain('type="date"');
     const picker = readFileSync(path.resolve("src/lib/components/DatePicker.svelte"), "utf8");
     expect(picker).toContain("calendarMonthGrid");
     expect(picker).toContain("日付を選択");
@@ -192,7 +204,7 @@ describe("editor shell layout", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     expect(sidebar).toContain("Cursorで開く");
     expect(sidebar).toContain("openCurrentProjectInCursor");
-    expect(sidebar.indexOf("Cursorで開く")).toBeLessThan(sidebar.indexOf("プロジェクトを閉じる"));
+    expect(sidebar.indexOf("Cursorで開く")).toBeLessThan(sidebar.indexOf("操作方法"));
   });
 
   it("pins SvelteKit version.name so the SPA fallback payload id matches the client", () => {
@@ -200,7 +212,7 @@ describe("editor shell layout", () => {
     expect(config).toContain('readFileSync(new URL("./package.json", import.meta.url)');
     expect(config).toContain("version:");
     expect(config).toMatch(/name:\s*version/);
-    expect(config).not.toContain("Date.now()");
+    expect(config).not.toMatch(/name:\s*Date\.now\(\)/);
   });
 
   it("keeps the built index.html payload id in sync with start.js", () => {
@@ -219,10 +231,26 @@ describe("editor shell layout", () => {
     expect(htmlId).toBe(clientId);
   });
 
+  it("opens a sample gantt schedule from the toolbar and can return to the drawing", () => {
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    const toolbar = readFileSync(path.resolve("src/lib/components/Toolbar.svelte"), "utf8");
+    const view = readFileSync(path.resolve("src/lib/components/ScheduleView.svelte"), "utf8");
+    expect(toolbar).toContain("工程表");
+    expect(toolbar).toContain("openSampleSchedule");
+    expect(page).toContain('import ScheduleView from "$lib/components/ScheduleView.svelte"');
+    expect(page).toContain("scheduleStore.open");
+    expect(page).toContain("<ScheduleView");
+    expect(view).toContain("図面へ");
+    expect(view).toContain("closeScheduleView");
+    expect(view).toContain("buildScheduleViewModel");
+    expect(view).not.toContain("invoke(");
+  });
+
   it("opens Jw_cad help from a button at the bottom of the sidebar", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     const help = readFileSync(path.resolve("src/lib/components/JwCadHelpPanel.svelte"), "utf8");
-    expect(sidebar.indexOf("プロジェクトを閉じる")).toBeLessThan(sidebar.indexOf("操作方法"));
+    expect(sidebar.indexOf("メモ")).toBeLessThan(sidebar.indexOf("Cursorで開く"));
+    expect(sidebar.indexOf("Cursorで開く")).toBeLessThan(sidebar.indexOf("操作方法"));
     expect(sidebar).toContain('import JwCadHelpPanel from "$lib/components/JwCadHelpPanel.svelte"');
     expect(help).toContain("このアプリと Jw_cad");
     expect(help).toContain("Jw_cad の基本");

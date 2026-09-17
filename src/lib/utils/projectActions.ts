@@ -80,6 +80,8 @@ import {
 } from "./projectTabs";
 import { captureOpenSession } from "./projectSession";
 import { loadProjectTodos, resetTodoState } from "./todoActions";
+import { loadProjectNotes, resetNoteState } from "./noteActions";
+import { resetScheduleState } from "./scheduleActions";
 
 let restoringSession = false;
 
@@ -87,6 +89,17 @@ function requireTauri() {
   if (!isTauriRuntime() && !isWebDemo()) {
     throw new Error("プロジェクト機能は Tauri アプリ上でのみ利用できます");
   }
+}
+
+async function loadProjectLists(folder: string): Promise<void> {
+  await loadProjectTodos(folder);
+  await loadProjectNotes(folder);
+}
+
+function resetProjectLists() {
+  resetTodoState();
+  resetNoteState();
+  resetScheduleState();
 }
 
 async function persistOpenSession(): Promise<void> {
@@ -194,12 +207,12 @@ async function applyLiveSession(session: TabSession): Promise<void> {
     pdfStore.pageIndex = session.pdf.pageIndex;
     pdfStore.zoom = session.pdf.zoom;
     pdfStore.status = session.pdf.status;
-    await loadProjectTodos(session.folder);
+    await loadProjectLists(session.folder);
     return;
   }
   pdfStore.clear();
   pdfStore.status = session.pdf.status;
-  await loadProjectTodos(session.folder);
+  await loadProjectLists(session.folder);
 }
 
 function registerLiveTab(): void {
@@ -380,7 +393,7 @@ async function createProjectAt(folder: string, meta?: ProjectMeta): Promise<void
   annotationStore.clear();
   await remember(nextMeta.name, folder, nextMeta.id);
   registerLiveTab();
-  await loadProjectTodos(folder);
+  await loadProjectLists(folder);
   await openFirstProjectPdf();
   await persistOpenSession();
 }
@@ -413,7 +426,7 @@ export async function openProject(folder?: string): Promise<void> {
     annotationStore.clear();
     await remember(meta.name, selected, meta.id);
     registerLiveTab();
-    await loadProjectTodos(selected);
+    await loadProjectLists(selected);
     await openFirstProjectPdf();
     await persistOpenSession();
   } catch (error) {
@@ -475,7 +488,7 @@ export async function closeProjectTab(tabId: string): Promise<void> {
     projectStore.reset();
     pdfStore.clear();
     annotationStore.clear();
-    resetTodoState();
+    resetProjectLists();
     await persistOpenSession();
     return;
   }
@@ -536,7 +549,7 @@ export async function showProjectHome(): Promise<void> {
   projectStore.activeTabId = null;
   pdfStore.clear();
   annotationStore.clear();
-  resetTodoState();
+  resetProjectLists();
 }
 
 export async function closeProject(): Promise<void> {
@@ -551,7 +564,7 @@ export async function closeProject(): Promise<void> {
   projectStore.reset();
   pdfStore.clear();
   annotationStore.clear();
-  resetTodoState();
+  resetProjectLists();
   await persistOpenSession();
 }
 
@@ -903,6 +916,14 @@ export async function startWebDemo(): Promise<void> {
 - [x] TODO-3 キックオフを実施する
 `),
   );
+  webPut(
+    `${folder}/NOTE.md`,
+    new TextEncoder().encode(`# NOTE
+
+- 現場で寸法を確認する
+- 図面の赤字を反映する
+`),
+  );
   const meta = createProjectMeta("デモプロジェクト");
   projectStore.folder = folder;
   projectStore.meta = meta;
@@ -911,7 +932,7 @@ export async function startWebDemo(): Promise<void> {
   projectStore.error = "";
   pdfStore.status = "ブラウザデモ: 図面名をクリックして切り替えてください";
   registerLiveTab();
-  await loadProjectTodos(folder);
+  await loadProjectLists(folder);
   await openProjectPdf("図面/既存図.pdf");
 }
 

@@ -9,10 +9,12 @@
   import ProjectHome from "$lib/components/ProjectHome.svelte";
   import ProjectSidebar from "$lib/components/ProjectSidebar.svelte";
   import StatusBar from "$lib/components/StatusBar.svelte";
+  import ScheduleView from "$lib/components/ScheduleView.svelte";
   import TodoPanel from "$lib/components/TodoPanel.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { chromeStore } from "$lib/stores/chromeStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
+  import { scheduleStore } from "$lib/stores/scheduleStore.svelte";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
@@ -125,57 +127,61 @@
           <ProjectSidebar />
         </DockPane>
       {/if}
-      <div class="flex min-w-0 flex-1 flex-col">
-        {#if !viewportStore.isPhone}
-          <Toolbar
-            onToggleConnection={() => (connectionOpen = !connectionOpen)}
-            onRequestPhoto={requestPhoto}
-            onShareProject={onShareProject}
-            onSharePdf={onSharePdf}
-          />
-        {/if}
+      {#if scheduleStore.open}
+        <ScheduleView />
+      {:else}
+        <div class="flex min-w-0 flex-1 flex-col">
+          {#if !viewportStore.isPhone}
+            <Toolbar
+              onToggleConnection={() => (connectionOpen = !connectionOpen)}
+              onRequestPhoto={requestPhoto}
+              onShareProject={onShareProject}
+              onSharePdf={onSharePdf}
+            />
+          {/if}
 
-        <div class="relative flex min-h-0 flex-1 {viewportStore.isPhone ? 'flex-col' : ''}">
-          <PageSidebar />
-          <div
-            class="relative flex min-h-0 min-w-0 flex-1 flex-col {viewportStore.isPhone
-              ? 'order-1'
-              : ''}"
-          >
-            <PdfViewer />
-            <ConnectionPanel bind:open={connectionOpen} />
-          </div>
-          {#if viewportStore.isPhone}
-            {#if todoStore.panelOpen}
-              <TodoPanel />
-            {/if}
-          {:else}
-            <DockPane
-              side="right"
-              open={todoStore.panelOpen}
-              width={chromeStore.todoWidth}
-              minWidth={TODO_PANEL_WIDTH.min}
-              maxWidth={TODO_PANEL_WIDTH.max}
-              expandLabel="課題"
-              onWidth={(next) => chromeStore.setTodoWidth(next)}
-              onOpenChange={(next) => toggleTodoPanel(next)}
+          <div class="relative flex min-h-0 flex-1 {viewportStore.isPhone ? 'flex-col' : ''}">
+            <PageSidebar />
+            <div
+              class="relative flex min-h-0 min-w-0 flex-1 flex-col {viewportStore.isPhone
+                ? 'order-1'
+                : ''}"
             >
-              <TodoPanel />
-            </DockPane>
+              <PdfViewer />
+              <ConnectionPanel bind:open={connectionOpen} />
+            </div>
+            {#if viewportStore.isPhone}
+              {#if todoStore.panelOpen}
+                <TodoPanel />
+              {/if}
+            {:else}
+              <DockPane
+                side="right"
+                open={todoStore.panelOpen}
+                width={chromeStore.todoWidth}
+                minWidth={TODO_PANEL_WIDTH.min}
+                maxWidth={TODO_PANEL_WIDTH.max}
+                expandLabel="課題"
+                onWidth={(next) => chromeStore.setTodoWidth(next)}
+                onOpenChange={(next) => toggleTodoPanel(next)}
+              >
+                <TodoPanel />
+              </DockPane>
+            {/if}
+          </div>
+
+          <StatusBar />
+          {#if viewportStore.isPhone}
+            <Toolbar
+              compact
+              onToggleConnection={() => (connectionOpen = !connectionOpen)}
+              onRequestPhoto={requestPhoto}
+              onShareProject={onShareProject}
+              onSharePdf={onSharePdf}
+            />
           {/if}
         </div>
-
-        <StatusBar />
-        {#if viewportStore.isPhone}
-          <Toolbar
-            compact
-            onToggleConnection={() => (connectionOpen = !connectionOpen)}
-            onRequestPhoto={requestPhoto}
-            onShareProject={onShareProject}
-            onSharePdf={onSharePdf}
-          />
-        {/if}
-      </div>
+      {/if}
     </div>
   {/if}
 

@@ -136,6 +136,11 @@ vi.mock("./todoActions", () => ({
   resetTodoState: vi.fn(),
 }));
 
+vi.mock("./noteActions", () => ({
+  loadProjectNotes: vi.fn(async () => {}),
+  resetNoteState: vi.fn(),
+}));
+
 vi.mock("./connectionActions", () => ({
   sendCurrentPdf: mockSendCurrentPdf,
 }));

@@ -49,13 +49,17 @@
     clampCamera,
     panBy,
     pinchCamera,
-    scaleSerializedObjects,
     shouldHandleWheelAsViewport,
     shouldPanWithPointer,
     zoomAroundPoint,
     type MapCamera,
   } from "$lib/utils/mapViewport";
-  import { fabricToNormalized, pdfPageNumber } from "$lib/utils/pdfCoords";
+  import {
+    fabricToNormalized,
+    PDF_DISPLAY_SCALE,
+    pdfPageNumber,
+    pdfPageOutputScale,
+  } from "$lib/utils/pdfCoords";
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
   import { viewerApi } from "$lib/stores/viewerApi";
@@ -72,6 +76,7 @@
   let fabricCanvas: Canvas | undefined;
   let camera = $state<MapCamera>({ x: 0, y: 0, zoom: 1 });
   let renderedZoom = $state(1);
+  let bitmapZoom = 0;
   let contentSize = $state({ width: 0, height: 0 });
   let panDrag = $state<{ pointerId: number; x: number; y: number } | undefined>(undefined);
   let shouldCenter = true;
@@ -400,14 +405,14 @@
         const origin = viewportCenter();
         camera = clampToView(zoomAroundPoint(camera, origin.x, origin.y, zoom));
       }
-      if (!pdfStore.document || renderedZoom === zoom) {
+      if (!pdfStore.document || bitmapZoom === zoom) {
         return;
       }
       if (zoomRenderTimer) {
         clearTimeout(zoomRenderTimer);
       }
       zoomRenderTimer = setTimeout(() => {
-        if (renderedZoom === pdfStore.zoom) {
+        if (bitmapZoom === pdfStore.zoom) {
           return;
         }
         void renderCurrentPage();
@@ -707,40 +712,39 @@
       return;
     }
     const token = ++renderToken;
-    const previousWidth = fabricCanvas?.getWidth() ?? 0;
-    const zoomOnly =
-      Boolean(fabricCanvas) &&
-      previousWidth > 0 &&
-      persistedPage === pdfStore.pageIndex &&
-      !shouldCenter;
-    untrack(() => persistCurrentPage());
+    const pageChanged = persistedPage !== pdfStore.pageIndex || shouldCenter;
+    if (pageChanged) {
+      untrack(() => persistCurrentPage());
+    }
     try {
       const page = await pdfStore.document.getPage(pageNumber);
       if (token !== renderToken) {
         return;
       }
-      const size = await renderPdfPage(page, pdfCanvasEl, pdfStore.zoom * 1.2);
+      const size = await renderPdfPage(
+        page,
+        pdfCanvasEl,
+        PDF_DISPLAY_SCALE,
+        pdfPageOutputScale(pdfStore.zoom, window.devicePixelRatio || 1),
+      );
       if (token !== renderToken) {
         return;
       }
       if (fabricCanvas) {
-        const factor = previousWidth > 0 ? size.width / previousWidth : 1;
-        fabricCanvas.setDimensions({
-          width: Math.floor(size.width),
-          height: Math.floor(size.height),
-        });
-        if (zoomOnly && Math.abs(factor - 1) > 0.001) {
-          const nextByPage: typeof annotationStore.byPage = {};
-          for (const [key, objects] of Object.entries(annotationStore.byPage)) {
-            nextByPage[Number(key)] = scaleSerializedObjects(objects, factor);
-          }
-          annotationStore.byPage = nextByPage;
+        const width = Math.floor(size.width);
+        const height = Math.floor(size.height);
+        const resized =
+          fabricCanvas.getWidth() !== width || fabricCanvas.getHeight() !== height;
+        if (resized) {
+          fabricCanvas.setDimensions({ width, height });
         }
-        persistedPage = pdfStore.pageIndex;
-        await restorePageObjects();
+        if (pageChanged || resized) {
+          persistedPage = pdfStore.pageIndex;
+          await restorePageObjects();
+        }
       }
       contentSize = { width: size.width, height: size.height };
-      renderedZoom = pdfStore.zoom;
+      bitmapZoom = pdfStore.zoom;
       if (shouldCenter) {
         camera = centerInViewport(
           size.width,
@@ -748,7 +752,7 @@
           viewportEl?.clientWidth ?? size.width,
           viewportEl?.clientHeight ?? size.height,
           pdfStore.zoom,
-          pdfStore.zoom,
+          renderedZoom,
         );
         shouldCenter = false;
       }
