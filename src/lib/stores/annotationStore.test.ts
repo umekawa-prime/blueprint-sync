@@ -116,3 +116,55 @@ describe("annotationStore photo pins", () => {
     expect(annotationStore.pinsFor(0).map((pin) => pin.id)).toEqual(["first", "second"]);
   });
 });
+
+describe("annotationStore memo pins", () => {
+  it("adds a memo pin without placing a fabric object", () => {
+    annotationStore.importByPage({});
+    annotationStore.addMemoPin(0, {
+      id: "memo-1",
+      nx: 0.4,
+      ny: 0.5,
+      text: "梁成を確認",
+      color: "#E81123",
+    });
+    expect(annotationStore.objectsFor(0)).toEqual([]);
+    expect(annotationStore.memosFor(0)).toEqual([
+      expect.objectContaining({
+        id: "memo-1",
+        nx: 0.4,
+        ny: 0.5,
+        text: "梁成を確認",
+        color: "#E81123",
+      }),
+    ]);
+    expect(annotationStore.dirty).toBe(true);
+  });
+
+  it("updates text and removes an empty memo", () => {
+    annotationStore.importByPage({});
+    annotationStore.addMemoPin(0, {
+      id: "memo-1",
+      nx: 0.1,
+      ny: 0.2,
+      text: "仮",
+      color: "#22c55e",
+    });
+    annotationStore.updateMemoPin(0, "memo-1", { text: "更新", nx: 0.8 });
+    expect(annotationStore.memosFor(0)[0]?.text).toBe("更新");
+    expect(annotationStore.memosFor(0)[0]?.nx).toBe(0.8);
+    annotationStore.removeMemoPin(0, "memo-1");
+    expect(annotationStore.memosFor(0)).toEqual([]);
+  });
+
+  it("clears memo pins with the rest of the annotations", () => {
+    annotationStore.addMemoPin(0, {
+      id: "memo-1",
+      nx: 0.1,
+      ny: 0.2,
+      text: "残さない",
+      color: "#E81123",
+    });
+    annotationStore.clear();
+    expect(annotationStore.memosFor(0)).toEqual([]);
+  });
+});

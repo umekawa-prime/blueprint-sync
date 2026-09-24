@@ -10,7 +10,42 @@ describe("annotationPersist", () => {
     expect(parseAnnotations(serializeAnnotations(byPage))).toEqual({
       byPage,
       photoPins: {},
+      memoPins: {},
     });
+  });
+
+  it("round-trips memo pins next to page objects", () => {
+    const byPage = { 0: { a: { id: "a", type: "path" } } };
+    const memoPins = {
+      0: {
+        "memo-1": {
+          id: "memo-1",
+          nx: 0.42,
+          ny: 0.31,
+          text: "梁成を現場で確認",
+          color: "#E81123",
+          createdAt: 100,
+        },
+      },
+    };
+    expect(parseAnnotations(serializeAnnotations(byPage, {}, { memoPins }))).toEqual({
+      byPage,
+      photoPins: {},
+      memoPins,
+    });
+  });
+
+  it("defaults missing memo color and treats missing memoPins as empty", () => {
+    expect(parseAnnotations('{"byPage":{}}')).toEqual({
+      byPage: {},
+      photoPins: {},
+      memoPins: {},
+    });
+    expect(
+      parseAnnotations(
+        '{"byPage":{},"memoPins":{"0":{"memo-1":{"id":"memo-1","nx":0.1,"ny":0.2,"text":"確認","color":"red"}}}}',
+      ).memoPins[0]["memo-1"].color,
+    ).toBe("#E81123");
   });
 
   it("round-trips photo pins next to page objects", () => {
@@ -22,8 +57,13 @@ describe("annotationPersist", () => {
           nx: 0.4,
           ny: 0.6,
           title: "",
-          thumbnailDataUrl: "data:image/jpeg;base64,aaa",
-          imageDataUrl: "data:image/jpeg;base64,bbb",
+          images: [
+            {
+              id: "pin-1-img-1",
+              thumbnailDataUrl: "data:image/jpeg;base64,aaa",
+              imageDataUrl: "data:image/jpeg;base64,bbb",
+            },
+          ],
           createdAt: 100,
         },
       },
@@ -31,6 +71,7 @@ describe("annotationPersist", () => {
     expect(parseAnnotations(serializeAnnotations(byPage, photoPins))).toEqual({
       byPage,
       photoPins,
+      memoPins: {},
     });
   });
 
@@ -43,8 +84,13 @@ describe("annotationPersist", () => {
           nx: 0.4,
           ny: 0.6,
           title: "基礎配筋",
-          thumbnailDataUrl: "data:image/jpeg;base64,aaa",
-          imageDataUrl: "data:image/jpeg;base64,bbb",
+          images: [
+            {
+              id: "pin-1-img-1",
+              thumbnailDataUrl: "data:image/jpeg;base64,aaa",
+              imageDataUrl: "data:image/jpeg;base64,bbb",
+            },
+          ],
           createdAt: 100,
         },
       },
@@ -52,6 +98,7 @@ describe("annotationPersist", () => {
     expect(parseAnnotations(serializeAnnotations(byPage, photoPins))).toEqual({
       byPage,
       photoPins,
+      memoPins: {},
     });
     expect(
       parseAnnotations(
@@ -83,8 +130,7 @@ describe("annotationPersist", () => {
         nx: 0.1,
         ny: 0.2,
         title: "",
-        thumbnailDataUrl: "t",
-        imageDataUrl: "f",
+        images: [{ id: "later-img-1", thumbnailDataUrl: "t", imageDataUrl: "f" }],
         createdAt: 1,
       },
       first: {
@@ -92,8 +138,7 @@ describe("annotationPersist", () => {
         nx: 0.3,
         ny: 0.4,
         title: "",
-        thumbnailDataUrl: "t",
-        imageDataUrl: "f",
+        images: [{ id: "first-img-1", thumbnailDataUrl: "t", imageDataUrl: "f" }],
         createdAt: 2,
       },
     });
@@ -103,6 +148,7 @@ describe("annotationPersist", () => {
     expect(parseAnnotations('{"byPage":{"0":{"a":{"id":"a","type":"path"}}}}')).toEqual({
       byPage: { 0: { a: { id: "a", type: "path" } } },
       photoPins: {},
+      memoPins: {},
     });
   });
 

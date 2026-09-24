@@ -378,6 +378,7 @@ describe("projectActions", () => {
         0: { a: { id: "a", type: "path" } },
       },
       {},
+      { memoPins: {} },
     );
     expect(pdfStore.status).toBe("write failed");
   });
@@ -400,6 +401,7 @@ describe("projectActions", () => {
         0: { a: { id: "a", type: "path" } },
       },
       {},
+      { memoPins: {} },
     );
   });
 
@@ -431,6 +433,7 @@ describe("projectActions", () => {
         2: { prev: { id: "prev", type: "path" } },
       },
       {},
+      { memoPins: {} },
     );
     expect(mockReadBinaryFile).toHaveBeenCalledWith("/projects/a/After.pdf");
     expect(pdfStore.load).toHaveBeenCalledWith("After.pdf", new Uint8Array([1, 2, 3]));

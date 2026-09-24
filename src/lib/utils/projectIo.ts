@@ -8,7 +8,7 @@ import {
   type RecentProject,
 } from "./projectFormat";
 import { parseAnnotations, serializeAnnotations } from "./annotationPersist";
-import type { AnnotationFile, PageObjects, PhotoPinRecord } from "./annotationPersist";
+import type { AnnotationFile, AnnotationPersistExtras, PageObjects, PhotoPinRecord } from "./annotationPersist";
 import { isTauriRuntime, usesRfdFileDialog } from "./platform";
 import { EMPTY_OPEN_SESSION, parseOpenSession, type OpenSession } from "./projectSession";
 import { shouldDeleteSourceAfterCopy } from "./projectMove";
@@ -211,7 +211,7 @@ export async function readAnnotationFile(
   if (legacy !== path && (await pathExists(legacy))) {
     return parseAnnotations(await readTextFile(legacy));
   }
-  return { byPage: {}, photoPins: {} };
+  return { byPage: {}, photoPins: {}, memoPins: {} };
 }
 
 export async function writeAnnotationFile(
@@ -219,9 +219,9 @@ export async function writeAnnotationFile(
   pdfName: string,
   byPage: Record<number, PageObjects>,
   photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
-  layout?: { drawingPageCount?: number; pinSlideCountByPage?: number[] },
+  extras?: AnnotationPersistExtras,
 ): Promise<void> {
-  await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage, photoPins, layout));
+  await writeTextFile(annotationPath(folder, pdfName), serializeAnnotations(byPage, photoPins, extras));
 }
 
 export async function sandboxProjectsDir(): Promise<string> {

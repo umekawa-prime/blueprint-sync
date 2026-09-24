@@ -67,8 +67,10 @@
   import type { EditCommand } from "$lib/utils/editHistory";
   import { staggeredPinPosition } from "$lib/utils/photoPinUi";
   import { renderPinMarkerOverlay } from "$lib/utils/pinMarkers";
-  import type { PhotoPinImage } from "$lib/utils/annotationPersist";
+  import { renderMemoPinOverlay } from "$lib/utils/memoPinLayout";
+  import { DEFAULT_MEMO_COLOR, type PhotoPinImage } from "$lib/utils/annotationPersist";
   import PhotoPinLayer from "$lib/components/PhotoPinLayer.svelte";
+  import MemoPinLayer from "$lib/components/MemoPinLayer.svelte";
 
   let viewportEl: HTMLDivElement | undefined = $state();
   let pdfCanvasEl: HTMLCanvasElement | undefined = $state();
@@ -94,6 +96,7 @@
   let unlistenDrag: (() => void) | undefined;
   let lastTap = { x: 120, y: 120 };
   let pendingPinId: string | null = null;
+  let editingMemoId = $state<string | null>(null);
   let renderToken = 0;
   let menu = $state({ open: false, x: 0, y: 0 });
   let menuEl: HTMLDivElement | undefined = $state();
@@ -147,6 +150,19 @@
         overlays.push({
           pageIndex,
           pngBytes: pinPng,
+          canvasWidth,
+          canvasHeight,
+        });
+      }
+      const memoPng = await renderMemoPinOverlay(
+        annotationStore.memosFor(pageIndex),
+        canvasWidth * 2,
+        canvasHeight * 2,
+      );
+      if (memoPng) {
+        overlays.push({
+          pageIndex,
+          pngBytes: memoPng,
           canvasWidth,
           canvasHeight,
         });
@@ -392,6 +408,24 @@
   });
 
   $effect(() => {
+    pdfStore.pageIndex;
+    editingMemoId = null;
+  });
+
+  $effect(() => {
+    const color = toolStore.textColor;
+    const id = editingMemoId;
+    if (!id) {
+      return;
+    }
+    const current = annotationStore.memosFor(pdfStore.pageIndex).find((pin) => pin.id === id);
+    if (!current || current.color === color) {
+      return;
+    }
+    annotationStore.updateMemoPin(pdfStore.pageIndex, id, { color });
+  });
+
+  $effect(() => {
     pdfStore.document;
     pdfStore.pageIndex;
     shouldCenter = true;
@@ -617,21 +651,21 @@
       }
 
       if (toolStore.current === "text" && !opt.target) {
-        const style = textStyleFromColors(toolStore.textColor, toolStore.textBackground);
-        const text = new IText("テキスト", {
-          left: pointer.x,
-          top: pointer.y,
-          fill: style.fill,
-          backgroundColor: style.backgroundColor,
-          padding: style.padding,
-          fontSize: 22,
-          fontFamily: "Noto Sans JP Variable",
+        const width = fabricCanvas!.getWidth();
+        const height = fabricCanvas!.getHeight();
+        if (width <= 0 || height <= 0) {
+          return;
+        }
+        const { nx, ny } = fabricToNormalized(pointer.x, pointer.y, width, height);
+        const id = crypto.randomUUID();
+        annotationStore.addMemoPin(pdfStore.pageIndex, {
+          id,
+          nx: Math.min(1, Math.max(0, nx)),
+          ny: Math.min(1, Math.max(0, ny)),
+          text: "",
+          color: toolStore.textColor || DEFAULT_MEMO_COLOR,
         });
-        assignId(text);
-        fabricCanvas!.add(text);
-        fabricCanvas!.setActiveObject(text);
-        text.enterEditing();
-        emitObject("add", text);
+        editingMemoId = id;
         toolStore.setTool("select");
       }
     });
@@ -1353,6 +1387,21 @@
       onRemoveImage={(id, imageId) =>
         annotationStore.removePhotoPinImage(pdfStore.pageIndex, id, imageId)}
       onRemovePin={(id) => annotationStore.removePhotoPin(pdfStore.pageIndex, id)}
+    />
+    <MemoPinLayer
+      pins={annotationStore.memosFor(pdfStore.pageIndex)}
+      editingId={editingMemoId}
+      onEdit={(id) => {
+        editingMemoId = id;
+      }}
+      onTextChange={(id, text) => annotationStore.updateMemoPin(pdfStore.pageIndex, id, { text })}
+      onMove={(id, nx, ny) => annotationStore.updateMemoPin(pdfStore.pageIndex, id, { nx, ny })}
+      onRemove={(id) => {
+        annotationStore.removeMemoPin(pdfStore.pageIndex, id);
+        if (editingMemoId === id) {
+          editingMemoId = null;
+        }
+      }}
     />
   </div>
 </div>

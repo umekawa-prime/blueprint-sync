@@ -1,11 +1,12 @@
 import { historyStore } from "$lib/stores/historyStore.svelte";
-import type { PageObjects, PhotoPinImage, PhotoPinRecord } from "$lib/utils/annotationPersist";
-import { parsePhotoPins } from "$lib/utils/annotationPersist";
+import type { MemoPinRecord, PageObjects, PhotoPinImage, PhotoPinRecord } from "$lib/utils/annotationPersist";
+import { parseMemoPins, parsePhotoPins } from "$lib/utils/annotationPersist";
 import { nextPinCreatedAt, numberedPins } from "$lib/utils/pinNumbers";
 
 class AnnotationStore {
   byPage = $state<Record<number, PageObjects>>({});
   photoPins = $state<Record<number, Record<string, PhotoPinRecord>>>({});
+  memoPins = $state<Record<number, Record<string, MemoPinRecord>>>({});
   dirty = $state(false);
   remoteRevision = $state(0);
 
@@ -15,6 +16,16 @@ class AnnotationStore {
 
   pinsFor(page: number): PhotoPinRecord[] {
     return numberedPins(Object.values(this.photoPins[page] ?? {})).map((item) => item.pin);
+  }
+
+  memosFor(page: number): MemoPinRecord[] {
+    return Object.values(this.memoPins[page] ?? {}).sort((a, b) => {
+      const created = (a.createdAt ?? 0) - (b.createdAt ?? 0);
+      if (created !== 0) {
+        return created;
+      }
+      return a.id.localeCompare(b.id);
+    });
   }
 
   upsert(page: number, id: string, object: Record<string, unknown>) {
@@ -91,6 +102,34 @@ class AnnotationStore {
     this.dirty = true;
   }
 
+  addMemoPin(page: number, pin: MemoPinRecord) {
+    const current = { ...(this.memoPins[page] ?? {}) };
+    current[pin.id] = {
+      ...pin,
+      createdAt: pin.createdAt ?? nextPinCreatedAt(Object.values(current)),
+    };
+    this.memoPins = { ...this.memoPins, [page]: current };
+    this.dirty = true;
+  }
+
+  updateMemoPin(page: number, id: string, patch: Partial<Pick<MemoPinRecord, "text" | "color" | "nx" | "ny">>) {
+    const current = { ...(this.memoPins[page] ?? {}) };
+    const existing = current[id];
+    if (!existing) {
+      return;
+    }
+    current[id] = { ...existing, ...patch };
+    this.memoPins = { ...this.memoPins, [page]: current };
+    this.dirty = true;
+  }
+
+  removeMemoPin(page: number, id: string) {
+    const current = { ...(this.memoPins[page] ?? {}) };
+    delete current[id];
+    this.memoPins = { ...this.memoPins, [page]: current };
+    this.dirty = true;
+  }
+
   remove(page: number, id: string) {
     const current = { ...(this.byPage[page] ?? {}) };
     delete current[id];
@@ -137,6 +176,7 @@ class AnnotationStore {
   clear() {
     this.byPage = {};
     this.photoPins = {};
+    this.memoPins = {};
     this.dirty = false;
     this.remoteRevision += 1;
     historyStore.clear();
@@ -150,12 +190,18 @@ class AnnotationStore {
     return this.photoPins;
   }
 
+  exportMemoPins(): Record<number, Record<string, MemoPinRecord>> {
+    return this.memoPins;
+  }
+
   importByPage(
     byPage: Record<number, PageObjects>,
     photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
+    memoPins: Record<number, Record<string, MemoPinRecord>> = {},
   ) {
     this.byPage = byPage;
     this.photoPins = parsePhotoPins(photoPins);
+    this.memoPins = parseMemoPins(memoPins ?? {});
     this.dirty = false;
     this.remoteRevision += 1;
     historyStore.clear();

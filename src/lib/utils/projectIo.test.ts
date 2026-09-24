@@ -237,6 +237,7 @@ describe("projectIo", () => {
     await expect(readAnnotationFile("/work/proj", "A.pdf")).resolves.toEqual({
       byPage: {},
       photoPins: {},
+      memoPins: {},
     });
   });
 
@@ -259,6 +260,7 @@ describe("projectIo", () => {
         1: { a: { id: "a", type: "path" } },
       },
       photoPins: {},
+      memoPins: {},
     });
 
     await expect(
@@ -280,6 +282,7 @@ describe("projectIo", () => {
           JSON.stringify({
             byPage: { 2: { b: { id: "b", type: "i-text" } } },
             photoPins: {},
+            memoPins: {},
           }),
         ),
       ),

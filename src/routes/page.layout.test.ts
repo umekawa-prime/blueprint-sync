@@ -87,6 +87,19 @@ describe("editor shell layout", () => {
     expect(viewer).not.toContain("fill: toolStore.penColor");
   });
 
+  it("places memo pins from the text tool instead of fabric text", () => {
+    const viewer = readFileSync(path.resolve("src/lib/components/PdfViewer.svelte"), "utf8");
+    const layer = readFileSync(path.resolve("src/lib/components/MemoPinLayer.svelte"), "utf8");
+    expect(viewer).toContain('import MemoPinLayer from "$lib/components/MemoPinLayer.svelte"');
+    expect(viewer).toContain("<MemoPinLayer");
+    expect(viewer).toContain("addMemoPin");
+    expect(viewer).toContain("renderMemoPinOverlay");
+    expect(viewer).not.toContain('new IText("テキスト"');
+    expect(layer).toContain("メモ本文");
+    expect(layer).toContain("メモを削除");
+    expect(layer).toContain("wrapMemoLines");
+  });
+
   it("keeps camera capture above the PDF canvas and hides the drawing while capturing", () => {
     const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
     const camera = readFileSync(

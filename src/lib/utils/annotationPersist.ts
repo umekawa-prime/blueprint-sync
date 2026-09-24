@@ -17,11 +17,30 @@ export type PhotoPinRecord = {
   createdAt?: number;
 };
 
+export type MemoPinRecord = {
+  id: string;
+  nx: number;
+  ny: number;
+  text: string;
+  color: string;
+  createdAt?: number;
+};
+
 export type AnnotationFile = {
   byPage: Record<number, PageObjects>;
   photoPins: Record<number, Record<string, PhotoPinRecord>>;
+  memoPins: Record<number, Record<string, MemoPinRecord>>;
   drawingPageCount?: number;
   pinSlideCountByPage?: number[];
+};
+
+export const DEFAULT_MEMO_COLOR = "#E81123";
+const HEX_COLOR = /^#[0-9A-Fa-f]{6}$/;
+
+export type AnnotationPersistExtras = {
+  drawingPageCount?: number;
+  pinSlideCountByPage?: number[];
+  memoPins?: Record<number, Record<string, MemoPinRecord>>;
 };
 
 function isPageObjects(value: unknown): value is PageObjects {
@@ -115,6 +134,77 @@ function parsePhotoPin(value: unknown): PhotoPinRecord | null {
   };
 }
 
+function parseMemoPin(value: unknown): MemoPinRecord | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return null;
+  }
+  const record = value as Record<string, unknown>;
+  if (typeof record.id !== "string" || typeof record.nx !== "number" || typeof record.ny !== "number") {
+    return null;
+  }
+  if (!Number.isFinite(record.nx) || !Number.isFinite(record.ny)) {
+    return null;
+  }
+  if (typeof record.text !== "string") {
+    return null;
+  }
+  if (
+    record.createdAt !== undefined &&
+    (typeof record.createdAt !== "number" || !Number.isFinite(record.createdAt))
+  ) {
+    return null;
+  }
+  const color = typeof record.color === "string" && HEX_COLOR.test(record.color) ? record.color : DEFAULT_MEMO_COLOR;
+  return {
+    id: record.id,
+    nx: record.nx,
+    ny: record.ny,
+    text: record.text,
+    color,
+    ...(typeof record.createdAt === "number" ? { createdAt: record.createdAt } : {}),
+  };
+}
+
+export function parseMemoPins(value: unknown): Record<number, Record<string, MemoPinRecord>> {
+  if (value === undefined) {
+    return {};
+  }
+  if (typeof value !== "object" || value === null || Array.isArray(value)) {
+    return {};
+  }
+  const output: Record<number, Record<string, MemoPinRecord>> = {};
+  for (const [key, pageValue] of Object.entries(value)) {
+    const page = Number(key);
+    if (!Number.isInteger(page) || typeof pageValue !== "object" || pageValue === null || Array.isArray(pageValue)) {
+      continue;
+    }
+    const pins: Record<string, MemoPinRecord> = {};
+    for (const [id, pin] of Object.entries(pageValue)) {
+      const parsed = parseMemoPin(pin);
+      if (parsed) {
+        pins[id] = parsed;
+      }
+    }
+    output[page] = backfillMemoCreatedAt(pins);
+  }
+  return output;
+}
+
+function backfillMemoCreatedAt(
+  pins: Record<string, MemoPinRecord>,
+): Record<string, MemoPinRecord> {
+  const filled: Record<string, MemoPinRecord> = {};
+  let index = 0;
+  for (const [id, pin] of Object.entries(pins)) {
+    index += 1;
+    filled[id] = {
+      ...pin,
+      createdAt: typeof pin.createdAt === "number" ? pin.createdAt : index,
+    };
+  }
+  return filled;
+}
+
 export function parsePhotoPins(value: unknown): Record<number, Record<string, PhotoPinRecord>> {
   if (value === undefined) {
     return {};
@@ -143,13 +233,14 @@ export function parsePhotoPins(value: unknown): Record<number, Record<string, Ph
 export function serializeAnnotations(
   byPage: Record<number, PageObjects>,
   photoPins: Record<number, Record<string, PhotoPinRecord>> = {},
-  layout?: { drawingPageCount?: number; pinSlideCountByPage?: number[] },
+  extras?: AnnotationPersistExtras,
 ): string {
   return JSON.stringify({
     byPage,
     photoPins,
-    ...(layout?.drawingPageCount != null ? { drawingPageCount: layout.drawingPageCount } : {}),
-    ...(layout?.pinSlideCountByPage ? { pinSlideCountByPage: layout.pinSlideCountByPage } : {}),
+    memoPins: extras?.memoPins ?? {},
+    ...(extras?.drawingPageCount != null ? { drawingPageCount: extras.drawingPageCount } : {}),
+    ...(extras?.pinSlideCountByPage ? { pinSlideCountByPage: extras.pinSlideCountByPage } : {}),
   });
 }
 
@@ -177,6 +268,7 @@ export function parseAnnotations(raw: string): AnnotationFile {
   }
   const record = parsed as {
     photoPins?: unknown;
+    memoPins?: unknown;
     drawingPageCount?: unknown;
     pinSlideCountByPage?: unknown;
   };
@@ -190,6 +282,7 @@ export function parseAnnotations(raw: string): AnnotationFile {
   return {
     byPage: output,
     photoPins: parsePhotoPins(record.photoPins),
+    memoPins: parseMemoPins(record.memoPins),
     ...(drawingPageCount != null ? { drawingPageCount } : {}),
     ...(pinSlideCountByPage && pinSlideCountByPage.length > 0 ? { pinSlideCountByPage } : {}),
   };

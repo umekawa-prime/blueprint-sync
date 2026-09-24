@@ -17,7 +17,7 @@ function session(folder: string): TabSession {
     pdfs: [],
     currentPdf: "",
     error: "",
-    annotations: { byPage: {}, photoPins: {} },
+    annotations: { byPage: {}, photoPins: {}, memoPins: {} },
     history: emptyHistory(),
     pdf: { name: "未読み込み", bytes: null, pageIndex: 0, zoom: 1, status: "" },
   };

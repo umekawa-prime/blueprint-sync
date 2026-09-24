@@ -170,6 +170,7 @@ function captureLiveSession(): TabSession {
     annotations: {
       byPage: JSON.parse(JSON.stringify(annotationStore.exportByPage())),
       photoPins: JSON.parse(JSON.stringify(annotationStore.exportPhotoPins())),
+      memoPins: JSON.parse(JSON.stringify(annotationStore.exportMemoPins())),
     },
     history: {
       undoStack: [...historyStore.undoStack],
@@ -200,7 +201,11 @@ async function applyLiveSession(session: TabSession): Promise<void> {
   projectStore.pdfs = [...session.pdfs];
   projectStore.currentPdf = session.currentPdf;
   projectStore.error = session.error;
-  annotationStore.importByPage(session.annotations.byPage, session.annotations.photoPins);
+  annotationStore.importByPage(
+    session.annotations.byPage,
+    session.annotations.photoPins,
+    session.annotations.memoPins,
+  );
   historyStore.replace(session.history);
   if (session.pdf.bytes) {
     await pdfStore.load(session.pdf.name, session.pdf.bytes);
@@ -749,25 +754,21 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
     return true;
   }
   try {
-    if (pdfStore.pageCount > 0) {
-      await writeAnnotationFile(
-        projectStore.folder,
-        projectStore.currentPdf,
-        annotationStore.exportByPage(),
-        annotationStore.exportPhotoPins(),
-        {
-          drawingPageCount: pdfStore.pageCount,
-          pinSlideCountByPage: pinSlideCounts(pdfStore.pageCount, annotationStore.exportPhotoPins()),
-        },
-      );
-    } else {
-      await writeAnnotationFile(
-        projectStore.folder,
-        projectStore.currentPdf,
-        annotationStore.exportByPage(),
-        annotationStore.exportPhotoPins(),
-      );
-    }
+    await writeAnnotationFile(
+      projectStore.folder,
+      projectStore.currentPdf,
+      annotationStore.exportByPage(),
+      annotationStore.exportPhotoPins(),
+      {
+        ...(pdfStore.pageCount > 0
+          ? {
+              drawingPageCount: pdfStore.pageCount,
+              pinSlideCountByPage: pinSlideCounts(pdfStore.pageCount, annotationStore.exportPhotoPins()),
+            }
+          : {}),
+        memoPins: annotationStore.exportMemoPins(),
+      },
+    );
     annotationStore.dirty = false;
     return true;
   } catch (error) {
@@ -819,6 +820,7 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     let nextAnnotations: Awaited<ReturnType<typeof readAnnotationFile>> = {
       byPage: {},
       photoPins: {},
+      memoPins: {},
     };
     let annotationWarning = "";
     try {
@@ -829,7 +831,11 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     if (seq !== openPdfSeq) {
       return;
     }
-    annotationStore.importByPage(nextAnnotations.byPage, nextAnnotations.photoPins);
+    annotationStore.importByPage(
+      nextAnnotations.byPage,
+      nextAnnotations.photoPins,
+      nextAnnotations.memoPins,
+    );
     const drawingBytes =
       nextAnnotations.drawingPageCount && nextAnnotations.pinSlideCountByPage
         ? await extractDrawingPdfBytes(
