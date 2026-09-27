@@ -7,6 +7,7 @@ import {
   shouldOfferBrowserDemo,
   usesRfdFileDialog,
   usesSandboxProjects,
+  usesSystemCamera,
 } from "./platform";
 
 describe("platform detection", () => {
@@ -45,6 +46,13 @@ describe("platform detection", () => {
     expect(shouldAutoStartWebDemo("?demo=1", true)).toBe(false);
     expect(shouldAutoStartWebDemo("?demo=1", false)).toBe(true);
     expect(shouldAutoStartWebDemo("", false)).toBe(false);
+  });
+
+  it("opens the Windows camera app from desktop Tauri", () => {
+    expect(usesSystemCamera(true, "windows")).toBe(true);
+    expect(usesSystemCamera(true, "android")).toBe(false);
+    expect(usesSystemCamera(true, "ios")).toBe(false);
+    expect(usesSystemCamera(false, "windows")).toBe(false);
   });
 
   it("uses the sandbox project tree on mobile Tauri instead of a folder picker", () => {

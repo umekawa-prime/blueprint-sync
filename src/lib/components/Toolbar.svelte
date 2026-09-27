@@ -3,13 +3,14 @@
   import { historyStore } from "$lib/stores/historyStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
   import { todoStore } from "$lib/stores/todoStore.svelte";
-  import { toolStore, type Tool } from "$lib/stores/toolStore.svelte";
+  import { toolStore } from "$lib/stores/toolStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
   import { shouldCommitToolOnPointerDown } from "$lib/utils/fabricPointer";
   import { selectPdfPage } from "$lib/utils/pageNavigation";
   import { saveCurrentPdf, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
   import { openSampleSchedule } from "$lib/utils/scheduleActions";
   import { openTodoPanel } from "$lib/utils/todoActions";
+  import { drawingTools, isPenMode } from "$lib/utils/drawingTools";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
   import { zoomStep } from "$lib/utils/viewerMenu";
   import { toast } from "svelte-sonner";
@@ -30,14 +31,9 @@
     onSharePdf?: () => void;
   } = $props();
 
-  const tools: Array<{ id: Tool; label: string }> = [
-    { id: "select", label: "選択" },
-    { id: "pen", label: "ペン" },
-    { id: "text", label: "テキスト" },
-    { id: "pan", label: "移動" },
-  ];
-
   const currentTool = $derived(toolStore.current);
+  const tools = $derived(drawingTools(currentTool));
+  const penMode = $derived(isPenMode(currentTool));
 
   let saving = $state(false);
   let overflowOpen = $state(false);
@@ -156,6 +152,11 @@
       {/if}
     </div>
   {/each}
+  {#if penMode}
+    <button type="button" class="toolbar-btn" onclick={() => toolStore.setTool("select")}>
+      完了
+    </button>
+  {/if}
 
   <button class="toolbar-btn" onclick={onRequestPhoto} disabled={!pdfStore.bytes}>
     カメラ

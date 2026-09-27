@@ -20,7 +20,10 @@
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
   import { isZipBasename } from "$lib/utils/zipPdf";
+  import { isShapeTool } from "$lib/utils/drawingTools";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
+  import { createShapeObject, type ShapeKind } from "$lib/utils/shapeFabric";
+  import { findErasableStroke } from "$lib/utils/strokeEraser";
   import {
     addStraightPoint,
     commitStraightPoints,
@@ -104,8 +107,10 @@
   let longPressAt = { x: 0, y: 0 };
   let straightSession: StraightStrokeSession = emptyStraightStroke();
   let straightPreview: Polyline | undefined;
+  let shapeDrag: { kind: ShapeKind; start: { x: number; y: number }; preview?: FabricObject } | undefined;
+  let erasing = false;
 
-  const CUSTOM_PROPS = ["id"];
+  const CUSTOM_PROPS = ["id", "annotationRole"];
   let persistedPage = 0;
 
   async function exportVisibleOverlays(): Promise<
@@ -471,7 +476,17 @@
     }
     fabricCanvas.isDrawingMode = drawing;
     fabricCanvas.selection = toolStore.current === "select";
-    fabricCanvas.skipTargetFind = toolStore.current === "pan" || toolStore.current === "pen";
+    fabricCanvas.skipTargetFind =
+      toolStore.current === "pan" ||
+      toolStore.current === "pen" ||
+      toolStore.current === "eraser" ||
+      isShapeTool(toolStore.current);
+    if (!isShapeTool(toolStore.current)) {
+      abortShapeDrag();
+    }
+    if (toolStore.current !== "eraser") {
+      erasing = false;
+    }
     if (fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush.color = toolStore.penColor;
       fabricCanvas.freeDrawingBrush.width = toolStore.penWidth;
@@ -581,6 +596,68 @@
     applyTool();
   }
 
+  function currentShapeStyle() {
+    return { color: toolStore.penColor, width: toolStore.penWidth };
+  }
+
+  function abortShapeDrag() {
+    if (shapeDrag?.preview && fabricCanvas) {
+      fabricCanvas.remove(shapeDrag.preview);
+    }
+    shapeDrag = undefined;
+  }
+
+  function syncShapePreview(end: { x: number; y: number }) {
+    if (!shapeDrag || !fabricCanvas) {
+      return;
+    }
+    if (shapeDrag.preview) {
+      fabricCanvas.remove(shapeDrag.preview);
+      shapeDrag.preview = undefined;
+    }
+    const preview = createShapeObject(shapeDrag.kind, shapeDrag.start, end, currentShapeStyle());
+    if (!preview) {
+      fabricCanvas.requestRenderAll();
+      return;
+    }
+    preview.set({ selectable: false, evented: false });
+    shapeDrag.preview = preview;
+    fabricCanvas.add(preview);
+    fabricCanvas.requestRenderAll();
+  }
+
+  function commitShape(end: { x: number; y: number }) {
+    if (!shapeDrag || !fabricCanvas) {
+      return;
+    }
+    const drag = shapeDrag;
+    if (drag.preview) {
+      fabricCanvas.remove(drag.preview);
+    }
+    shapeDrag = undefined;
+    if (toolStore.current !== drag.kind) {
+      fabricCanvas.requestRenderAll();
+      return;
+    }
+    const object = createShapeObject(drag.kind, drag.start, end, currentShapeStyle());
+    if (object && !applyingRemote && !applyingHistory) {
+      assignId(object);
+      fabricCanvas.add(object);
+      emitObject("add", object);
+    }
+    fabricCanvas.requestRenderAll();
+  }
+
+  function eraseStrokeAt(point: { x: number; y: number }) {
+    if (!fabricCanvas || toolStore.current !== "eraser") {
+      return;
+    }
+    const hit = findErasableStroke(fabricCanvas.getObjects(), point);
+    if (hit) {
+      fabricCanvas.remove(hit);
+    }
+  }
+
   function onKeyUp(event: KeyboardEvent) {
     if (event.key !== "Shift" || !fabricCanvas) {
       return;
@@ -603,6 +680,18 @@
       }
       const pointer = pointerFromEvent(fabricCanvas!, event);
       lastTap = { x: pointer.x, y: pointer.y };
+
+      if (isShapeTool(toolStore.current)) {
+        shapeDrag = { kind: toolStore.current, start: pointer };
+        syncShapePreview(pointer);
+        return;
+      }
+
+      if (toolStore.current === "eraser") {
+        erasing = true;
+        eraseStrokeAt(pointer);
+        return;
+      }
 
       if (
         shouldUseStraightStroke({
@@ -671,10 +760,18 @@
     });
 
     fabricCanvas.on("mouse:move", (opt) => {
+      const event = opt.e as PointerEvent | undefined;
+      if (shapeDrag && fabricCanvas && event) {
+        syncShapePreview(pointerFromEvent(fabricCanvas, event));
+        return;
+      }
+      if (erasing && fabricCanvas && event) {
+        eraseStrokeAt(pointerFromEvent(fabricCanvas, event));
+        return;
+      }
       if (straightSession.points.length === 0 || !fabricCanvas) {
         return;
       }
-      const event = opt.e as PointerEvent | undefined;
       if (!event?.shiftKey) {
         return;
       }
@@ -682,7 +779,20 @@
       syncStraightPreview(rubberBandPoints(straightSession, pointer));
     });
 
-    fabricCanvas.on("mouse:up", () => {
+    fabricCanvas.on("mouse:up", (opt) => {
+      const event = opt.e as PointerEvent | undefined;
+      if (shapeDrag && fabricCanvas) {
+        if (event) {
+          commitShape(pointerFromEvent(fabricCanvas, event));
+        } else {
+          abortShapeDrag();
+        }
+        return;
+      }
+      if (erasing) {
+        erasing = false;
+        return;
+      }
       if (toolStore.current === "pen" && fabricCanvas) {
         if (straightSession.points.length > 0) {
           fabricCanvas.isDrawingMode = false;
@@ -819,6 +929,7 @@
     }
     applyingRemote = true;
     abortStraightStroke();
+    abortShapeDrag();
     fabricCanvas.clear();
     const objects = annotationStore.objectsFor(pdfStore.pageIndex);
     if (objects.length > 0) {
@@ -1168,6 +1279,8 @@
     if (activePointers.size >= 2) {
       event.preventDefault();
       event.stopImmediatePropagation();
+      abortShapeDrag();
+      erasing = false;
       beginPinchFromPointers();
       return;
     }

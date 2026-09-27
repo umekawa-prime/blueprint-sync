@@ -77,7 +77,8 @@ describe("editor shell layout", () => {
     const palette = readFileSync(path.resolve("src/lib/components/TextPalette.svelte"), "utf8");
     expect(toolbar).toContain('import TextPalette from "$lib/components/TextPalette.svelte"');
     expect(toolbar).toContain('import PenPalette from "$lib/components/PenPalette.svelte"');
-    expect(toolbar.indexOf('id: "text"')).toBeGreaterThan(-1);
+    const tools = readFileSync(path.resolve("src/lib/utils/drawingTools.ts"), "utf8");
+    expect(tools.indexOf('id: "text"')).toBeGreaterThan(-1);
     expect(toolbar).toMatch(/tool\.id === "text"[\s\S]*<TextPalette compact=\{compact\} \/>/);
     expect(toolbar).toMatch(/tool\.id === "pen"[\s\S]*<PenPalette \/>/);
     expect(palette).toContain("文字色");

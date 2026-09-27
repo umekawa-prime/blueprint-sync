@@ -9,6 +9,7 @@ mod explorer_dialog;
 mod sandbox;
 mod share;
 mod sync_server;
+mod system_camera;
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
