@@ -37,6 +37,9 @@ describe("editor shell layout", () => {
     expect(tabBar).toContain("data-tauri-drag-region");
     expect(tabBar).toContain("WindowControls");
     expect(tabBar).toContain("isDesktopTauriRuntime");
+    expect(tabBar).toContain('class="project-tabs flex w-max min-w-0 shrink overflow-x-auto"');
+    expect(tabBar).toContain("min-w-32 max-w-56 shrink");
+    expect(tabBar).not.toContain("min-w-0 flex-1 overflow-x-auto");
   });
 
   it("labels LAN roles as host and client", () => {

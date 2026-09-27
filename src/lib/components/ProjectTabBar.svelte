@@ -18,11 +18,11 @@
     class="flex h-8 shrink-0 select-none items-stretch border-b border-slate-700 bg-slate-950"
   >
     {#if projectStore.tabs.length > 0}
-      <div class="flex min-w-0 flex-1 overflow-x-auto">
+      <div class="project-tabs flex w-max min-w-0 shrink overflow-x-auto">
         {#each projectStore.tabs as tab (tab.id)}
           {@const active = projectStore.activeTabId === tab.id}
           <div
-            class="flex max-w-56 shrink-0 items-stretch border-r border-slate-800 {active
+            class="flex min-w-32 max-w-56 shrink items-stretch border-r border-slate-800 {active
               ? 'border-t-2 border-t-cyan-400 bg-slate-800'
               : 'border-t-2 border-t-transparent'}"
           >
@@ -37,7 +37,7 @@
             </button>
             <button
               type="button"
-              class="px-2 text-xs text-slate-500 hover:text-rose-300"
+              class="shrink-0 px-2 text-xs text-slate-500 hover:text-rose-300"
               aria-label="{tab.name}を閉じる"
               onclick={() => void closeProjectTab(tab.id)}
             >
@@ -81,5 +81,13 @@
   :global([data-tauri-drag-region]) {
     -webkit-app-region: drag;
     app-region: drag;
+  }
+
+  .project-tabs {
+    scrollbar-width: none;
+  }
+
+  .project-tabs::-webkit-scrollbar {
+    display: none;
   }
 </style>

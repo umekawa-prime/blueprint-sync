@@ -1,0 +1,33 @@
+import type { Tool } from "$lib/stores/toolStore.svelte";
+
+export type DrawingTool = {
+  id: Tool;
+  label: string;
+};
+
+const NORMAL_TOOLS: DrawingTool[] = [
+  { id: "select", label: "選択" },
+  { id: "pen", label: "ペン" },
+  { id: "text", label: "テキスト" },
+  { id: "pan", label: "移動" },
+  { id: "rect", label: "矩形" },
+  { id: "ellipse", label: "楕円" },
+  { id: "arrow", label: "矢印線" },
+];
+
+const PEN_MODE_TOOLS: DrawingTool[] = [
+  { id: "pen", label: "ペン" },
+  { id: "eraser", label: "消しゴム" },
+];
+
+export function isPenMode(tool: Tool): boolean {
+  return tool === "pen" || tool === "eraser";
+}
+
+export function isShapeTool(tool: Tool): tool is "rect" | "ellipse" | "arrow" {
+  return tool === "rect" || tool === "ellipse" || tool === "arrow";
+}
+
+export function drawingTools(tool: Tool): DrawingTool[] {
+  return isPenMode(tool) ? PEN_MODE_TOOLS : NORMAL_TOOLS;
+}

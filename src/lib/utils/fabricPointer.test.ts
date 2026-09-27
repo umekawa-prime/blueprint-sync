@@ -36,10 +36,24 @@ describe("toolForPointerType", () => {
     expect(toolForPointerType("pen", "text")).toBe("text");
   });
 
-  it("does not steal the current tool from mouse, touch, or eraser", () => {
+  it("does not steal the current tool from mouse, touch, or an eraser outside pen mode", () => {
     expect(toolForPointerType("mouse", "select")).toBe("select");
     expect(toolForPointerType("touch", "select")).toBe("select");
     expect(toolForPointerType("mouse", "pen")).toBe("pen");
+    expect(toolForPointerType("eraser", "select")).toBe("select");
+    expect(toolForPointerType("eraser", "rect")).toBe("rect");
+  });
+
+  it("uses the stylus eraser end only while the pen or eraser is active", () => {
+    expect(toolForPointerType("eraser", "pen")).toBe("eraser");
+    expect(toolForPointerType("eraser", "eraser")).toBe("eraser");
+    expect(toolForPointerType("pen", "eraser")).toBe("pen");
+  });
+
+  it("keeps a shape tool when the stylus tip touches the page", () => {
+    expect(toolForPointerType("pen", "rect")).toBe("rect");
+    expect(toolForPointerType("pen", "ellipse")).toBe("ellipse");
+    expect(toolForPointerType("pen", "arrow")).toBe("arrow");
   });
 });
 

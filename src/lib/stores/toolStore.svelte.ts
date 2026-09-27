@@ -1,6 +1,6 @@
 import type { CapShape } from "$lib/utils/strokeCaps";
 
-export type Tool = "select" | "pen" | "text" | "pan";
+export type Tool = "select" | "pen" | "eraser" | "text" | "pan" | "rect" | "ellipse" | "arrow";
 
 class ToolStore {
   current = $state<Tool>("select");
