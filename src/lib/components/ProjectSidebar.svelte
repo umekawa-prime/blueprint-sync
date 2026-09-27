@@ -25,6 +25,7 @@
     projectRenameStem,
     type ProjectPdfKind,
   } from "$lib/utils/projectFormat";
+  import FileSearchDialog from "$lib/components/FileSearchDialog.svelte";
   import JwCadHelpPanel from "$lib/components/JwCadHelpPanel.svelte";
 
   let url = $state("");
@@ -35,6 +36,7 @@
   let renameValue = $state("");
   let renameInputEl = $state<HTMLInputElement | null>(null);
   let helpOpen = $state(false);
+  let searchOpen = $state(false);
 
   $effect(() => {
     if (!renamingFile || !renameInputEl) {
@@ -249,6 +251,13 @@
   </div>
 
   <section class="min-h-0 flex-1 overflow-auto px-3 py-3">
+    <button
+      type="button"
+      class="mb-3 w-full rounded bg-slate-800 px-2 py-1 text-xs"
+      onclick={() => (searchOpen = true)}
+    >
+      ファイルを検索
+    </button>
     {#if projectStore.error}
       <p class="mb-3 text-xs text-rose-300">{projectStore.error}</p>
     {/if}
@@ -424,6 +433,10 @@
       </button>
     {/if}
   </div>
+{/if}
+
+{#if searchOpen}
+  <FileSearchDialog onClose={() => (searchOpen = false)} />
 {/if}
 
 {#if helpOpen}

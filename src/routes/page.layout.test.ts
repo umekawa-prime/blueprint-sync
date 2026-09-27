@@ -213,6 +213,17 @@ describe("editor shell layout", () => {
     expect(markdown).toContain("処理済み");
   });
 
+  it("searches filenames inside the open project folder", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    const dialog = readFileSync(path.resolve("src/lib/components/FileSearchDialog.svelte"), "utf8");
+    expect(sidebar).toContain("ファイルを検索");
+    expect(sidebar).toContain("FileSearchDialog");
+    expect(page).toContain('event.key.toLowerCase() !== "p"');
+    expect(dialog).toContain("listProjectFiles");
+    expect(dialog).toContain("filterProjectFileNames");
+  });
+
   it("opens the project folder in Cursor from the bottom of the sidebar", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     expect(sidebar).toContain("Cursorで開く");

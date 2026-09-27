@@ -11,6 +11,7 @@
   import StatusBar from "$lib/components/StatusBar.svelte";
   import ScheduleView from "$lib/components/ScheduleView.svelte";
   import TodoPanel from "$lib/components/TodoPanel.svelte";
+  import FileSearchDialog from "$lib/components/FileSearchDialog.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { chromeStore } from "$lib/stores/chromeStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
@@ -29,6 +30,7 @@
   import { toggleTodoPanel } from "$lib/utils/todoActions";
 
   let connectionOpen = $state(false);
+  let fileSearchOpen = $state(false);
   let cameraOpen = $state(false);
   let drawerOpen = $state(false);
   let sheetOpen = $state(false);
@@ -66,6 +68,25 @@
   }
 
   onMount(() => {
+    const onKey = (event: KeyboardEvent) => {
+      if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "p" || event.altKey) {
+        return;
+      }
+      if (!projectStore.isOpen) {
+        return;
+      }
+      const target = event.target;
+      if (
+        target instanceof HTMLInputElement ||
+        target instanceof HTMLTextAreaElement ||
+        (target instanceof HTMLElement && target.isContentEditable)
+      ) {
+        return;
+      }
+      event.preventDefault();
+      fileSearchOpen = true;
+    };
+    window.addEventListener("keydown", onKey);
     const unbind = viewportStore.bind();
     let unlisten: (() => void) | undefined;
     void listenIncomingFiles().then((fn) => {
@@ -73,6 +94,7 @@
     });
     void bootstrapOpenSession();
     return () => {
+      window.removeEventListener("keydown", onKey);
       unbind();
       unlisten?.();
     };
@@ -183,6 +205,10 @@
         </div>
       {/if}
     </div>
+  {/if}
+
+  {#if fileSearchOpen && projectStore.isOpen}
+    <FileSearchDialog onClose={() => (fileSearchOpen = false)} />
   {/if}
 
   {#if cameraOpen}
