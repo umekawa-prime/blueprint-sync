@@ -1,10 +1,11 @@
 import { describe, expect, it } from "vitest";
-import { drawingTools, isPenMode, isShapeTool } from "./drawingTools";
+import { drawingTools, isPenMode, isShapeTool, isStampTool } from "./drawingTools";
 
 describe("drawingTools", () => {
-  it("keeps shape tools visible beside the usual tools", () => {
+  it("keeps stamp and drag shape tools visible beside the usual tools", () => {
     expect(drawingTools("select").map((tool) => tool.id)).toEqual([
       "select",
+      "stamp",
       "pen",
       "text",
       "pan",
@@ -12,6 +13,7 @@ describe("drawingTools", () => {
       "ellipse",
       "arrow",
     ]);
+    expect(drawingTools("select").map((tool) => tool.label)).toContain("図形");
     expect(drawingTools("rect").map((tool) => tool.label)).toContain("矩形");
     expect(drawingTools("ellipse").map((tool) => tool.label)).toContain("楕円");
     expect(drawingTools("arrow").map((tool) => tool.label)).toContain("矢印線");
@@ -24,15 +26,25 @@ describe("drawingTools", () => {
     }
     expect(isPenMode("select")).toBe(false);
     expect(isPenMode("rect")).toBe(false);
+    expect(isPenMode("stamp")).toBe(false);
   });
 });
 
 describe("isShapeTool", () => {
-  it("names the three drag tools", () => {
+  it("names the three drag tools and not the stamp", () => {
     expect(isShapeTool("rect")).toBe(true);
     expect(isShapeTool("ellipse")).toBe(true);
     expect(isShapeTool("arrow")).toBe(true);
+    expect(isShapeTool("stamp")).toBe(false);
     expect(isShapeTool("pen")).toBe(false);
     expect(isShapeTool("eraser")).toBe(false);
+  });
+});
+
+describe("isStampTool", () => {
+  it("names only the electrical stamp tool", () => {
+    expect(isStampTool("stamp")).toBe(true);
+    expect(isStampTool("rect")).toBe(false);
+    expect(isStampTool("select")).toBe(false);
   });
 });

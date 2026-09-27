@@ -113,6 +113,8 @@ describe("editor shell layout", () => {
     expect(camera).toContain("CAMERA_OVERLAY_CLASS");
     expect(camera).not.toContain('class="absolute inset-0 z-30');
     expect(page).toContain("drawingLayerHiddenClass(cameraOpen)");
+    expect(page).toContain("usesSystemCamera()");
+    expect(page).toContain("SystemCameraPrompt");
     expect(page.lastIndexOf("CameraCapture")).toBeGreaterThan(page.lastIndexOf("PdfViewer"));
   });
 

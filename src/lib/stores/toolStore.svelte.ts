@@ -1,6 +1,16 @@
 import type { CapShape } from "$lib/utils/strokeCaps";
+import type { StampKind } from "$lib/utils/stampDraw";
 
-export type Tool = "select" | "pen" | "eraser" | "text" | "pan" | "rect" | "ellipse" | "arrow";
+export type Tool =
+  | "select"
+  | "stamp"
+  | "pen"
+  | "eraser"
+  | "text"
+  | "pan"
+  | "rect"
+  | "ellipse"
+  | "arrow";
 
 class ToolStore {
   current = $state<Tool>("select");
@@ -10,6 +20,7 @@ class ToolStore {
   penWidth = $state(3);
   penStartCap = $state<CapShape>("none");
   penEndCap = $state<CapShape>("none");
+  stampKind = $state<StampKind>("light");
   stylusActive = $state(false);
 
   setTool(tool: Tool) {

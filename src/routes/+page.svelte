@@ -12,6 +12,7 @@
   import ScheduleView from "$lib/components/ScheduleView.svelte";
   import TodoPanel from "$lib/components/TodoPanel.svelte";
   import FileSearchDialog from "$lib/components/FileSearchDialog.svelte";
+  import SystemCameraPrompt from "$lib/components/SystemCameraPrompt.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { chromeStore } from "$lib/stores/chromeStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
@@ -28,19 +29,78 @@
   import { listenIncomingFiles } from "$lib/utils/incomingShare";
   import { drawingLayerHiddenClass, PROJECT_SIDEBAR_WIDTH, TODO_PANEL_WIDTH } from "$lib/utils/chromeLayout";
   import { toggleTodoPanel } from "$lib/utils/todoActions";
+  import { usesSystemCamera } from "$lib/utils/platform";
+  import {
+    launchWindowsCamera,
+    listNewCameraPhotos,
+    watchSystemCameraShots,
+  } from "$lib/utils/systemCamera";
 
   let connectionOpen = $state(false);
   let fileSearchOpen = $state(false);
   let cameraOpen = $state(false);
+  let systemCamera = $state<{ message: string; failed: boolean } | null>(null);
+  let systemCameraToken = 0;
   let drawerOpen = $state(false);
   let sheetOpen = $state(false);
 
+  function cancelSystemCamera() {
+    systemCameraToken += 1;
+    systemCamera = null;
+  }
+
+  async function requestCapture() {
+    if (!usesSystemCamera()) {
+      cameraOpen = true;
+      return;
+    }
+    const token = ++systemCameraToken;
+    systemCamera = {
+      message: "Windows のカメラを開きました。シャッターを押すと、この図面に写真が追加されます。",
+      failed: false,
+    };
+    const result = await watchSystemCameraShots({
+      launch: launchWindowsCamera,
+      listSince: listNewCameraPhotos,
+      sleep: (ms) => new Promise((resolve) => setTimeout(resolve, ms)),
+      shouldStop: () => systemCameraToken !== token,
+    });
+    if (systemCameraToken !== token) {
+      return;
+    }
+    if (result.status === "captured") {
+      systemCamera = null;
+      try {
+        for (const [index, shot] of result.shots.entries()) {
+          await viewerApi.addPhoto(imageBlobFromPicked(shot), index);
+        }
+      } catch (error) {
+        systemCamera = {
+          message: error instanceof Error ? error.message : "写真を追加できませんでした",
+          failed: true,
+        };
+      }
+      return;
+    }
+    if (result.status === "cancelled") {
+      systemCamera = null;
+      return;
+    }
+    systemCamera = {
+      message:
+        result.status === "timeout"
+          ? "新しい写真が見つかりませんでした。カメラロールを確認するか、ファイルから選んでください。"
+          : result.message,
+      failed: true,
+    };
+  }
+
   viewerApi.openCamera = () => {
-    cameraOpen = true;
+    void requestCapture();
   };
 
   function requestPhoto() {
-    cameraOpen = true;
+    void requestCapture();
   }
 
   async function onPhotoCaptured(file: Blob) {
@@ -49,6 +109,7 @@
   }
 
   async function pickPhotoFile() {
+    cancelSystemCamera();
     const picked = await pickImagesFromDisk();
     if (picked.length === 0) {
       return;
@@ -215,6 +276,15 @@
     <CameraCapture
       onCaptured={onPhotoCaptured}
       onCancel={() => (cameraOpen = false)}
+      onPickFile={pickPhotoFile}
+    />
+  {/if}
+
+  {#if systemCamera}
+    <SystemCameraPrompt
+      message={systemCamera.message}
+      failed={systemCamera.failed}
+      onCancel={cancelSystemCamera}
       onPickFile={pickPhotoFile}
     />
   {/if}

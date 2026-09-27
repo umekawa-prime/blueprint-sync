@@ -237,6 +237,39 @@ fn pick_image_files() -> Result<Vec<PdfFile>, String> {
 }
 
 #[tauri::command]
+fn launch_system_camera(app: AppHandle) -> Result<u64, String> {
+    let since = std::time::SystemTime::now();
+    let (sender, receiver) = std::sync::mpsc::channel();
+    app.run_on_main_thread(move || {
+        let _ = sender.send(system_camera::open_system_camera());
+    })
+    .map_err(|error| error.to_string())?;
+    receiver
+        .recv()
+        .map_err(|_| "カメラを起動できませんでした".to_string())??;
+    Ok(system_camera::system_time_to_unix_ms(since))
+}
+
+#[cfg(not(any(target_os = "ios", target_os = "android")))]
+#[tauri::command]
+fn list_new_camera_roll_images(since_unix_ms: u64) -> Result<Vec<PdfFile>, String> {
+    let mut files = Vec::new();
+    for path in system_camera::list_new_camera_roll_images(since_unix_ms)? {
+        let Ok(file) = pdf_file_from_path(path, "photo.jpg") else {
+            continue;
+        };
+        files.push(file);
+    }
+    Ok(files)
+}
+
+#[cfg(any(target_os = "ios", target_os = "android"))]
+#[tauri::command]
+fn list_new_camera_roll_images(_since_unix_ms: u64) -> Result<Vec<PdfFile>, String> {
+    Ok(Vec::new())
+}
+
+#[tauri::command]
 fn init_project_dir(folder: String) -> Result<(), String> {
     let root = Path::new(&folder);
     let annotations = root.join(".blueprint-sync").join("annotations");
@@ -648,6 +681,8 @@ pub fn run() {
             pick_folder,
             pick_image_file,
             pick_image_files,
+            launch_system_camera,
+            list_new_camera_roll_images,
             init_project_dir,
             list_project_pdfs,
             copy_file_into_folder,

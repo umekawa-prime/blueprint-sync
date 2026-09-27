@@ -20,9 +20,10 @@
   import { importBrowserPdfIntoProject, importTauriPdfIntoProject } from "$lib/utils/projectDrop";
   import { firstDroppedPdfOrZip, filePathsFromUriList, firstDroppedImportPath } from "$lib/utils/pdfDrop";
   import { isZipBasename } from "$lib/utils/zipPdf";
-  import { isShapeTool } from "$lib/utils/drawingTools";
+  import { isShapeTool, isStampTool } from "$lib/utils/drawingTools";
   import { pointerFromEvent, shouldCaptureViewportPointer, toolForPointerType } from "$lib/utils/fabricPointer";
   import { createShapeObject, type ShapeKind } from "$lib/utils/shapeFabric";
+  import { createStampObject } from "$lib/utils/stampFabric";
   import { findErasableStroke } from "$lib/utils/strokeEraser";
   import {
     addStraightPoint,
@@ -480,7 +481,8 @@
       toolStore.current === "pan" ||
       toolStore.current === "pen" ||
       toolStore.current === "eraser" ||
-      isShapeTool(toolStore.current);
+      isShapeTool(toolStore.current) ||
+      isStampTool(toolStore.current);
     if (!isShapeTool(toolStore.current)) {
       abortShapeDrag();
     }
@@ -626,6 +628,22 @@
     fabricCanvas.requestRenderAll();
   }
 
+  function placeStamp(center: { x: number; y: number }) {
+    if (!fabricCanvas || applyingRemote || applyingHistory) {
+      return;
+    }
+    const object = createStampObject(
+      toolStore.stampKind,
+      center,
+      fabricCanvas.getWidth(),
+      currentShapeStyle(),
+    );
+    assignId(object);
+    fabricCanvas.add(object);
+    emitObject("add", object);
+    fabricCanvas.requestRenderAll();
+  }
+
   function commitShape(end: { x: number; y: number }) {
     if (!shapeDrag || !fabricCanvas) {
       return;
@@ -680,6 +698,11 @@
       }
       const pointer = pointerFromEvent(fabricCanvas!, event);
       lastTap = { x: pointer.x, y: pointer.y };
+
+      if (isStampTool(toolStore.current)) {
+        placeStamp(pointer);
+        return;
+      }
 
       if (isShapeTool(toolStore.current)) {
         shapeDrag = { kind: toolStore.current, start: pointer };

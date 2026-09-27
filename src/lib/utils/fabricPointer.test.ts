@@ -55,6 +55,10 @@ describe("toolForPointerType", () => {
     expect(toolForPointerType("pen", "ellipse")).toBe("ellipse");
     expect(toolForPointerType("pen", "arrow")).toBe("arrow");
   });
+
+  it("keeps the stamp tool when the stylus tip touches the page", () => {
+    expect(toolForPointerType("pen", "stamp")).toBe("stamp");
+  });
 });
 
 describe("shouldCommitToolOnPointerDown", () => {

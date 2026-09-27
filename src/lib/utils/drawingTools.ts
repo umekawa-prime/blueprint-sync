@@ -7,6 +7,7 @@ export type DrawingTool = {
 
 const NORMAL_TOOLS: DrawingTool[] = [
   { id: "select", label: "選択" },
+  { id: "stamp", label: "図形" },
   { id: "pen", label: "ペン" },
   { id: "text", label: "テキスト" },
   { id: "pan", label: "移動" },
@@ -26,6 +27,10 @@ export function isPenMode(tool: Tool): boolean {
 
 export function isShapeTool(tool: Tool): tool is "rect" | "ellipse" | "arrow" {
   return tool === "rect" || tool === "ellipse" || tool === "arrow";
+}
+
+export function isStampTool(tool: Tool): tool is "stamp" {
+  return tool === "stamp";
 }
 
 export function drawingTools(tool: Tool): DrawingTool[] {

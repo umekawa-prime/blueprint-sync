@@ -1,5 +1,5 @@
 import type { Tool } from "$lib/stores/toolStore.svelte";
-import { isShapeTool } from "$lib/utils/drawingTools";
+import { isShapeTool, isStampTool } from "$lib/utils/drawingTools";
 
 export type ScenePoint = { x: number; y: number };
 
@@ -20,7 +20,12 @@ export function toolForPointerType(pointerType: string, current: Tool): Tool {
   if (pointerType === "eraser" && (current === "pen" || current === "eraser")) {
     return "eraser";
   }
-  if (pointerType === "pen" && current !== "text" && !isShapeTool(current)) {
+  if (
+    pointerType === "pen" &&
+    current !== "text" &&
+    !isShapeTool(current) &&
+    !isStampTool(current)
+  ) {
     return "pen";
   }
   return current;

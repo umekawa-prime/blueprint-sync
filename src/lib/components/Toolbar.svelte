@@ -15,6 +15,7 @@
   import { zoomStep } from "$lib/utils/viewerMenu";
   import { toast } from "svelte-sonner";
   import PenPalette from "$lib/components/PenPalette.svelte";
+  import ShapePalette from "$lib/components/ShapePalette.svelte";
   import TextPalette from "$lib/components/TextPalette.svelte";
 
   let {
@@ -130,25 +131,29 @@
         ? `flex items-center gap-0.5 rounded-md ${active ? "bg-cyan-950/70 ring-1 ring-cyan-400" : ""}`
         : "contents"}
     >
-      <button
-        type="button"
-        class={toolbarToolClass(active)}
-        aria-pressed={active}
-        onpointerdowncapture={(event) => {
-          if (shouldCommitToolOnPointerDown(event.pointerType)) {
-            event.preventDefault();
-            toolStore.setTool(tool.id);
-          }
-        }}
-        onclick={() => toolStore.setTool(tool.id)}
-      >
-        {tool.label}
-      </button>
-      {#if tool.id === "pen"}
-        <PenPalette />
-      {/if}
-      {#if tool.id === "text"}
-        <TextPalette compact={compact} />
+      {#if tool.id === "stamp"}
+        <ShapePalette compact={compact} />
+      {:else}
+        <button
+          type="button"
+          class={toolbarToolClass(active)}
+          aria-pressed={active}
+          onpointerdowncapture={(event) => {
+            if (shouldCommitToolOnPointerDown(event.pointerType)) {
+              event.preventDefault();
+              toolStore.setTool(tool.id);
+            }
+          }}
+          onclick={() => toolStore.setTool(tool.id)}
+        >
+          {tool.label}
+        </button>
+        {#if tool.id === "pen"}
+          <PenPalette />
+        {/if}
+        {#if tool.id === "text"}
+          <TextPalette compact={compact} />
+        {/if}
       {/if}
     </div>
   {/each}

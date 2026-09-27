@@ -11,14 +11,17 @@ describe("watchSystemCameraShots", () => {
         { name: "WIN_1.jpg", bytes: [1, 2, 3] },
         { name: "WIN_2.jpg", bytes: [4, 5] },
       ]);
+    let clock = 0;
     const result = await watchSystemCameraShots({
       launch,
       listSince,
-      sleep: async () => undefined,
+      sleep: async (ms) => {
+        clock += ms;
+      },
       shouldStop: () => false,
-      intervalMs: 0,
+      intervalMs: 500,
       timeoutMs: 5_000,
-      now: () => 0,
+      now: () => clock,
     });
 
     expect(launch).toHaveBeenCalledOnce();

@@ -61,3 +61,10 @@ export function usesSandboxProjects(
 export function prefersCameraCapture(platform = detectPlatform()): boolean {
   return platform === "android" || platform === "ios";
 }
+
+export function usesSystemCamera(
+  isTauri = isTauriRuntime(),
+  platform: AppPlatform = typeof navigator === "undefined" ? "other" : detectPlatform(),
+): boolean {
+  return isTauri && platform === "windows";
+}
