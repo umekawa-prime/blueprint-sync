@@ -213,29 +213,39 @@
         <li class="px-3 py-6 text-center text-xs text-slate-500">該当する課題はありません</li>
       {:else}
         {#each visible as item (item.key)}
-          <li>
+          <li
+            class="flex items-start gap-2 border-b border-slate-800 border-l-4 px-3 py-2 hover:bg-slate-800/70 {todoRowAccentClass(
+              item.status,
+            )}"
+          >
             <button
               type="button"
-              class="flex w-full items-start gap-2 border-b border-slate-800 border-l-4 px-3 py-2 text-left hover:bg-slate-800/70 {todoRowAccentClass(
-                item.status,
-              )}"
+              class="min-w-0 flex-1 text-left"
               onclick={() => (todoStore.selectedKey = item.key)}
             >
-              <span class="min-w-0 flex-1">
-                <span class="block text-[11px] font-semibold text-[#4488c5]">{item.key}</span>
-                <span class="block truncate text-sm text-slate-100">{item.title}</span>
-              </span>
-              <span class="flex shrink-0 flex-col items-end gap-1">
-                <span class="rounded px-1.5 py-0.5 text-[10px] {todoStatusBadgeClass(item.status)}">
-                  {statusLabel(item.status)}
-                </span>
-                {#if item.due}
-                  <span class="text-[10px] {isTodoOverdue(item) ? 'text-[#ed8077]' : 'text-slate-400'}">
-                    {formatTodoDue(item.due)}
-                  </span>
-                {/if}
-              </span>
+              <span class="block text-[11px] font-semibold text-[#4488c5]">{item.key}</span>
+              <span class="block truncate text-sm text-slate-100">{item.title}</span>
             </button>
+            <span class="flex shrink-0 flex-col items-end gap-1">
+              <select
+                class="cursor-pointer rounded border-0 px-1 py-0.5 text-[10px] {todoStatusBadgeClass(item.status)}"
+                aria-label={`${item.key} の状態`}
+                value={item.status}
+                onchange={(event) => {
+                  const status = event.currentTarget.value as TodoStatus;
+                  void updateProjectTodo(item.key, { status });
+                }}
+              >
+                {#each TODO_STATUSES as status (status)}
+                  <option class="bg-slate-900 text-slate-100" value={status}>{statusLabel(status)}</option>
+                {/each}
+              </select>
+              {#if item.due}
+                <span class="text-[10px] {isTodoOverdue(item) ? 'text-[#ed8077]' : 'text-slate-400'}">
+                  {formatTodoDue(item.due)}
+                </span>
+              {/if}
+            </span>
           </li>
         {/each}
       {/if}

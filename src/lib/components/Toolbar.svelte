@@ -10,13 +10,14 @@
   import { saveCurrentPdf, openPdfIntoCurrentProject } from "$lib/utils/toolbarActions";
   import { openSampleSchedule } from "$lib/utils/scheduleActions";
   import { openTodoPanel } from "$lib/utils/todoActions";
-  import { drawingTools, isPenMode } from "$lib/utils/drawingTools";
+  import { drawingTools } from "$lib/utils/drawingTools";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
   import { zoomStep } from "$lib/utils/viewerMenu";
   import { toast } from "svelte-sonner";
   import PenPalette from "$lib/components/PenPalette.svelte";
   import ShapePalette from "$lib/components/ShapePalette.svelte";
   import TextPalette from "$lib/components/TextPalette.svelte";
+  import ToolGlyph from "$lib/components/ToolGlyph.svelte";
 
   let {
     onToggleConnection,
@@ -34,7 +35,6 @@
 
   const currentTool = $derived(toolStore.current);
   const tools = $derived(drawingTools(currentTool));
-  const penMode = $derived(isPenMode(currentTool));
 
   let saving = $state(false);
   let overflowOpen = $state(false);
@@ -136,7 +136,9 @@
       {:else}
         <button
           type="button"
-          class={toolbarToolClass(active)}
+          class="{toolbarToolClass(active)} inline-flex items-center justify-center"
+          aria-label={tool.label}
+          title={tool.label}
           aria-pressed={active}
           onpointerdowncapture={(event) => {
             if (shouldCommitToolOnPointerDown(event.pointerType)) {
@@ -146,7 +148,7 @@
           }}
           onclick={() => toolStore.setTool(tool.id)}
         >
-          {tool.label}
+          <ToolGlyph tool={tool.id} />
         </button>
         {#if tool.id === "pen"}
           <PenPalette />
@@ -157,11 +159,6 @@
       {/if}
     </div>
   {/each}
-  {#if penMode}
-    <button type="button" class="toolbar-btn" onclick={() => toolStore.setTool("select")}>
-      完了
-    </button>
-  {/if}
 
   <button class="toolbar-btn" onclick={onRequestPhoto} disabled={!pdfStore.bytes}>
     カメラ

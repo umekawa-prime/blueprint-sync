@@ -2,6 +2,7 @@ mod cad_dxf;
 mod cad_font;
 mod cad_pdf;
 mod cursor_app;
+mod window_hit;
 mod dxf_read;
 mod jwcad;
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
@@ -649,6 +650,10 @@ pub fn run() {
                     let _ = window.set_focus();
                 }
                 allow_webview_camera(&window);
+                #[cfg(windows)]
+                if let Ok(hwnd) = window.hwnd() {
+                    window_hit::install_clickable_top_client(hwnd);
+                }
             }
             let incoming: Vec<String> = std::env::args()
                 .skip(1)

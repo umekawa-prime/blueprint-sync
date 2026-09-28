@@ -19,6 +19,7 @@ import {
   loadProjectTodos,
   openTodoPanel,
   removeProjectTodo,
+  toggleTodoPanel,
   resetTodoState,
   updateProjectTodo,
 } from "./todoActions";
@@ -83,5 +84,16 @@ describe("todoActions", () => {
     openTodoPanel("todo");
     expect(todoStore.tab).toBe("todo");
     expect(todoStore.panelOpen).toBe(true);
+  });
+
+  it("returns to the issue list after the panel is closed and opened again", () => {
+    openTodoPanel("todo");
+    todoStore.selectedKey = "DEMOSITE-2";
+    toggleTodoPanel(false);
+    expect(todoStore.panelOpen).toBe(false);
+    expect(todoStore.selectedKey).toBeNull();
+    toggleTodoPanel(true);
+    expect(todoStore.panelOpen).toBe(true);
+    expect(todoStore.selectedKey).toBeNull();
   });
 });

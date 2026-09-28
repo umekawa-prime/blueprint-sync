@@ -129,11 +129,19 @@ describe("editor shell layout", () => {
     expect(sidebar).toContain("aria-label={`${projectPdfDisplayName(file)} を削除`}");
   });
 
-  it("renames sidebar files from a right-click menu", () => {
+  it("renames a sidebar file by double-clicking its name", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    expect(sidebar).toContain("ondblclick={(event) => onNameDoubleClick(event, file)}");
+    expect(sidebar).toContain("startRename");
+    expect(sidebar).toContain("renameProjectFile");
+    expect(sidebar).not.toContain("名前を変更");
+  });
+
+  it("shows the file in Explorer from the sidebar right-click menu", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     expect(sidebar).toContain("oncontextmenu");
-    expect(sidebar).toContain("名前を変更");
-    expect(sidebar).toContain("renameProjectFile");
+    expect(sidebar).toContain("エクスプローラーで表示");
+    expect(sidebar).toContain("revealProjectFileInExplorer");
     expect(sidebar).toContain("PDFに変換");
     expect(sidebar).toContain("convertCadFileToDrawingPdf");
     expect(sidebar).toContain("isProjectCadRelPath");
@@ -197,6 +205,8 @@ describe("editor shell layout", () => {
     expect(panel).toContain("TODO_FILTERS");
     expect(panel).toContain("課題の件名を入力して追加");
     expect(panel).toContain("statusLabel");
+    expect(panel).toContain('aria-label={`${item.key} の状態`}');
+    expect(panel).toContain("updateProjectTodo(item.key, { status })");
     expect(panel).toContain("保存");
     expect(panel).not.toContain("setTodoPanelTab");
     expect(panel).toContain('import NotePanel from "$lib/components/NotePanel.svelte"');

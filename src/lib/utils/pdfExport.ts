@@ -29,7 +29,7 @@ export async function embedAnnotationPngOnPdf(
   return pdf.save();
 }
 
-export const EXPORT_SUBDIR = "bp-sync";
+export const EXPORT_SUBDIR = "出力物";
 
 export function exportedPdfPath(projectFolder: string, pdfRelPath: string): string {
   const folder = projectFolder.replace(/[/\\]+$/, "");

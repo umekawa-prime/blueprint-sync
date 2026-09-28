@@ -352,6 +352,7 @@ dependencies = [
  "ttf-parser",
  "webkit2gtk",
  "webview2-com",
+ "windows",
 ]
 
 [[package]]

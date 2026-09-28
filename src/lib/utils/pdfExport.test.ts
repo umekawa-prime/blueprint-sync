@@ -22,16 +22,19 @@ describe("suggestedExportName", () => {
 });
 
 describe("exportedPdfPath", () => {
-  it("writes next to the source pdf under a bp-sync folder", () => {
-    expect(exportedPdfPath("/projects/a", "図面/1F.pdf")).toBe("/projects/a/図面/bp-sync/1F.pdf");
+  it("writes into an 出力物 folder beside the source pdf", () => {
+    expect(exportedPdfPath("/projects/a", "図面/1F.pdf")).toBe("/projects/a/図面/出力物/1F.pdf");
     expect(exportedPdfPath("/projects/a", "工程表/週間工程.pdf")).toBe(
-      "/projects/a/工程表/bp-sync/週間工程.pdf",
+      "/projects/a/工程表/出力物/週間工程.pdf",
     );
-    expect(exportedPdfPath("/projects/a", "A.pdf")).toBe("/projects/a/bp-sync/A.pdf");
+    expect(exportedPdfPath("/projects/a", "A.pdf")).toBe("/projects/a/出力物/A.pdf");
+    expect(exportedPdfPath("/projects/a", "図面/1階/平面.pdf")).toBe(
+      "/projects/a/図面/1階/出力物/平面.pdf",
+    );
   });
 
   it("normalizes backslashes in the relative pdf path", () => {
-    expect(exportedPdfPath("C:/projects/a", "図面\\1F.pdf")).toBe("C:/projects/a/図面/bp-sync/1F.pdf");
+    expect(exportedPdfPath("C:/projects/a", "図面\\1F.pdf")).toBe("C:/projects/a/図面/出力物/1F.pdf");
   });
 });
 

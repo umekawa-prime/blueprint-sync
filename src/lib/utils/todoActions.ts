@@ -81,7 +81,11 @@ export async function removeProjectTodo(key: string): Promise<void> {
 }
 
 export function toggleTodoPanel(open?: boolean) {
-  todoStore.panelOpen = open ?? !todoStore.panelOpen;
+  const next = open ?? !todoStore.panelOpen;
+  if (!next) {
+    todoStore.selectedKey = null;
+  }
+  todoStore.panelOpen = next;
   chromeStore.persist();
 }
 

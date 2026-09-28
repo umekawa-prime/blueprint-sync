@@ -13,6 +13,7 @@
     renameProjectFile,
   } from "$lib/utils/projectActions";
   import { openCurrentProjectInCursor } from "$lib/utils/cursorOpen";
+  import { revealProjectFileInExplorer } from "$lib/utils/revealInExplorer";
   import { openTodoPanel } from "$lib/utils/todoActions";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import {
@@ -37,6 +38,7 @@
   let renameInputEl = $state<HTMLInputElement | null>(null);
   let helpOpen = $state(false);
   let searchOpen = $state(false);
+  let openTimer = 0;
 
   $effect(() => {
     if (!renamingFile || !renameInputEl) {
@@ -149,6 +151,31 @@
     renameValue = projectRenameStem(file);
   }
 
+  function onNameClick(file: string) {
+    window.clearTimeout(openTimer);
+    openTimer = window.setTimeout(() => {
+      openTimer = 0;
+      void onOpenPdf(file);
+    }, 250);
+  }
+
+  function onNameDoubleClick(event: MouseEvent, file: string) {
+    event.preventDefault();
+    event.stopPropagation();
+    window.clearTimeout(openTimer);
+    openTimer = 0;
+    startRename(file);
+  }
+
+  async function onRevealInExplorer(file: string) {
+    contextMenu = null;
+    try {
+      await revealProjectFileInExplorer(projectStore.folder, file);
+    } catch (error) {
+      pdfStore.status = message(error, "エクスプローラーで表示できませんでした");
+    }
+  }
+
   function cancelRename() {
     renamingFile = "";
     renameValue = "";
@@ -211,7 +238,8 @@
         type="button"
         class="min-w-0 flex-1 truncate px-2 py-1 text-left text-sm"
         title={projectPdfDisplayName(file)}
-        onclick={() => void onOpenPdf(file)}
+        onclick={() => onNameClick(file)}
+        ondblclick={(event) => onNameDoubleClick(event, file)}
         oncontextmenu={(event) => onFileContextMenu(event, file)}
       >
         {projectPdfDisplayName(file)}
@@ -414,10 +442,10 @@
       role="menuitem"
       onclick={(event) => {
         event.stopPropagation();
-        startRename(menuFile);
+        void onRevealInExplorer(menuFile);
       }}
     >
-      名前を変更
+      エクスプローラーで表示
     </button>
     {#if isProjectCadRelPath(menuFile)}
       <button

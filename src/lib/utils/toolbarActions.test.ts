@@ -114,14 +114,14 @@ describe("toolbarActions", () => {
     expect(saved).toBe(true);
   });
 
-  it("exports an annotated PDF into bp-sync beside the source without overwriting it", async () => {
+  it("exports an annotated PDF into 出力物 beside the source without overwriting it", async () => {
     mockWriteBinaryFile.mockResolvedValue(undefined);
 
     const saved = await saveCurrentPdf();
 
     expect(mockSavePdfToDisk).not.toHaveBeenCalled();
     expect(mockWriteBinaryFile).toHaveBeenCalledWith(
-      "/projects/a/図面/bp-sync/A.pdf",
+      "/projects/a/図面/出力物/A.pdf",
       new Uint8Array([4, 5, 6]),
     );
     expect(mockWriteBinaryFile).not.toHaveBeenCalledWith(

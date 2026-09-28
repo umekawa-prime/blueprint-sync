@@ -7,6 +7,7 @@ describe("drawingTools", () => {
       "select",
       "stamp",
       "pen",
+      "eraser",
       "text",
       "pan",
       "rect",
@@ -19,14 +20,12 @@ describe("drawingTools", () => {
     expect(drawingTools("arrow").map((tool) => tool.label)).toContain("矢印線");
   });
 
-  it("shows only pen and eraser while drawing freehand", () => {
-    for (const tool of ["pen", "eraser"] as const) {
-      expect(drawingTools(tool).map((item) => item.id)).toEqual(["pen", "eraser"]);
-      expect(isPenMode(tool)).toBe(true);
+  it("keeps select and the other tools visible while the pen or eraser is active", () => {
+    const ids = ["select", "stamp", "pen", "eraser", "text", "pan", "rect", "ellipse", "arrow"];
+    for (const tool of ["select", "pen", "eraser", "rect", "stamp"] as const) {
+      expect(drawingTools(tool).map((item) => item.id)).toEqual(ids);
+      expect(isPenMode(tool)).toBe(tool === "pen" || tool === "eraser");
     }
-    expect(isPenMode("select")).toBe(false);
-    expect(isPenMode("rect")).toBe(false);
-    expect(isPenMode("stamp")).toBe(false);
   });
 });
 

@@ -3,6 +3,7 @@
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import { STAMP_OPTIONS, type StampKind } from "$lib/utils/stampDraw";
   import { toolbarToolClass } from "$lib/utils/toolbarUi";
+  import ToolGlyph from "$lib/components/ToolGlyph.svelte";
 
   let { compact = false }: { compact?: boolean } = $props();
 
@@ -32,16 +33,18 @@
 <div bind:this={rootEl} class="relative">
   <button
     type="button"
-    class={toolbarToolClass(open || toolStore.current === "stamp")}
+    class="{toolbarToolClass(open || toolStore.current === 'stamp')} inline-flex items-center justify-center"
     aria-expanded={open}
     aria-pressed={toolStore.current === "stamp"}
+    aria-label="図形"
+    title="図形"
     onpointerdowncapture={(event) => {
       event.preventDefault();
       open = !open;
       toolStore.setTool("stamp");
     }}
   >
-    図形
+    <ToolGlyph tool="stamp" />
   </button>
 
   {#if open}
