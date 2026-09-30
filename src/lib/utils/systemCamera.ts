@@ -39,6 +39,11 @@ export async function launchWindowsCamera(): Promise<number> {
   return invoke<number>("launch_system_camera");
 }
 
+export async function focusAppWindow(): Promise<void> {
+  const { invoke } = await import("@tauri-apps/api/core");
+  await invoke("focus_main_window");
+}
+
 export async function listNewCameraPhotos(sinceUnixMs: number): Promise<CameraRollFile[]> {
   const { invoke } = await import("@tauri-apps/api/core");
   const files = await invoke<CameraRollFile[]>("list_new_camera_roll_images", { sinceUnixMs });

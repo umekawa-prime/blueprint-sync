@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import CameraCapture from "$lib/components/CameraCapture.svelte";
+  import PhotoMarkup from "$lib/components/PhotoMarkup.svelte";
   import ConnectionPanel from "$lib/components/ConnectionPanel.svelte";
   import DockPane from "$lib/components/DockPane.svelte";
   import PageSidebar from "$lib/components/PageSidebar.svelte";
@@ -15,12 +16,18 @@
   import SystemCameraPrompt from "$lib/components/SystemCameraPrompt.svelte";
   import Toolbar from "$lib/components/Toolbar.svelte";
   import { chromeStore } from "$lib/stores/chromeStore.svelte";
+  import { photoCaptureStore } from "$lib/stores/photoCaptureStore.svelte";
+  import { toolStore } from "$lib/stores/toolStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { scheduleStore } from "$lib/stores/scheduleStore.svelte";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import { viewportStore } from "$lib/stores/viewportStore.svelte";
   import { viewerApi } from "$lib/stores/viewerApi";
-  import { imageBlobFromPicked, pickImagesFromDisk } from "$lib/utils/fileAccess";
+  import {
+    captureImageWithDeviceCamera,
+    imageBlobFromPicked,
+    pickImagesFromDisk,
+  } from "$lib/utils/fileAccess";
   import {
     shareCurrentPdf,
     shareCurrentProject,
@@ -29,8 +36,9 @@
   import { listenIncomingFiles } from "$lib/utils/incomingShare";
   import { drawingLayerHiddenClass, PROJECT_SIDEBAR_WIDTH, TODO_PANEL_WIDTH } from "$lib/utils/chromeLayout";
   import { toggleTodoPanel } from "$lib/utils/todoActions";
-  import { usesSystemCamera } from "$lib/utils/platform";
+  import { prefersCameraCapture, usesSystemCamera } from "$lib/utils/platform";
   import {
+    focusAppWindow,
     launchWindowsCamera,
     listNewCameraPhotos,
     watchSystemCameraShots,
@@ -49,16 +57,28 @@
     systemCamera = null;
   }
 
+  async function captureWithDeviceCamera() {
+    // Opens the phone's own camera app; no in-app preview in between.
+    const shot = await captureImageWithDeviceCamera();
+    if (shot) {
+      await viewerApi.acceptCapturedPhoto(imageBlobFromPicked(shot));
+    }
+  }
+
   async function requestCapture() {
+    if (prefersCameraCapture()) {
+      await captureWithDeviceCamera();
+      return;
+    }
     if (!usesSystemCamera()) {
+      // Desktop browser preview only: there is no OS camera app to launch.
       cameraOpen = true;
       return;
     }
     const token = ++systemCameraToken;
-    systemCamera = {
-      message: "Windows のカメラを開きました。シャッターを押すと、この図面に写真が追加されます。",
-      failed: false,
-    };
+    // Launch the Windows camera straight away; only a small non-blocking
+    // banner remains here so the wait can be cancelled.
+    systemCamera = { message: "Windows のカメラで撮影中", failed: false };
     const result = await watchSystemCameraShots({
       launch: launchWindowsCamera,
       listSince: listNewCameraPhotos,
@@ -70,10 +90,13 @@
     }
     if (result.status === "captured") {
       systemCamera = null;
+      await focusAppWindow().catch(() => {});
+      const shot = result.shots[0];
+      if (!shot) {
+        return;
+      }
       try {
-        for (const [index, shot] of result.shots.entries()) {
-          await viewerApi.addPhoto(imageBlobFromPicked(shot), index);
-        }
+        await viewerApi.acceptCapturedPhoto(imageBlobFromPicked(shot));
       } catch (error) {
         systemCamera = {
           message: error instanceof Error ? error.message : "写真を追加できませんでした",
@@ -82,17 +105,11 @@
       }
       return;
     }
-    if (result.status === "cancelled") {
+    if (result.status === "cancelled" || result.status === "timeout") {
       systemCamera = null;
       return;
     }
-    systemCamera = {
-      message:
-        result.status === "timeout"
-          ? "新しい写真が見つかりませんでした。カメラロールを確認するか、ファイルから選んでください。"
-          : result.message,
-      failed: true,
-    };
+    systemCamera = { message: result.message, failed: true };
   }
 
   viewerApi.openCamera = () => {
@@ -105,7 +122,12 @@
 
   async function onPhotoCaptured(file: Blob) {
     cameraOpen = false;
-    await viewerApi.addPhoto(file);
+    await viewerApi.acceptCapturedPhoto(file);
+  }
+
+  function onMarkupDone(file: Blob) {
+    photoCaptureStore.beginPlacement(file);
+    toolStore.setTool("select");
   }
 
   async function pickPhotoFile() {
@@ -130,6 +152,9 @@
 
   onMount(() => {
     const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape" && photoCaptureStore.phase !== "idle") {
+        photoCaptureStore.clear();
+      }
       if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== "p" || event.altKey) {
         return;
       }
@@ -280,7 +305,29 @@
     />
   {/if}
 
-  {#if systemCamera}
+  {#if photoCaptureStore.phase === "markup" && photoCaptureStore.image}
+    <PhotoMarkup image={photoCaptureStore.image} onDone={onMarkupDone} onCancel={() => photoCaptureStore.clear()} />
+  {/if}
+
+  {#if photoCaptureStore.phase === "place"}
+    <div class="pointer-events-none fixed inset-x-0 bottom-12 z-[70] flex justify-center px-4">
+      <div class="pointer-events-auto flex items-center gap-3 rounded-lg border border-cyan-700 bg-slate-900 px-4 py-2 text-sm">
+        <span>図面上をクリックして写真のピンを置いてください</span>
+        <button type="button" class="text-slate-300" onclick={() => photoCaptureStore.clear()}>キャンセル</button>
+      </div>
+    </div>
+  {/if}
+
+  {#if systemCamera && !systemCamera.failed}
+    <div class="pointer-events-none fixed inset-x-0 bottom-12 z-[70] flex justify-center px-4">
+      <div class="pointer-events-auto flex items-center gap-3 rounded-lg border border-cyan-700 bg-slate-900 px-4 py-2 text-sm">
+        <span>{systemCamera.message}</span>
+        <button type="button" class="text-slate-300" onclick={cancelSystemCamera}>キャンセル</button>
+      </div>
+    </div>
+  {/if}
+
+  {#if systemCamera?.failed}
     <SystemCameraPrompt
       message={systemCamera.message}
       failed={systemCamera.failed}

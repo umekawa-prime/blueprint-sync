@@ -14,6 +14,7 @@ vi.mock("./platform", () => ({
 }));
 
 import {
+  captureImageWithDeviceCamera,
   imageBlobFromPicked,
   imageMimeFromName,
   openPdfsFromDisk,
@@ -142,5 +143,30 @@ describe("imageBlobFromPicked", () => {
     });
     expect(blob.type).toBe("image/png");
     expect(blob.size).toBe(3);
+  });
+});
+
+describe("captureImageWithDeviceCamera", () => {
+  it("opens the OS camera directly through a capture file input", async () => {
+    const input = {
+      type: "",
+      accept: "",
+      multiple: true,
+      files: [new File([new Uint8Array([7, 8])], "shot.jpg")],
+      onchange: null as null | (() => void),
+      setAttribute: vi.fn(),
+      addEventListener: vi.fn(),
+      click: vi.fn(() => input.onchange?.()),
+    };
+    vi.stubGlobal("document", { createElement: vi.fn(() => input) });
+
+    const shot = await captureImageWithDeviceCamera();
+
+    expect(input.accept).toBe("image/*");
+    expect(input.multiple).toBe(false);
+    expect(input.setAttribute).toHaveBeenCalledWith("capture", "environment");
+    expect(input.click).toHaveBeenCalledOnce();
+    expect(shot).toEqual({ name: "shot.jpg", bytes: new Uint8Array([7, 8]) });
+    vi.unstubAllGlobals();
   });
 });

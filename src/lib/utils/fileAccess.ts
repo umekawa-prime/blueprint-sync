@@ -75,6 +75,15 @@ export async function pickImageFromDisk(): Promise<PickedPdf | null> {
   return files[0] ?? null;
 }
 
+/**
+ * Open the device's own camera app (Android / iOS) through a capture file
+ * input. Must be called synchronously from the user's tap, before any await.
+ */
+export async function captureImageWithDeviceCamera(): Promise<PickedPdf | null> {
+  const [shot] = await pickFilesInBrowser("image/*", false, "environment");
+  return shot ?? null;
+}
+
 export function imageMimeFromName(name: string): string {
   const lower = name.toLowerCase();
   if (lower.endsWith(".png")) {
@@ -110,12 +119,16 @@ export async function pickImportFiles(): Promise<Array<{ name: string; bytes: Ui
 async function pickFilesInBrowser(
   accept: string,
   multiple: boolean,
+  capture?: "environment" | "user",
 ): Promise<Array<{ name: string; bytes: Uint8Array }>> {
   return new Promise((resolve) => {
     const input = document.createElement("input");
     input.type = "file";
     input.accept = accept;
     input.multiple = multiple;
+    if (capture) {
+      input.setAttribute("capture", capture);
+    }
     input.onchange = async () => {
       const files = [...(input.files ?? [])];
       const picked = await Promise.all(

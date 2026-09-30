@@ -23,7 +23,7 @@ describe("createShapeObject", () => {
 });
 
 describe("findErasableStroke", () => {
-  it("removes a whole pen stroke and leaves shapes and other objects", () => {
+  it("removes a whole pen stroke or shape", () => {
     const pen = new Polyline(
       [
         { x: 0, y: 10 },
@@ -31,7 +31,9 @@ describe("findErasableStroke", () => {
       ],
       { stroke: "#111", strokeWidth: 4, fill: "", objectCaching: false },
     );
-    const arrow = createShapeObject("arrow", { x: 0, y: 10 }, { x: 40, y: 10 }, style);
+    const rect = createShapeObject("rect", { x: 0, y: 70 }, { x: 40, y: 100 }, style);
+    const ellipse = createShapeObject("ellipse", { x: 0, y: 110 }, { x: 40, y: 150 }, style);
+    const arrow = createShapeObject("arrow", { x: 0, y: 170 }, { x: 40, y: 170 }, style);
     const capped = createStraightStrokeObject(
       [
         { x: 0, y: 40 },
@@ -39,11 +41,15 @@ describe("findErasableStroke", () => {
       ],
       { color: "#111", width: 4, startCap: "none", endCap: "arrow" },
     );
+    expect(rect).not.toBeNull();
+    expect(ellipse).not.toBeNull();
     expect(arrow).not.toBeNull();
-    const objects = [pen, arrow!, capped];
+    const objects = [pen, arrow!, rect!, ellipse!, capped];
 
     expect(findErasableStroke(objects, { x: 20, y: 11 })).toBe(pen);
     expect(findErasableStroke(objects, { x: 20, y: 40 })).toBe(capped);
-    expect(findErasableStroke([arrow!], { x: 20, y: 10 })).toBeNull();
+    expect(findErasableStroke(objects, { x: 20, y: 170 })).toBe(arrow);
+    expect(findErasableStroke(objects, { x: 20, y: 85 })).toBe(rect);
+    expect(findErasableStroke(objects, { x: 20, y: 130 })).toBe(ellipse);
   });
 });

@@ -11,20 +11,36 @@ export function findErasableStroke(
 ): FabricObject | null {
   const index = indexOfErasableHit(
     objects.map((object) => ({
-      erasable: isPenStroke(object),
-      geometry: geometryOf(object),
+      erasable: isErasableObject(object),
+      geometry: geometryForErase(object),
     })),
     point,
   );
   return index === null ? null : objects[index];
 }
 
+function isErasableObject(object: FabricObject): boolean {
+  return roleOf(object) === SHAPE_ROLE || isPenStroke(object);
+}
+
 export function isPenStroke(object: FabricObject): boolean {
-  if (roleOf(object) === SHAPE_ROLE) {
-    return false;
-  }
   const type = object.type?.toLowerCase();
   return type === "path" || type === "polyline" || type === "group";
+}
+
+function geometryForErase(object: FabricObject): HitGeometry {
+  if (roleOf(object) === SHAPE_ROLE) {
+    return shapeBounds(object);
+  }
+  return geometryOf(object);
+}
+
+function shapeBounds(object: FabricObject): HitGeometry {
+  object.setCoords();
+  return {
+    kind: "polygon",
+    points: object.getCoords().map((point) => ({ x: point.x, y: point.y })),
+  };
 }
 
 function geometryOf(object: FabricObject): HitGeometry {

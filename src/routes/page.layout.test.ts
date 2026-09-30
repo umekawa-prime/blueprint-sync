@@ -229,6 +229,16 @@ describe("editor shell layout", () => {
     expect(markdown).toContain("処理済み");
   });
 
+  it("edits a saved OneDrive link url and title from the sidebar", () => {
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    const actions = readFileSync(path.resolve("src/lib/utils/projectActions.ts"), "utf8");
+    expect(sidebar).toContain("updateProjectLink");
+    expect(sidebar).toContain("startEditLink");
+    expect(sidebar).toContain('aria-label="リンクURL"');
+    expect(sidebar).toContain('aria-label="表示名"');
+    expect(actions).toContain("export async function updateProjectLink");
+  });
+
   it("searches filenames inside the open project folder", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");

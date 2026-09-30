@@ -597,6 +597,36 @@ export async function addProjectLink(url: string, title: string): Promise<void> 
   }
 }
 
+export async function updateProjectLink(id: string, url: string, title: string): Promise<void> {
+  if (!projectStore.meta || !projectStore.folder) {
+    return;
+  }
+  const trimmedUrl = url.trim();
+  if (!isAllowedLinkUrl(trimmedUrl)) {
+    projectStore.error = "http または https の URL だけ追加できます";
+    return;
+  }
+  const trimmedTitle = title.trim();
+  const current = projectStore.meta.links.find((link) => link.id === id);
+  if (!current || (current.url === trimmedUrl && current.title === trimmedTitle)) {
+    projectStore.error = "";
+    return;
+  }
+  const nextMeta = {
+    ...projectStore.meta,
+    links: projectStore.meta.links.map((link) =>
+      link.id === id ? { id, title: trimmedTitle, url: trimmedUrl } : link,
+    ),
+  };
+  try {
+    await writeProjectMeta(projectStore.folder, nextMeta);
+    projectStore.meta = nextMeta;
+    projectStore.error = "";
+  } catch (error) {
+    projectStore.error = error instanceof Error ? error.message : "リンクの保存に失敗しました";
+  }
+}
+
 export async function removeProjectLink(id: string): Promise<void> {
   if (!projectStore.meta || !projectStore.folder) {
     return;

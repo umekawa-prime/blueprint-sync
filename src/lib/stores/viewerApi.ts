@@ -11,6 +11,7 @@ class ViewerApi {
   > = async () => [];
 
   addPhoto: (file: Blob, offsetIndex?: number) => Promise<void> = async () => undefined;
+  acceptCapturedPhoto: (file: Blob) => Promise<void> = async () => undefined;
   openCamera: () => void = noop;
   undo: () => void = noop;
   redo: () => void = noop;
@@ -20,6 +21,7 @@ class ViewerApi {
   reset() {
     this.exportOverlays = async () => [];
     this.addPhoto = async () => undefined;
+    this.acceptCapturedPhoto = async () => undefined;
     this.openCamera = noop;
     this.undo = noop;
     this.redo = noop;

@@ -160,8 +160,18 @@
     </div>
   {/each}
 
-  <button class="toolbar-btn" onclick={onRequestPhoto} disabled={!pdfStore.bytes}>
-    カメラ
+  <button
+    type="button"
+    class="toolbar-btn"
+    onclick={onRequestPhoto}
+    disabled={!pdfStore.bytes}
+    aria-label="カメラ"
+    title="カメラ"
+  >
+    <svg class="h-4 w-4" viewBox="0 0 24 24" fill="none" aria-hidden="true">
+      <path d="M4 8.5h3.2l1.4-2h6.8l1.4 2H20v10H4Z" stroke="currentColor" stroke-width="1.7" stroke-linejoin="round" />
+      <circle cx="12" cy="13.5" r="3.2" stroke="currentColor" stroke-width="1.7" />
+    </svg>
   </button>
 
   {#if compact}

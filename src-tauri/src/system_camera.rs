@@ -57,12 +57,37 @@ pub fn system_time_to_unix_ms(time: SystemTime) -> u64 {
         .as_millis() as u64
 }
 
+/// Executable of the Windows Camera app. UWP windows are hosted by
+/// ApplicationFrameHost, so the camera window is found through this process.
+pub const CAMERA_EXE_NAME: &str = "WindowsCamera.exe";
+
+pub fn is_camera_exe_path(path: &str) -> bool {
+    path.rsplit(['\\', '/'])
+        .next()
+        .is_some_and(|name| name.eq_ignore_ascii_case(CAMERA_EXE_NAME))
+}
+
+#[cfg(windows)]
+const CAMERA_AUMID: &str = "Microsoft.WindowsCamera_8wekyb3d8bbwe!App";
+
+/// Launch the Windows Camera app and keep pushing it to the foreground until
+/// Windows actually shows it there. Must be called while this app is the
+/// foreground process (i.e. right after the user clicked), otherwise Windows
+/// refuses to hand over the foreground.
 #[cfg(windows)]
 pub fn open_system_camera() -> Result<(), String> {
-    if shell_execute("microsoft.windows.camera:").is_ok() {
-        return Ok(());
-    }
-    shell_execute("shell:AppsFolder\\Microsoft.WindowsCamera_8wekyb3d8bbwe!App")
+    foreground::allow_any_process();
+    let pid = match foreground::activate_package_app(CAMERA_AUMID) {
+        Ok(pid) => Some(pid),
+        Err(_) => {
+            if shell_execute("microsoft.windows.camera:").is_err() {
+                shell_execute(&format!("shell:AppsFolder\\{CAMERA_AUMID}"))?;
+            }
+            None
+        }
+    };
+    std::thread::spawn(move || foreground::bring_camera_to_front(pid));
+    Ok(())
 }
 
 #[cfg(not(windows))]
@@ -175,6 +200,226 @@ extern "system" {
 }
 
 #[cfg(windows)]
+mod foreground {
+    use std::collections::HashMap;
+    use std::time::{Duration, Instant};
+
+    use windows::core::{BOOL, HSTRING, PWSTR};
+    use windows::Win32::Foundation::{CloseHandle, HWND, LPARAM};
+    use windows::Win32::System::Com::{
+        CoCreateInstance, CoInitializeEx, CLSCTX_LOCAL_SERVER, COINIT_APARTMENTTHREADED,
+    };
+    use windows::Win32::System::Threading::{
+        AttachThreadInput, GetCurrentThreadId, OpenProcess, QueryFullProcessImageNameW,
+        PROCESS_NAME_WIN32, PROCESS_QUERY_LIMITED_INFORMATION,
+    };
+    use windows::Win32::UI::Input::KeyboardAndMouse::{
+        MapVirtualKeyW, SendInput, INPUT, INPUT_0, INPUT_KEYBOARD, KEYBDINPUT, KEYBD_EVENT_FLAGS,
+        KEYEVENTF_EXTENDEDKEY, KEYEVENTF_KEYUP, MAPVK_VK_TO_VSC, VK_LMENU, VK_MENU,
+    };
+    use windows::Win32::UI::Shell::{
+        ApplicationActivationManager, IApplicationActivationManager, AO_NONE,
+    };
+    use windows::Win32::UI::WindowsAndMessaging::{
+        AllowSetForegroundWindow, BringWindowToTop, EnumChildWindows, EnumWindows, GetClassNameW,
+        GetForegroundWindow, GetWindowThreadProcessId, IsIconic, IsWindowVisible,
+        SetForegroundWindow, SetWindowPos, ShowWindow, ASFW_ANY, HWND_NOTOPMOST, HWND_TOPMOST,
+        SWP_NOMOVE, SWP_NOSIZE, SWP_SHOWWINDOW, SW_RESTORE,
+    };
+
+    use super::is_camera_exe_path;
+
+    const FIND_TIMEOUT: Duration = Duration::from_secs(10);
+    const POLL_INTERVAL: Duration = Duration::from_millis(100);
+    /// The camera app shows a splash first and may re-activate itself; keep
+    /// checking a little while after it first reaches the foreground.
+    const STABLE_CHECKS: u32 = 5;
+
+    pub fn allow_any_process() {
+        unsafe {
+            let _ = AllowSetForegroundWindow(ASFW_ANY);
+        }
+    }
+
+    /// Activate a packaged (UWP) app by AUMID. Unlike ShellExecute of a
+    /// protocol URI this activates the app window directly and returns its pid.
+    pub fn activate_package_app(aumid: &str) -> Result<u32, String> {
+        unsafe {
+            let _ = CoInitializeEx(None, COINIT_APARTMENTTHREADED);
+            let manager: IApplicationActivationManager =
+                CoCreateInstance(&ApplicationActivationManager, None, CLSCTX_LOCAL_SERVER)
+                    .map_err(|error| error.to_string())?;
+            manager
+                .ActivateApplication(&HSTRING::from(aumid), &HSTRING::new(), AO_NONE)
+                .map_err(|error| error.to_string())
+        }
+    }
+
+    pub fn bring_camera_to_front(pid: Option<u32>) {
+        let started = Instant::now();
+        let mut stable = 0;
+        while started.elapsed() < FIND_TIMEOUT && stable < STABLE_CHECKS {
+            match find_camera_window(pid) {
+                Some(hwnd) if unsafe { GetForegroundWindow() } == hwnd => stable += 1,
+                Some(hwnd) => {
+                    stable = 0;
+                    unsafe { force_foreground(hwnd) };
+                }
+                None => {}
+            }
+            std::thread::sleep(POLL_INTERVAL);
+        }
+    }
+
+    struct Search {
+        pid: Option<u32>,
+        names: HashMap<u32, bool>,
+        found: Option<HWND>,
+    }
+
+    impl Search {
+        fn is_camera_pid(&mut self, pid: u32) -> bool {
+            if pid == 0 {
+                return false;
+            }
+            if self.pid == Some(pid) {
+                return true;
+            }
+            *self
+                .names
+                .entry(pid)
+                .or_insert_with(|| process_path(pid).is_some_and(|path| is_camera_exe_path(&path)))
+        }
+    }
+
+    fn find_camera_window(pid: Option<u32>) -> Option<HWND> {
+        let mut search = Search {
+            pid,
+            names: HashMap::new(),
+            found: None,
+        };
+        unsafe {
+            let _ = EnumWindows(Some(visit_top_level), LPARAM(&mut search as *mut Search as isize));
+        }
+        search.found
+    }
+
+    unsafe extern "system" fn visit_top_level(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let search = &mut *(lparam.0 as *mut Search);
+        if !IsWindowVisible(hwnd).as_bool() {
+            return BOOL(1);
+        }
+        if search.is_camera_pid(window_pid(hwnd)) {
+            search.found = Some(hwnd);
+            return BOOL(0);
+        }
+        if class_name(hwnd) == "ApplicationFrameWindow" {
+            // The UWP content (CoreWindow) is a child owned by the app process.
+            let mut child_match = false;
+            let mut context = (&mut *search, &mut child_match);
+            let _ = EnumChildWindows(
+                Some(hwnd),
+                Some(visit_frame_child),
+                LPARAM(&mut context as *mut (&mut Search, &mut bool) as isize),
+            );
+            if child_match {
+                search.found = Some(hwnd);
+                return BOOL(0);
+            }
+        }
+        BOOL(1)
+    }
+
+    unsafe extern "system" fn visit_frame_child(hwnd: HWND, lparam: LPARAM) -> BOOL {
+        let (search, matched) = &mut *(lparam.0 as *mut (&mut Search, &mut bool));
+        if search.is_camera_pid(window_pid(hwnd)) {
+            **matched = true;
+            return BOOL(0);
+        }
+        BOOL(1)
+    }
+
+    unsafe fn window_pid(hwnd: HWND) -> u32 {
+        let mut pid = 0u32;
+        GetWindowThreadProcessId(hwnd, Some(&mut pid));
+        pid
+    }
+
+    unsafe fn class_name(hwnd: HWND) -> String {
+        let mut buffer = [0u16; 64];
+        let len = GetClassNameW(hwnd, &mut buffer).max(0) as usize;
+        String::from_utf16_lossy(&buffer[..len])
+    }
+
+    fn process_path(pid: u32) -> Option<String> {
+        unsafe {
+            let handle = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid).ok()?;
+            let mut buffer = [0u16; 1024];
+            let mut len = buffer.len() as u32;
+            let result = QueryFullProcessImageNameW(
+                handle,
+                PROCESS_NAME_WIN32,
+                PWSTR(buffer.as_mut_ptr()),
+                &mut len,
+            );
+            let _ = CloseHandle(handle);
+            result.ok()?;
+            Some(String::from_utf16_lossy(&buffer[..len as usize]))
+        }
+    }
+
+    /// Windows blocks SetForegroundWindow from a background process. Attach
+    /// to the foreground thread's input queue, and as a last resort use the
+    /// same Alt-key trick tao uses for `set_focus`.
+    unsafe fn force_foreground(hwnd: HWND) {
+        if IsIconic(hwnd).as_bool() {
+            let _ = ShowWindow(hwnd, SW_RESTORE);
+        }
+
+        let current_thread = GetCurrentThreadId();
+        let foreground_thread = GetWindowThreadProcessId(GetForegroundWindow(), None);
+        let attached = foreground_thread != 0
+            && foreground_thread != current_thread
+            && AttachThreadInput(current_thread, foreground_thread, true).as_bool();
+        let _ = BringWindowToTop(hwnd);
+        let _ = SetForegroundWindow(hwnd);
+        if attached {
+            let _ = AttachThreadInput(current_thread, foreground_thread, false);
+        }
+        if GetForegroundWindow() == hwnd {
+            return;
+        }
+
+        let flags = SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW;
+        let _ = SetWindowPos(hwnd, Some(HWND_TOPMOST), 0, 0, 0, 0, flags);
+        let _ = SetWindowPos(hwnd, Some(HWND_NOTOPMOST), 0, 0, 0, 0, flags);
+        tap_alt_key();
+        let _ = SetForegroundWindow(hwnd);
+    }
+
+    unsafe fn tap_alt_key() {
+        let scan = MapVirtualKeyW(u32::from(VK_MENU.0), MAPVK_VK_TO_VSC) as u16;
+        let key = |flags: KEYBD_EVENT_FLAGS| INPUT {
+            r#type: INPUT_KEYBOARD,
+            Anonymous: INPUT_0 {
+                ki: KEYBDINPUT {
+                    wVk: VK_LMENU,
+                    wScan: scan,
+                    dwFlags: flags,
+                    time: 0,
+                    dwExtraInfo: 0,
+                },
+            },
+        };
+        let inputs = [
+            key(KEYEVENTF_EXTENDEDKEY),
+            key(KEYEVENTF_EXTENDEDKEY | KEYEVENTF_KEYUP),
+        ];
+        SendInput(&inputs, std::mem::size_of::<INPUT>() as i32);
+    }
+}
+
+#[cfg(windows)]
 #[link(name = "ole32")]
 extern "system" {
     fn CoTaskMemFree(ptr: *mut std::ffi::c_void);
@@ -185,7 +430,17 @@ mod tests {
     use std::fs::File;
     use std::time::{Duration, SystemTime};
 
-    use super::{images_modified_after, is_camera_image_name};
+    use super::{images_modified_after, is_camera_exe_path, is_camera_image_name};
+
+    #[test]
+    fn recognizes_the_windows_camera_executable() {
+        assert!(is_camera_exe_path(
+            r"C:\Program Files\WindowsApps\Microsoft.WindowsCamera_2025.2505.2.0_x64__8wekyb3d8bbwe\WindowsCamera.exe"
+        ));
+        assert!(is_camera_exe_path("windowscamera.EXE"));
+        assert!(!is_camera_exe_path(r"C:\Windows\System32\ApplicationFrameHost.exe"));
+        assert!(!is_camera_exe_path(r"C:\Tools\NotWindowsCamera.exe"));
+    }
 
     #[test]
     fn accepts_camera_roll_image_extensions() {

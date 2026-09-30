@@ -11,6 +11,7 @@
   import { annotationStore } from "$lib/stores/annotationStore.svelte";
   import { historyStore } from "$lib/stores/historyStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
+  import { photoCaptureStore } from "$lib/stores/photoCaptureStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { toolStore } from "$lib/stores/toolStore.svelte";
   import { broadcastAnnotation } from "$lib/utils/connectionActions";
@@ -221,6 +222,37 @@
     });
   }
 
+  async function acceptCapturedPhoto(file: Blob) {
+    if (pendingPinId) {
+      await addPhotoFromFile(file);
+      return;
+    }
+    photoCaptureStore.beginMarkup(file);
+    toolStore.setTool("pen");
+  }
+
+  async function placeCapturedPhoto(pointer: { x: number; y: number }) {
+    const file = photoCaptureStore.image;
+    photoCaptureStore.finishPlacement();
+    if (!file || !fabricCanvas) {
+      return;
+    }
+    const width = fabricCanvas.getWidth();
+    const height = fabricCanvas.getHeight();
+    if (width <= 0 || height <= 0) {
+      return;
+    }
+    const image = await photoPinImageFromFile(file);
+    const { nx, ny } = fabricToNormalized(pointer.x, pointer.y, width, height);
+    annotationStore.addPhotoPin(pdfStore.pageIndex, {
+      id: crypto.randomUUID(),
+      nx,
+      ny,
+      images: [image],
+    });
+    toolStore.setTool("select");
+  }
+
   async function addImagesToPin(pinId: string) {
     const picked = await pickImagesFromDisk();
     if (picked.length === 0) {
@@ -296,6 +328,7 @@
     }
     viewerApi.exportOverlays = exportVisibleOverlays;
     viewerApi.addPhoto = addPhotoFromFile;
+    viewerApi.acceptCapturedPhoto = acceptCapturedPhoto;
     viewerApi.undo = () => {
       void undoLast();
     };
@@ -404,6 +437,7 @@
     toolStore.current;
     toolStore.penColor;
     toolStore.penWidth;
+    photoCaptureStore.phase;
     applyTool();
   });
 
@@ -471,13 +505,16 @@
     if (!fabricCanvas) {
       return;
     }
-    const drawing = toolStore.current === "pen" && straightSession.points.length === 0;
+    const placing = photoCaptureStore.phase === "place";
+    const drawing =
+      !placing && toolStore.current === "pen" && straightSession.points.length === 0;
     if (drawing && !fabricCanvas.freeDrawingBrush) {
       fabricCanvas.freeDrawingBrush = new PencilBrush(fabricCanvas);
     }
     fabricCanvas.isDrawingMode = drawing;
-    fabricCanvas.selection = toolStore.current === "select";
+    fabricCanvas.selection = !placing && toolStore.current === "select";
     fabricCanvas.skipTargetFind =
+      placing ||
       toolStore.current === "pan" ||
       toolStore.current === "pen" ||
       toolStore.current === "eraser" ||
@@ -698,6 +735,11 @@
       }
       const pointer = pointerFromEvent(fabricCanvas!, event);
       lastTap = { x: pointer.x, y: pointer.y };
+
+      if (photoCaptureStore.phase === "place") {
+        void placeCapturedPhoto(pointer);
+        return;
+      }
 
       if (isStampTool(toolStore.current)) {
         placeStamp(pointer);

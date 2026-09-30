@@ -162,6 +162,7 @@ import {
   switchProjectTab,
   refreshProjectPdfs,
   removeProjectLink,
+  updateProjectLink,
   removeProjectPdf,
   renameProjectFile,
   importIncomingFile,
@@ -1054,6 +1055,64 @@ describe("projectActions", () => {
     await addProjectLink("https://example.com/share", "共有");
 
     expect(projectStore.meta.links).toEqual([]);
+    expect(projectStore.error).toBe("write failed");
+  });
+
+  it("updates a project link url and title", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.meta = sampleMeta({
+      links: [
+        { id: "link-1", title: "共有", url: "https://example.com/share" },
+        { id: "link-2", title: "別", url: "https://example.com/other" },
+      ],
+    });
+
+    await updateProjectLink("link-1", " https://1drv.ms/f/s!abc ", " 図面共有 ");
+
+    expect(mockWriteProjectMeta).toHaveBeenCalledWith(
+      "/projects/a",
+      expect.objectContaining({
+        links: [
+          { id: "link-1", title: "図面共有", url: "https://1drv.ms/f/s!abc" },
+          { id: "link-2", title: "別", url: "https://example.com/other" },
+        ],
+      }),
+    );
+    expect(projectStore.meta.links[0]).toEqual({
+      id: "link-1",
+      title: "図面共有",
+      url: "https://1drv.ms/f/s!abc",
+    });
+    expect(projectStore.error).toBe("");
+  });
+
+  it("keeps a project link unchanged when the edited url is not http(s)", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.meta = sampleMeta({
+      links: [{ id: "link-1", title: "共有", url: "https://example.com/share" }],
+    });
+
+    await updateProjectLink("link-1", "file:///C:/secret.pdf", "共有");
+
+    expect(mockWriteProjectMeta).not.toHaveBeenCalled();
+    expect(projectStore.meta.links).toEqual([
+      { id: "link-1", title: "共有", url: "https://example.com/share" },
+    ]);
+    expect(projectStore.error).toBe("http または https の URL だけ追加できます");
+  });
+
+  it("keeps a project link unchanged when saving an edit fails", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.meta = sampleMeta({
+      links: [{ id: "link-1", title: "共有", url: "https://example.com/share" }],
+    });
+    mockWriteProjectMeta.mockRejectedValue(new Error("write failed"));
+
+    await updateProjectLink("link-1", "https://example.com/next", "更新");
+
+    expect(projectStore.meta.links).toEqual([
+      { id: "link-1", title: "共有", url: "https://example.com/share" },
+    ]);
     expect(projectStore.error).toBe("write failed");
   });
 

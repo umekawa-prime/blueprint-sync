@@ -11,6 +11,7 @@
     removeProjectLink,
     removeProjectPdf,
     renameProjectFile,
+    updateProjectLink,
   } from "$lib/utils/projectActions";
   import { openCurrentProjectInCursor } from "$lib/utils/cursorOpen";
   import { revealProjectFileInExplorer } from "$lib/utils/revealInExplorer";
@@ -24,6 +25,7 @@
     listSidebarCadFiles,
     projectPdfDisplayName,
     projectRenameStem,
+    type ProjectLink,
     type ProjectPdfKind,
   } from "$lib/utils/projectFormat";
   import FileSearchDialog from "$lib/components/FileSearchDialog.svelte";
@@ -31,6 +33,10 @@
 
   let url = $state("");
   let title = $state("");
+  let editingLinkId = $state("");
+  let editUrl = $state("");
+  let editTitle = $state("");
+  let editUrlInputEl = $state<HTMLInputElement | null>(null);
   let importingLinkId = $state("");
   let contextMenu = $state<{ file: string; x: number; y: number } | null>(null);
   let renamingFile = $state("");
@@ -46,6 +52,14 @@
     }
     renameInputEl.focus();
     renameInputEl.select();
+  });
+
+  $effect(() => {
+    if (!editingLinkId || !editUrlInputEl) {
+      return;
+    }
+    editUrlInputEl.focus();
+    editUrlInputEl.select();
   });
 
   $effect(() => {
@@ -107,6 +121,40 @@
       await openProjectLink(linkUrl);
     } catch (error) {
       projectStore.error = message(error, "リンクを開けませんでした");
+    }
+  }
+
+  function startEditLink(link: ProjectLink) {
+    editingLinkId = link.id;
+    editUrl = link.url;
+    editTitle = link.title;
+  }
+
+  function cancelEditLink() {
+    editingLinkId = "";
+    editUrl = "";
+    editTitle = "";
+  }
+
+  function onEditLinkKeydown(event: KeyboardEvent) {
+    if (event.key === "Escape") {
+      event.preventDefault();
+      cancelEditLink();
+    }
+  }
+
+  async function commitEditLink() {
+    const id = editingLinkId;
+    if (!id) {
+      return;
+    }
+    try {
+      await updateProjectLink(id, editUrl, editTitle);
+      if (!projectStore.error) {
+        cancelEditLink();
+      }
+    } catch (error) {
+      projectStore.error = message(error, "リンクの保存に失敗しました");
     }
   }
 
@@ -366,32 +414,74 @@
     <ul class="space-y-2">
       {#each projectStore.meta?.links ?? [] as link (link.id)}
         <li class="rounded border border-slate-800 px-2 py-1.5">
-          <button
-            class="w-full truncate text-left text-xs text-cyan-300 underline"
-            title={displayLinkTitle(link)}
-            onclick={() => onOpenLink(link.url)}
-          >
-            {displayLinkTitle(link)}
-          </button>
-          <div class="mt-1 flex items-center gap-1">
-            <button
-              class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200 disabled:opacity-40"
-              disabled={importingLinkId !== ""}
-              onclick={() => onImportLink(link.url, "drawing", link.id, link.title)}
+          {#if editingLinkId === link.id}
+            <form
+              onsubmit={(event) => {
+                event.preventDefault();
+                void commitEditLink();
+              }}
             >
-              {importingLinkId === `${link.id}:drawing` ? "取得中..." : "図面へ"}
-            </button>
+              <input
+                bind:this={editUrlInputEl}
+                bind:value={editUrl}
+                class="mb-1 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1 text-xs"
+                placeholder="https://1drv.ms/..."
+                aria-label="リンクURL"
+                onkeydown={onEditLinkKeydown}
+              />
+              <input
+                bind:value={editTitle}
+                class="mb-1 w-full rounded border border-slate-600 bg-slate-950 px-2 py-1 text-xs"
+                placeholder="表示名（任意）"
+                aria-label="表示名"
+                onkeydown={onEditLinkKeydown}
+              />
+              <div class="flex items-center gap-1">
+                <button
+                  type="submit"
+                  class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200"
+                >
+                  保存
+                </button>
+                <button type="button" class="text-[11px] text-slate-500" onclick={cancelEditLink}>
+                  キャンセル
+                </button>
+              </div>
+            </form>
+          {:else}
             <button
-              class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200 disabled:opacity-40"
-              disabled={importingLinkId !== ""}
-              onclick={() => onImportLink(link.url, "schedule", link.id, link.title)}
+              class="w-full truncate text-left text-xs text-cyan-300 underline"
+              title={link.url}
+              onclick={() => onOpenLink(link.url)}
             >
-              {importingLinkId === `${link.id}:schedule` ? "取得中..." : "工程表へ"}
+              {displayLinkTitle(link)}
             </button>
-            <button class="ml-auto text-[11px] text-slate-500" onclick={() => onRemoveLink(link.id)}>
-              削除
-            </button>
-          </div>
+            <div class="mt-1 flex items-center gap-1">
+              <button
+                class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200"
+                onclick={() => startEditLink(link)}
+              >
+                編集
+              </button>
+              <button
+                class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200 disabled:opacity-40"
+                disabled={importingLinkId !== ""}
+                onclick={() => onImportLink(link.url, "drawing", link.id, link.title)}
+              >
+                {importingLinkId === `${link.id}:drawing` ? "取得中..." : "図面へ"}
+              </button>
+              <button
+                class="rounded bg-slate-800 px-1.5 py-0.5 text-[11px] text-slate-200 disabled:opacity-40"
+                disabled={importingLinkId !== ""}
+                onclick={() => onImportLink(link.url, "schedule", link.id, link.title)}
+              >
+                {importingLinkId === `${link.id}:schedule` ? "取得中..." : "工程表へ"}
+              </button>
+              <button class="ml-auto text-[11px] text-slate-500" onclick={() => onRemoveLink(link.id)}>
+                削除
+              </button>
+            </div>
+          {/if}
         </li>
       {/each}
     </ul>

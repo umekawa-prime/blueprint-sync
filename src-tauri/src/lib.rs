@@ -251,6 +251,19 @@ fn launch_system_camera(app: AppHandle) -> Result<u64, String> {
     Ok(system_camera::system_time_to_unix_ms(since))
 }
 
+/// After the OS camera took a shot, return the user to the drawing.
+#[tauri::command]
+fn focus_main_window(app: AppHandle) {
+    #[cfg(not(any(target_os = "ios", target_os = "android")))]
+    if let Some(window) = app.get_webview_window("main") {
+        let _ = window.unminimize();
+        let _ = window.show();
+        let _ = window.set_focus();
+    }
+    #[cfg(any(target_os = "ios", target_os = "android"))]
+    let _ = app;
+}
+
 #[cfg(not(any(target_os = "ios", target_os = "android")))]
 #[tauri::command]
 fn list_new_camera_roll_images(since_unix_ms: u64) -> Result<Vec<PdfFile>, String> {
@@ -688,6 +701,7 @@ pub fn run() {
             pick_image_files,
             launch_system_camera,
             list_new_camera_roll_images,
+            focus_main_window,
             init_project_dir,
             list_project_pdfs,
             copy_file_into_folder,
