@@ -14,7 +14,13 @@ import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { writeInstallerTrustFiles } from "./windowsCodeSign.mjs";
 
+export const WINDOWS_X64_TARGET = "x86_64-pc-windows-msvc";
 export const WINDOWS_ARM64_TARGET = "aarch64-pc-windows-msvc";
+export const WINDOWS_BUILD_TARGETS = [WINDOWS_X64_TARGET, WINDOWS_ARM64_TARGET];
+
+export function defaultXwinArch() {
+  return "x86_64,aarch64";
+}
 
 const rootDir = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const cacheRoot = path.join(os.homedir(), ".cache", "blueprint-sync");
@@ -52,8 +58,8 @@ const TOOL_LINKS = [
   ["ld.lld", ["usr/bin/ld.lld-18", "usr/lib/llvm-18/bin/ld.lld"]],
 ];
 
-export function tauriBuildArgs({ nativeWindows, signCommand }) {
-  const args = ["build", "--target", WINDOWS_ARM64_TARGET, "--bundles", "nsis"];
+export function tauriBuildArgs({ target, nativeWindows, signCommand }) {
+  const args = ["build", "--target", target, "--bundles", "nsis"];
   if (!nativeWindows) {
     args.push("--runner", "cargo-xwin");
   }
@@ -108,7 +114,9 @@ function which(command, env = process.env) {
 }
 
 function ensureRustTarget() {
-  run("rustup", ["target", "add", WINDOWS_ARM64_TARGET]);
+  for (const target of WINDOWS_BUILD_TARGETS) {
+    run("rustup", ["target", "add", target]);
+  }
 }
 
 function ensureCargoXwin() {
@@ -203,7 +211,7 @@ function linuxCrossEnv() {
     NSISDIR: existsSync(nsisDir) ? nsisDir : process.env.NSISDIR,
     NSIS_PATH: existsSync(nsisDir) ? nsisDir : process.env.NSIS_PATH,
     XWIN_CACHE_DIR: process.env.XWIN_CACHE_DIR ?? path.join(cacheRoot, "xwin"),
-    XWIN_ARCH: process.env.XWIN_ARCH ?? "aarch64",
+    XWIN_ARCH: process.env.XWIN_ARCH ?? defaultXwinArch(),
     // clang-cl passes /imsvc; ring's cc-rs invokes clang and treats that as a path.
     XWIN_CROSS_COMPILER: process.env.XWIN_CROSS_COMPILER ?? "clang",
   };
@@ -236,14 +244,12 @@ function cargoTargetDir(env = process.env) {
   return env.CARGO_TARGET_DIR || path.join(rootDir, "src-tauri", "target");
 }
 
-function copyInstaller(env) {
-  const bundleDir = path.join(
-    cargoTargetDir(env),
-    WINDOWS_ARM64_TARGET,
-    "release",
-    "bundle",
-    "nsis",
-  );
+function installerLabel(target) {
+  return target === WINDOWS_ARM64_TARGET ? "Windows ARM64" : "Windows x64";
+}
+
+function copyInstaller(env, target) {
+  const bundleDir = path.join(cargoTargetDir(env), target, "release", "bundle", "nsis");
   if (!existsSync(bundleDir)) {
     console.log(`Installer directory not found: ${bundleDir}`);
     return;
@@ -256,7 +262,7 @@ function copyInstaller(env) {
   const downloads = windowsDownloadsDir();
   for (const name of installers) {
     const from = path.join(bundleDir, name);
-    console.log(`Windows ARM64 installer: ${from}`);
+    console.log(`${installerLabel(target)} installer: ${from}`);
     if (!downloads) {
       continue;
     }
@@ -294,30 +300,32 @@ function prepare() {
 export async function buildWindowsArm64() {
   const nativeWindows = process.platform === "win32";
   const env = prepare();
-  const args = tauriBuildArgs({ nativeWindows, signCommand: defaultSignCommand() });
   const tauriCli = path.join(rootDir, "scripts/tauri.mjs");
 
-  await new Promise((resolve, reject) => {
-    const child = spawn(process.execPath, [tauriCli, ...args], {
-      cwd: rootDir,
-      env,
-      stdio: "inherit",
+  for (const target of WINDOWS_BUILD_TARGETS) {
+    const args = tauriBuildArgs({ target, nativeWindows, signCommand: defaultSignCommand() });
+    await new Promise((resolve, reject) => {
+      const child = spawn(process.execPath, [tauriCli, ...args], {
+        cwd: rootDir,
+        env,
+        stdio: "inherit",
+      });
+      child.on("error", reject);
+      child.on("exit", (code, signal) => {
+        if (signal) {
+          reject(new Error(`tauri build terminated (${signal})`));
+          return;
+        }
+        if (code !== 0) {
+          reject(new Error(`tauri build failed (${code})`));
+          return;
+        }
+        resolve();
+      });
     });
-    child.on("error", reject);
-    child.on("exit", (code, signal) => {
-      if (signal) {
-        reject(new Error(`tauri build terminated (${signal})`));
-        return;
-      }
-      if (code !== 0) {
-        reject(new Error(`tauri build failed (${code})`));
-        return;
-      }
-      resolve();
-    });
-  });
 
-  copyInstaller(env);
+    copyInstaller(env, target);
+  }
 }
 
 const isMain = process.argv[1] && path.resolve(process.argv[1]) === fileURLToPath(import.meta.url);

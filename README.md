@@ -15,7 +15,7 @@
 
 - Node.js 22+
 - Rust (rustc / cargo)
-- Windows ARM64 向けビルド（`npm run build`）: WSL からは `cargo-xwin` でクロスコンパイルする。初回は NSIS / LLVM / Windows SDK を取得する
+- Windows x64 / ARM64 向けビルド（`npm run build`）: WSL からは `cargo-xwin` でクロスコンパイルする。初回は NSIS / LLVM / Windows SDK を取得する
 - Android 向けビルド: Android SDK / NDK / JDK（`npm run tauri android init` 後）
 
 ## 開発
@@ -35,19 +35,38 @@ npm run dev
 
 ホスト（WebSocket サーバー起動・QR 表示）は Tauri 実行時のみ使えます。
 
-## Windows ARM64 インストーラ
+## Windows インストーラ
 
 ```bash
 npm run build
 ```
 
-ARM64 Windows 向け NSIS インストーラ（`-setup.exe`）を
-`src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/` に出力します。
+x64（Intel / AMD）と ARM64 の NSIS インストーラ（`-setup.exe`）を出力します。
+
+- `src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis/`
+- `src-tauri/target/aarch64-pc-windows-msvc/release/bundle/nsis/`
+
 WSL から実行した場合は、見つかれば Windows の Downloads にもコピーします。
 インストーラは開発用の自己署名で Authenticode 署名します。ARM 機では先に
 `Install-BlueprintSync.cmd` を一度実行して証明書を信頼すると、「不明な発行元」警告を避けられます。
 Microsoft の発行するコード署名証明書ではないので、未信頼の PC では SmartScreen は残ります。
 フロントエンドだけビルドする場合は `npm run build:web` です。
+
+## Linux / ChromeOS Flex
+
+Linux x86_64 向けの Debian パッケージをビルドし、接続中の USB ドライブへコピーします。
+
+```bash
+npm run build:linux:usb
+```
+
+WSL では Windows がリムーバブルドライブとして認識している USB を自動検出します。Linux では `/media/$USER`、`/run/media/$USER`、または `/mnt/chromeos/removable` 以下にマウントされた USB を検出します。複数の USB がある場合や自動検出できない場合は、マウント先を指定できます。
+
+```bash
+LINUX_USB_MOUNT=/path/to/usb npm run build:linux:usb
+```
+
+生成した `Blueprint Sync_0.1.0_amd64.deb` を USB のルートへコピーし、コピー後に SHA-256 で一致を確認します。
 
 ## Android
 

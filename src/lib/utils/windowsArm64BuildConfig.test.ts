@@ -1,7 +1,14 @@
 import { readFileSync } from "node:fs";
 import path from "node:path";
 import { describe, expect, it } from "vitest";
-import { defaultSignCommand, tauriBuildArgs, WINDOWS_ARM64_TARGET } from "../../../scripts/windowsArm64Build.mjs";
+import {
+  defaultSignCommand,
+  defaultXwinArch,
+  tauriBuildArgs,
+  WINDOWS_ARM64_TARGET,
+  WINDOWS_BUILD_TARGETS,
+  WINDOWS_X64_TARGET,
+} from "../../../scripts/windowsArm64Build.mjs";
 
 describe("package scripts", () => {
   it("syncs SvelteKit before Vite so tsconfig can extend .svelte-kit/tsconfig.json", () => {
@@ -32,16 +39,22 @@ describe("Windows ARM64 build", () => {
     ]);
   });
 
-  it("asks Tauri for an ARM64 NSIS installer", () => {
+  it("asks Tauri for x64 and ARM64 NSIS installers", () => {
+    expect(WINDOWS_X64_TARGET).toBe("x86_64-pc-windows-msvc");
     expect(WINDOWS_ARM64_TARGET).toBe("aarch64-pc-windows-msvc");
-    expect(tauriBuildArgs({ nativeWindows: true })).toEqual([
+    expect(WINDOWS_BUILD_TARGETS).toEqual([
+      "x86_64-pc-windows-msvc",
+      "aarch64-pc-windows-msvc",
+    ]);
+    expect(defaultXwinArch()).toBe("x86_64,aarch64");
+    expect(tauriBuildArgs({ target: WINDOWS_X64_TARGET, nativeWindows: true })).toEqual([
       "build",
       "--target",
-      "aarch64-pc-windows-msvc",
+      "x86_64-pc-windows-msvc",
       "--bundles",
       "nsis",
     ]);
-    expect(tauriBuildArgs({ nativeWindows: false })).toEqual([
+    expect(tauriBuildArgs({ target: WINDOWS_ARM64_TARGET, nativeWindows: false })).toEqual([
       "build",
       "--target",
       "aarch64-pc-windows-msvc",
