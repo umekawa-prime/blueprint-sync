@@ -36,6 +36,10 @@ const {
   mockConvertCadBytesToPdf,
   mockOpenCadFileInJwCad,
   mockRenameFile,
+  mockSupportsBrowserFolders,
+  mockEnsureFolderAccess,
+  mockBrowserFolderName,
+  mockAcquireFolderLock,
 } = vi.hoisted(() => ({
   mockOpenPdfsFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
@@ -66,6 +70,15 @@ const {
   mockShareFileBytes: vi.fn(),
   mockConvertCadBytesToPdf: vi.fn(),
   mockOpenCadFileInJwCad: vi.fn(),
+  mockSupportsBrowserFolders: vi.fn(() => false),
+  mockEnsureFolderAccess: vi.fn(),
+  mockBrowserFolderName: vi.fn(),
+  mockAcquireFolderLock: vi.fn(),
+}));
+
+vi.mock("./folderLock", () => ({
+  acquireFolderLock: mockAcquireFolderLock,
+  releaseFolderLock: vi.fn(),
 }));
 
 vi.mock("./fileAccess", () => ({
@@ -84,6 +97,7 @@ vi.mock("./cadImport", async () => {
 vi.mock("./platform", () => ({
   isTauriRuntime: mockIsTauriRuntime,
   usesSandboxProjects: () => mockUsesSandboxProjects(),
+  supportsBrowserFolders: () => mockSupportsBrowserFolders(),
 }));
 
 vi.mock("./projectIo", () => ({
@@ -115,6 +129,8 @@ vi.mock("./projectIo", () => ({
   listProjectFiles: mockListProjectFiles,
   removeDirAll: mockRemoveDirAll,
   listSandboxProjects: mockListSandboxProjects,
+  ensureFolderAccess: mockEnsureFolderAccess,
+  browserFolderName: mockBrowserFolderName,
 }));
 
 vi.mock("./shareFile", () => ({
@@ -164,6 +180,7 @@ import {
   shareCurrentProject,
   convertCadFileToDrawingPdf,
   setProjectWorkflowStatus,
+  resumeAwaitingProjects,
 } from "./projectActions";
 
 function sampleMeta(overrides: Partial<ProjectMeta> = {}): ProjectMeta {
@@ -193,6 +210,10 @@ describe("projectActions", () => {
     vi.clearAllMocks();
     mockIsTauriRuntime.mockReturnValue(true);
     mockUsesSandboxProjects.mockReturnValue(false);
+    mockSupportsBrowserFolders.mockReturnValue(false);
+    mockEnsureFolderAccess.mockResolvedValue("granted");
+    mockAcquireFolderLock.mockResolvedValue({ release: vi.fn() });
+    projectStore.awaitingAccess = [];
     mockListProjectPdfs.mockResolvedValue([]);
     mockShareFileBytes.mockResolvedValue(undefined);
     mockListSandboxProjects.mockResolvedValue([]);
@@ -1526,5 +1547,71 @@ describe("projectActions", () => {
 
     expect(mockLoadOpenSession).not.toHaveBeenCalled();
     expect(projectStore.bootstrapped).toBe(true);
+  });
+
+  describe("browser folders", () => {
+    function bundleBytes(overrides: Partial<ProjectMeta> = {}): Uint8Array {
+      return zipSync({
+        ".blueprint-sync/project.json": new TextEncoder().encode(
+          JSON.stringify(sampleMeta(overrides)),
+        ),
+        "図面/1F.pdf": new Uint8Array([0x25, 0x50, 0x44, 0x46]),
+      });
+    }
+
+    beforeEach(() => {
+      mockIsTauriRuntime.mockReturnValue(false);
+      mockSupportsBrowserFolders.mockReturnValue(true);
+    });
+
+    it("keeps prompt-state recents and lists them as awaiting access", async () => {
+      mockLoadRecentProjects.mockResolvedValue([{ name: "A", path: "fsa://a" }]);
+      mockLoadOpenSession.mockResolvedValue({ folders: ["fsa://a"], activeFolder: "fsa://a" });
+      mockEnsureFolderAccess.mockResolvedValue("prompt");
+      await bootstrapOpenSession();
+      expect(projectStore.recents.map((r) => r.path)).toEqual(["fsa://a"]);
+      expect(projectStore.awaitingAccess).toEqual(["fsa://a"]);
+      expect(projectStore.tabs).toEqual([]);
+      expect(mockPathExists).not.toHaveBeenCalled();
+    });
+
+    it("opens awaiting projects after the user grants access", async () => {
+      projectStore.awaitingAccess = ["fsa://a"];
+      mockEnsureFolderAccess.mockResolvedValue("granted");
+      mockReadProjectMeta.mockResolvedValue(sampleMeta());
+      await resumeAwaitingProjects();
+      expect(mockEnsureFolderAccess).toHaveBeenCalledWith("fsa://a", true);
+      expect(projectStore.folder).toBe("fsa://a");
+      expect(projectStore.awaitingAccess).toEqual([]);
+    });
+
+    it("refuses to open a folder another tab holds", async () => {
+      mockEnsureFolderAccess.mockResolvedValue("granted");
+      mockAcquireFolderLock.mockResolvedValue(null);
+      projectStore.recents = [{ name: "A", path: "fsa://a" }];
+      await expect(openProject("fsa://a")).rejects.toThrow(
+        "このプロジェクトは別のタブで開いています",
+      );
+      expect(projectStore.recents.map((r) => r.path)).toEqual(["fsa://a"]);
+    });
+
+    it("names a new web project after the chosen folder", async () => {
+      mockPickFolder.mockResolvedValue("fsa://new");
+      mockBrowserFolderName.mockResolvedValue("現場B");
+      await createProject();
+      expect(mockWriteProjectMeta).toHaveBeenCalledWith(
+        "fsa://new",
+        expect.objectContaining({ name: "現場B" }),
+      );
+    });
+
+    it("installs a bundle into a new uniquely named subfolder", async () => {
+      mockPickFolder.mockResolvedValue("fsa://parent");
+      mockPathExists.mockImplementation(async (p: string) => p === "fsa://parent/現場A");
+      mockReadProjectMeta.mockResolvedValue(sampleMeta());
+      await importIncomingFile("現場A.bpsync.zip", bundleBytes({ name: "現場A" }), true);
+      expect(mockRemoveDirAll).not.toHaveBeenCalled();
+      expect(mockInitProjectDir).toHaveBeenCalledWith("fsa://parent/現場A (2)");
+    });
   });
 });

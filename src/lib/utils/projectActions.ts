@@ -5,7 +5,8 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
 import { convertCadBytesToPdf, isCadDrawingBasename, openCadFileInJwCad } from "./cadImport";
-import { isTauriRuntime, usesSandboxProjects } from "./platform";
+import { isTauriRuntime, supportsBrowserFolders, usesSandboxProjects } from "./platform";
+import { acquireFolderLock, releaseFolderLock } from "./folderLock";
 import {
   createProjectMeta,
   dropRecent,
@@ -29,7 +30,9 @@ import {
   type RecentProject,
 } from "./projectFormat";
 import {
+  browserFolderName,
   deleteFile,
+  ensureFolderAccess,
   httpGet,
   initProjectDir,
   listProjectFiles,
@@ -85,7 +88,7 @@ import { resetScheduleState } from "./scheduleActions";
 let restoringSession = false;
 
 function requireTauri() {
-  if (!isTauriRuntime() && !isWebDemo()) {
+  if (!isTauriRuntime() && !supportsBrowserFolders() && !isWebDemo()) {
     throw new Error("プロジェクト機能は Tauri アプリ上でのみ利用できます");
   }
 }
@@ -102,13 +105,14 @@ function resetProjectLists() {
 }
 
 async function persistOpenSession(): Promise<void> {
-  if (restoringSession || !isTauriRuntime()) {
+  if (restoringSession || (!isTauriRuntime() && !supportsBrowserFolders())) {
     return;
   }
   try {
     await saveOpenSession(
       captureOpenSession({
-        tabs: projectStore.tabs,
+        // Folders still waiting for a permission grant stay in the saved session.
+        tabs: [...projectStore.tabs, ...projectStore.awaitingAccess.map((folder) => ({ folder }))],
         activeFolder: projectStore.folder || null,
       }),
     );
@@ -268,13 +272,15 @@ async function openFirstProjectPdf(): Promise<void> {
 }
 
 export async function loadRecentsIntoStore(): Promise<void> {
-  if (!isTauriRuntime()) {
+  const web = supportsBrowserFolders();
+  if (!isTauriRuntime() && !web) {
     return;
   }
   const items = await loadRecentProjects();
   const kept: typeof items = [];
   for (const item of items) {
-    if (await pathExists(item.path)) {
+    // Without permission the browser cannot tell whether a folder still exists, so keep it.
+    if (web || (await pathExists(item.path))) {
       kept.push(item);
     }
   }
@@ -293,7 +299,8 @@ export async function bootstrapOpenSession(): Promise<void> {
     return;
   }
   try {
-    if (!isTauriRuntime()) {
+    const web = supportsBrowserFolders();
+    if (!isTauriRuntime() && !web) {
       return;
     }
     await loadRecentsIntoStore();
@@ -302,10 +309,21 @@ export async function bootstrapOpenSession(): Promise<void> {
     try {
       const session = await loadOpenSession();
       const existing: string[] = [];
+      const awaiting: string[] = [];
       for (const folder of session.folders) {
-        if (await pathExists(folder)) {
+        if (web) {
+          const access = await ensureFolderAccess(folder, false);
+          if (access === "granted") {
+            existing.push(folder);
+          } else if (access === "prompt") {
+            awaiting.push(folder);
+          }
+        } else if (await pathExists(folder)) {
           existing.push(folder);
         }
+      }
+      if (awaiting.length > 0) {
+        projectStore.awaitingAccess = awaiting;
       }
       for (const folder of existing) {
         try {
@@ -355,6 +373,21 @@ export async function setProjectWorkflowStatus(
   projectStore.sandboxProjects = patchProjectStatus(projectStore.sandboxProjects, folder, nextStatus);
 }
 
+export async function resumeAwaitingProjects(): Promise<void> {
+  for (const folder of [...projectStore.awaitingAccess]) {
+    const access = await ensureFolderAccess(folder, true);
+    if (access !== "granted") {
+      continue;
+    }
+    projectStore.awaitingAccess = projectStore.awaitingAccess.filter((item) => item !== folder);
+    try {
+      await openProject(folder);
+    } catch {
+      // openProject already reports the failure and drops broken recents.
+    }
+  }
+}
+
 export async function createProject(name?: string): Promise<void> {
   requireTauri();
   if (usesSandboxProjects()) {
@@ -371,6 +404,10 @@ export async function createProject(name?: string): Promise<void> {
   if (!folder) {
     return;
   }
+  if (supportsBrowserFolders()) {
+    await createProjectAt(folder, createProjectMeta(await browserFolderName(folder)));
+    return;
+  }
   await createProjectAt(folder);
 }
 
@@ -380,14 +417,46 @@ async function createProjectAt(folder: string, meta?: ProjectMeta): Promise<void
     await switchProjectTab(existing.id);
     return;
   }
-  await initProjectDir(folder);
-  const nextMeta = meta ?? createProjectMeta(folderDisplayName(folder));
-  await writeProjectMeta(folder, nextMeta);
-  const pdfs = await listProjectPdfs(folder);
-  const parked = await parkActiveTab();
-  if (!parked) {
-    return;
+  const web = supportsBrowserFolders();
+  if (web) {
+    await requireFolderAccessAndLock(folder);
   }
+  let opened = false;
+  try {
+    await initProjectDir(folder);
+    const nextMeta =
+      meta ??
+      createProjectMeta(web ? await browserFolderName(folder) : folderDisplayName(folder));
+    await writeProjectMeta(folder, nextMeta);
+    const pdfs = await listProjectPdfs(folder);
+    const parked = await parkActiveTab();
+    if (!parked) {
+      return;
+    }
+    opened = true;
+    await finishCreateProject(folder, nextMeta, pdfs);
+  } finally {
+    if (web && !opened) {
+      releaseFolderLock(folder);
+    }
+  }
+}
+
+async function requireFolderAccessAndLock(folder: string): Promise<void> {
+  if ((await ensureFolderAccess(folder, true)) !== "granted") {
+    throw new Error("フォルダへのアクセスが許可されませんでした");
+  }
+  const lock = await acquireFolderLock(folder);
+  if (!lock) {
+    throw new Error("このプロジェクトは別のタブで開いています");
+  }
+}
+
+async function finishCreateProject(
+  folder: string,
+  nextMeta: ProjectMeta,
+  pdfs: string[],
+): Promise<void> {
   projectStore.folder = folder;
   projectStore.meta = nextMeta;
   projectStore.pdfs = pdfs;
@@ -413,6 +482,11 @@ export async function openProject(folder?: string): Promise<void> {
     await switchProjectTab(existing.id);
     return;
   }
+  const web = supportsBrowserFolders();
+  if (web) {
+    await requireFolderAccessAndLock(selected);
+  }
+  let opened = false;
   try {
     const meta = await readProjectMeta(selected);
     await initProjectDir(selected);
@@ -421,6 +495,7 @@ export async function openProject(folder?: string): Promise<void> {
     if (!parked) {
       return;
     }
+    opened = true;
     projectStore.folder = selected;
     projectStore.meta = meta;
     projectStore.pdfs = pdfs;
@@ -449,6 +524,10 @@ export async function openProject(folder?: string): Promise<void> {
       pdfStore.status = friendly;
     }
     throw new Error(friendly);
+  } finally {
+    if (web && !opened) {
+      releaseFolderLock(selected);
+    }
   }
 }
 
@@ -486,6 +565,9 @@ export async function closeProjectTab(tabId: string): Promise<void> {
     if (!persisted) {
       return;
     }
+  }
+  if (supportsBrowserFolders()) {
+    releaseFolderLock(closing.folder);
   }
   const result = closeTabList(projectStore.tabs, tabId, projectStore.activeTabId);
   if (result.closedLast) {
@@ -564,6 +646,9 @@ export async function closeProject(): Promise<void> {
   const persisted = await persistCurrentAnnotations();
   if (!persisted) {
     return;
+  }
+  if (supportsBrowserFolders() && projectStore.folder) {
+    releaseFolderLock(projectStore.folder);
   }
   projectStore.reset();
   pdfStore.clear();
@@ -1157,7 +1242,8 @@ export async function importIncomingFile(
   overwrite = false,
   createFromPdf = false,
 ): Promise<"ok" | "confirm-overwrite" | "ask-new-from-pdf"> {
-  const sandbox = usesSandboxProjects() ? await listSandboxProjects() : [];
+  const sandbox =
+    usesSandboxProjects() && !supportsBrowserFolders() ? await listSandboxProjects() : [];
   const existingIds = sandbox
     .map((item) => item.id)
     .filter((id): id is string => Boolean(id));
@@ -1233,6 +1319,10 @@ async function installBundle(
   files: Record<string, Uint8Array>,
   overwrite: boolean,
 ): Promise<void> {
+  if (supportsBrowserFolders()) {
+    await installBundleIntoBrowserFolder(meta, files);
+    return;
+  }
   const root = (await sandboxProjectsDir()).replace(/[/\\]+$/, "");
   const folder = `${root}/${meta.id}`;
   if (overwrite) {
@@ -1245,3 +1335,26 @@ async function installBundle(
   await openProject(folder);
 }
 
+
+async function installBundleIntoBrowserFolder(
+  meta: ProjectMeta,
+  files: Record<string, Uint8Array>,
+): Promise<void> {
+  const parent = await pickFolder();
+  if (!parent) {
+    return;
+  }
+  const root = parent.replace(/[/\\]+$/, "");
+  const base = meta.name.replace(/[/\\:*?"<>|]/g, "_").trim() || "無題プロジェクト";
+  // Never overwrite in the browser: pick the first free sibling name instead.
+  let name = base;
+  for (let n = 2; await pathExists(`${root}/${name}`); n += 1) {
+    name = `${base} (${n})`;
+  }
+  const folder = `${root}/${name}`;
+  await initProjectDir(folder);
+  for (const [rel, data] of Object.entries(files)) {
+    await writeBinaryFile(`${folder}/${rel}`, data);
+  }
+  await openProject(folder);
+}

@@ -12,6 +12,7 @@ class ProjectStore {
   tabs = $state<ProjectTab[]>([]);
   activeTabId = $state<string | null>(null);
   bootstrapped = $state(false);
+  awaitingAccess = $state<string[]>([]);
 
   get isOpen() {
     return Boolean(this.folder && this.meta);
