@@ -1,6 +1,7 @@
 <script lang="ts">
   import { onMount } from "svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
+  import { pwaStore } from "$lib/stores/pwaStore.svelte";
   import {
     createProject,
     importIncomingFile,
@@ -176,6 +177,10 @@
         ? "プロジェクトを作成するか、共有された一式を取り込んでください"
         : "先にローカルのプロジェクトフォルダを開いてください"}
     </p>
+
+    {#if pwaStore.offlineReady}
+      <p class="mb-3 text-xs text-emerald-300">オフラインで使えます</p>
+    {/if}
 
     {#if !ready}
       <p class="mb-3 text-sm text-slate-400">起動しています…</p>

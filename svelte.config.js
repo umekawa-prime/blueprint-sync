@@ -20,6 +20,10 @@ const config = {
     version: {
       name: version,
     },
+    // Registered manually (pwa.ts) so the Tauri build never installs one.
+    serviceWorker: {
+      register: false,
+    },
   },
 };
 

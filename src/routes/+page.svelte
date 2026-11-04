@@ -35,6 +35,7 @@
   import { listenIncomingFiles } from "$lib/utils/incomingShare";
   import { drawingLayerHiddenClass, PROJECT_SIDEBAR_WIDTH, TODO_PANEL_WIDTH } from "$lib/utils/chromeLayout";
   import { toggleTodoPanel } from "$lib/utils/todoActions";
+  import { registerWebServiceWorker } from "$lib/utils/pwa";
   import { startWebAutoSave } from "$lib/utils/webAutoSave.svelte";
   import { prefersCameraCapture, usesSystemCamera } from "$lib/utils/platform";
   import {
@@ -178,6 +179,7 @@
       unlisten = fn;
     });
     void bootstrapOpenSession();
+    void registerWebServiceWorker();
     const stopAutoSave = startWebAutoSave();
     return () => {
       window.removeEventListener("keydown", onKey);
