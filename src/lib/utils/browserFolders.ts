@@ -49,7 +49,40 @@ async function idbRequest<T>(
   });
 }
 
+async function isSame(stored: unknown, handle: FileSystemDirectoryHandle): Promise<boolean> {
+  const fn = (stored as { isSameEntry?: (o: FileSystemHandle) => Promise<boolean> } | null)
+    ?.isSameEntry;
+  if (typeof fn !== "function") return false;
+  try {
+    return await fn.call(stored, handle);
+  } catch {
+    return false;
+  }
+}
+
+// 同じ実フォルダを選び直しても同じ rootId を返す（タブ排他・重複タブ防止の前提）。
+async function findExistingRootId(handle: FileSystemDirectoryHandle): Promise<string | null> {
+  for (const [id, stored] of handleCache) {
+    if (await isSame(stored, handle)) return id;
+  }
+  try {
+    const keys = await idbRequest<IDBValidKey[]>(HANDLES, "readonly", (s) => s.getAllKeys());
+    const values = await idbRequest<unknown[]>(HANDLES, "readonly", (s) => s.getAll());
+    for (let i = 0; i < keys.length; i += 1) {
+      if (await isSame(values[i], handle)) return String(keys[i]);
+    }
+  } catch {
+    // 保存済みハンドルを読めない場合は新規登録にフォールバックする。
+  }
+  return null;
+}
+
 export async function registerRootHandle(handle: FileSystemDirectoryHandle): Promise<string> {
+  const existing = await findExistingRootId(handle);
+  if (existing) {
+    handleCache.set(existing, handle);
+    return `${FSA_SCHEME}${existing}`;
+  }
   const rootId = crypto.randomUUID();
   handleCache.set(rootId, handle);
   try {

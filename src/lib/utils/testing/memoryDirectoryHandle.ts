@@ -98,6 +98,9 @@ function dirHandle(dir: MemDir): FileSystemDirectoryHandle {
         yield [name, child.kind === "directory" ? dirHandle(child) : fileHandle(child)] as const;
       }
     },
+    async isSameEntry(other: unknown) {
+      return (other as { __dir?: MemDir } | null)?.__dir === dir;
+    },
     async queryPermission() {
       return dir.permission;
     },

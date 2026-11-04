@@ -29,6 +29,21 @@ describe("browserFolders", () => {
     expect(await readMemoryTree(root)).toEqual({ "x.txt": "x" });
   });
 
+  it("returns the same path when the same directory is registered twice", async () => {
+    const root = createMemoryDirectory("現場A");
+    const child = await root.getDirectoryHandle("sub", { create: true });
+    const again = await root.getDirectoryHandle("sub");
+    const first = await registerRootHandle(child);
+    expect(await registerRootHandle(again)).toBe(first);
+    expect(await registerRootHandle(child)).toBe(first);
+  });
+
+  it("gives different directories different paths", async () => {
+    const a = await registerRootHandle(createMemoryDirectory("A"));
+    const b = await registerRootHandle(createMemoryDirectory("A"));
+    expect(a).not.toBe(b);
+  });
+
   it("reports prompt without requesting, and requests when asked", async () => {
     const root = createMemoryDirectory();
     const path = await registerRootHandle(root);
