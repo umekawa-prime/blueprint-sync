@@ -5,11 +5,13 @@
   import {
     createProject,
     importIncomingFile,
+    incomingFolderPick,
     loadRecentsIntoStore,
     openProject,
     resumeAwaitingProjects,
     setProjectWorkflowStatus,
     startWebDemo,
+    type IncomingFolderPick,
   } from "$lib/utils/projectActions";
   import { pickImportFiles } from "$lib/utils/fileAccess";
   import { openFolderInCursor } from "$lib/utils/cursorOpen";
@@ -35,6 +37,8 @@
   let sandbox = $state(false);
   let browserFolders = $state(false);
   let newName = $state("");
+  // Web: imported files that still need a folder chosen by its own click.
+  let pendingImports = $state<Array<{ name: string; bytes: Uint8Array; kind: IncomingFolderPick }>>([]);
 
   onMount(() => {
     tauri = isTauriRuntime();
@@ -83,6 +87,11 @@
     await run(async () => {
       const files = await pickImportFiles();
       for (const file of files) {
+        const kind = incomingFolderPick(file.name, file.bytes);
+        if (kind) {
+          pendingImports = [...pendingImports, { ...file, kind }];
+          continue;
+        }
         const result = await importIncomingFile(file.name, file.bytes);
         if (result === "confirm-overwrite") {
           if (window.confirm("同じプロジェクトが既にあります。上書きしますか？")) {
@@ -96,6 +105,17 @@
           }
         }
       }
+    });
+  }
+
+  function onPickImportFolder(index: number) {
+    const item = pendingImports[index];
+    if (!item) {
+      return;
+    }
+    pendingImports = pendingImports.filter((_, i) => i !== index);
+    void run(async () => {
+      await importIncomingFile(item.name, item.bytes, false, item.kind === "new-from-pdf");
     });
   }
 
@@ -215,6 +235,18 @@
       >
         一式を取り込む
       </button>
+      {#each pendingImports as item, index (index)}
+        <button
+          type="button"
+          class="mb-3 w-full rounded bg-amber-600 px-3 py-2 text-sm"
+          disabled={busy}
+          onclick={() => onPickImportFolder(index)}
+        >
+          {item.kind === "bundle"
+            ? `「${item.name}」の保存先フォルダを選ぶ`
+            : `「${item.name}」で新規プロジェクト（フォルダを選ぶ）`}
+        </button>
+      {/each}
       <button
         class="mb-6 w-full rounded px-3 py-1 text-xs text-slate-400 hover:text-slate-200"
         disabled={busy}

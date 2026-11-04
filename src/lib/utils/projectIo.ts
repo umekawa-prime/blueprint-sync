@@ -17,12 +17,14 @@ import {
   folderAccess,
   loadWebValue,
   pickBrowserFolder,
+  registerBrowserSubfolder,
   saveWebValue,
   type FolderAccess,
 } from "./browserFolders";
 import { EMPTY_OPEN_SESSION, parseOpenSession, type OpenSession } from "./projectSession";
 import { shouldDeleteSourceAfterCopy } from "./projectMove";
 import {
+  WEB_DEMO_FOLDER,
   isWebDemo,
   webDelete,
   webHas,
@@ -31,12 +33,29 @@ import {
   webReadBytes,
 } from "./webDemoFs";
 
-function useWebDemoFs(): boolean {
+function demoActive(): boolean {
   return isWebDemo() && !isTauriRuntime();
 }
 
+/**
+ * The demo is decided per path: a real browser folder (`fsa://`) stays on disk even while
+ * the in-memory demo is running in another tab of this window.
+ */
+function useWebDemoFs(...paths: string[]): boolean {
+  return demoActive() && !paths.some((path) => isBrowserFsPath(path));
+}
+
 function useWebStorage(): boolean {
-  return !isTauriRuntime() && !useWebDemoFs();
+  if (isTauriRuntime()) {
+    return false;
+  }
+  // Browsers with real folders keep recents / session even while the demo is running.
+  return supportsBrowserFolders() || !demoActive();
+}
+
+function isDemoPath(path: string): boolean {
+  const normalized = path.replaceAll("\\", "/");
+  return normalized === WEB_DEMO_FOLDER || normalized.startsWith(`${WEB_DEMO_FOLDER}/`);
 }
 
 export { browserFolderName };
@@ -48,12 +67,20 @@ export async function ensureFolderAccess(folder: string, request: boolean): Prom
   return folderAccess(folder, request);
 }
 
-export async function pickFolder(): Promise<string | null> {
-  if (useWebDemoFs()) {
-    return "/demo";
+/** Browser folders only: re-root `fsa://<parent>/<child>` as `fsa://<child>` (native paths pass through). */
+export async function adoptBrowserFolder(folder: string): Promise<string> {
+  if (!isBrowserFsPath(folder)) {
+    return folder;
   }
+  return registerBrowserSubfolder(folder);
+}
+
+export async function pickFolder(): Promise<string | null> {
   if (supportsBrowserFolders()) {
     return pickBrowserFolder();
+  }
+  if (demoActive()) {
+    return WEB_DEMO_FOLDER;
   }
   if (isTauriRuntime() && !usesRfdFileDialog()) {
     return null;
@@ -62,7 +89,7 @@ export async function pickFolder(): Promise<string | null> {
 }
 
 export async function initProjectDir(folder: string): Promise<void> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(folder)) {
     return;
   }
   if (isBrowserFsPath(folder)) {
@@ -72,7 +99,7 @@ export async function initProjectDir(folder: string): Promise<void> {
 }
 
 export async function listProjectPdfs(folder: string): Promise<string[]> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(folder)) {
     return webListPdfs(folder);
   }
   if (isBrowserFsPath(folder)) {
@@ -82,7 +109,7 @@ export async function listProjectPdfs(folder: string): Promise<string[]> {
 }
 
 export async function copyFileIntoFolder(source: string, folder: string): Promise<string> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(source, folder)) {
     const name = source.replaceAll("\\", "/").split("/").pop() ?? "file.pdf";
     const dest = `${folder.replace(/\/$/, "")}/${name}`;
     webPut(dest, webReadBytes(source));
@@ -95,7 +122,7 @@ export async function copyFileIntoFolder(source: string, folder: string): Promis
 }
 
 export async function deleteFile(path: string): Promise<void> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(path)) {
     webDelete(path);
     return;
   }
@@ -110,7 +137,7 @@ export async function renameFile(from: string, to: string): Promise<void> {
   if (from === to) {
     return;
   }
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(from, to)) {
     const bytes = webReadBytes(from);
     webPut(to, bytes);
     webDelete(from);
@@ -136,50 +163,54 @@ export async function moveFileIntoFolder(source: string, folder: string): Promis
 }
 
 export async function loadRecentProjects(): Promise<RecentProject[]> {
-  if (useWebDemoFs()) {
-    return [];
-  }
   if (useWebStorage()) {
     return loadWebValue<RecentProject[]>("recents", []);
+  }
+  if (demoActive()) {
+    return [];
   }
   return invoke<RecentProject[]>("load_recent_projects");
 }
 
 export async function saveRecentProjects(items: RecentProject[]): Promise<void> {
-  if (useWebDemoFs()) {
+  if (useWebStorage()) {
+    // The in-memory demo folder never survives a reload, so it is not remembered.
+    await saveWebValue("recents", items.filter((item) => !isDemoPath(item.path)));
     return;
   }
-  if (useWebStorage()) {
-    await saveWebValue("recents", items);
+  if (demoActive()) {
     return;
   }
   await invoke("save_recent_projects", { items });
 }
 
 export async function loadOpenSession(): Promise<OpenSession> {
-  if (useWebDemoFs()) {
-    return EMPTY_OPEN_SESSION;
-  }
   if (useWebStorage()) {
     return parseOpenSession(JSON.stringify(await loadWebValue("session", EMPTY_OPEN_SESSION)));
+  }
+  if (demoActive()) {
+    return EMPTY_OPEN_SESSION;
   }
   const raw = await invoke<OpenSession>("load_open_session");
   return parseOpenSession(JSON.stringify(raw ?? EMPTY_OPEN_SESSION));
 }
 
 export async function saveOpenSession(session: OpenSession): Promise<void> {
-  if (useWebDemoFs()) {
+  if (useWebStorage()) {
+    const folders = session.folders.filter((folder) => !isDemoPath(folder));
+    const activeFolder =
+      session.activeFolder && !isDemoPath(session.activeFolder) ? session.activeFolder : null;
+    await saveWebValue("session", { folders, activeFolder });
     return;
   }
-  if (useWebStorage()) {
-    await saveWebValue("session", session);
+  if (demoActive()) {
     return;
   }
   await invoke("save_open_session", { session });
 }
 
 export async function pathExists(path: string): Promise<boolean> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(path)) {
     return webHas(path);
   }
   if (isBrowserFsPath(path)) {
@@ -189,7 +220,7 @@ export async function pathExists(path: string): Promise<boolean> {
 }
 
 export async function readTextFile(path: string): Promise<string> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(path)) {
     return new TextDecoder().decode(webReadBytes(path));
   }
   if (isBrowserFsPath(path)) {
@@ -200,7 +231,7 @@ export async function readTextFile(path: string): Promise<string> {
 }
 
 export async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(path)) {
     webPut(path, bytes);
     return;
   }
@@ -239,7 +270,7 @@ export async function httpGet(url: string): Promise<{
 }
 
 export async function readBinaryFile(path: string): Promise<Uint8Array> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(path)) {
     return webReadBytes(path);
   }
   if (isBrowserFsPath(path)) {
@@ -302,7 +333,7 @@ export async function sandboxProjectsDir(): Promise<string> {
 }
 
 export async function listProjectFiles(folder: string): Promise<string[]> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(folder)) {
     return [];
   }
   if (isBrowserFsPath(folder)) {
@@ -312,7 +343,7 @@ export async function listProjectFiles(folder: string): Promise<string[]> {
 }
 
 export async function removeDirAll(path: string): Promise<void> {
-  if (useWebDemoFs()) {
+  if (useWebDemoFs(path)) {
     return;
   }
   if (isBrowserFsPath(path)) {

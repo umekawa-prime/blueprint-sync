@@ -108,12 +108,8 @@ export async function importBrowserPdfIntoProject(
   if (!persisted) {
     return false;
   }
-  const { invoke } = await import("@tauri-apps/api/core");
   const bytes = await readFileAsBytes(file);
-  await invoke("write_file_bytes", {
-    path: destPath,
-    bytes: Array.from(bytes),
-  });
+  await writeBinaryFile(destPath, bytes);
   projectStore.pdfs = await listProjectPdfs(projectStore.folder);
   await openProjectPdf(relPath);
   return true;

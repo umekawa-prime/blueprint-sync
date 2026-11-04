@@ -41,6 +41,7 @@ const {
   mockEnsureFolderAccess,
   mockBrowserFolderName,
   mockAcquireFolderLock,
+  mockAdoptBrowserFolder,
 } = vi.hoisted(() => ({
   mockOpenPdfsFromDisk: vi.fn(),
   mockIsTauriRuntime: vi.fn(() => true),
@@ -75,6 +76,7 @@ const {
   mockEnsureFolderAccess: vi.fn(),
   mockBrowserFolderName: vi.fn(),
   mockAcquireFolderLock: vi.fn(),
+  mockAdoptBrowserFolder: vi.fn(async (folder: string) => folder),
 }));
 
 vi.mock("./folderLock", () => ({
@@ -132,6 +134,7 @@ vi.mock("./projectIo", () => ({
   listSandboxProjects: mockListSandboxProjects,
   ensureFolderAccess: mockEnsureFolderAccess,
   browserFolderName: mockBrowserFolderName,
+  adoptBrowserFolder: mockAdoptBrowserFolder,
 }));
 
 vi.mock("./shareFile", () => ({
@@ -182,6 +185,7 @@ import {
   convertCadFileToDrawingPdf,
   setProjectWorkflowStatus,
   resumeAwaitingProjects,
+  incomingFolderPick,
 } from "./projectActions";
 
 function sampleMeta(overrides: Partial<ProjectMeta> = {}): ProjectMeta {
@@ -1613,6 +1617,79 @@ describe("projectActions", () => {
       await importIncomingFile("現場A.bpsync.zip", bundleBytes({ name: "現場A" }), true);
       expect(mockRemoveDirAll).not.toHaveBeenCalled();
       expect(mockInitProjectDir).toHaveBeenCalledWith("fsa://parent/現場A (2)");
+    });
+
+    it("opens an installed bundle as its own root so re-picking it finds the same tab", async () => {
+      mockPickFolder.mockResolvedValue("fsa://parent");
+      mockPathExists.mockResolvedValue(false);
+      mockReadProjectMeta.mockResolvedValue(sampleMeta());
+      mockAdoptBrowserFolder.mockResolvedValueOnce("fsa://child");
+      await importIncomingFile("現場A.bpsync.zip", bundleBytes({ name: "現場A" }));
+      expect(mockAdoptBrowserFolder).toHaveBeenCalledWith("fsa://parent/現場A");
+      expect(mockAcquireFolderLock).toHaveBeenCalledWith("fsa://child");
+      expect(projectStore.folder).toBe("fsa://child");
+      expect(projectStore.tabs.map((tab) => tab.folder)).toEqual(["fsa://child"]);
+    });
+
+    it("defers bundles and new-from-PDF imports to a separate folder-pick click", () => {
+      const pdf = new Uint8Array([0x25, 0x50, 0x44, 0x46]);
+      expect(incomingFolderPick("現場A.bpsync.zip", bundleBytes())).toBe("bundle");
+      expect(incomingFolderPick("A.pdf", pdf)).toBe("new-from-pdf");
+      expect(mockPickFolder).not.toHaveBeenCalled();
+      mockIsTauriRuntime.mockReturnValue(true);
+      mockSupportsBrowserFolders.mockReturnValue(false);
+      expect(incomingFolderPick("現場A.bpsync.zip", bundleBytes())).toBeNull();
+      expect(incomingFolderPick("A.pdf", pdf)).toBeNull();
+    });
+
+    it("requests every folder permission before opening any project", async () => {
+      projectStore.awaitingAccess = ["fsa://a", "fsa://b", "fsa://c"];
+      const order: string[] = [];
+      mockEnsureFolderAccess.mockImplementation(async (folder: string) => {
+        order.push(`access:${folder}`);
+        return folder === "fsa://b" ? "prompt" : "granted";
+      });
+      mockReadProjectMeta.mockImplementation(async (folder: string) => {
+        order.push(`open:${folder}`);
+        return sampleMeta({ id: folder, name: folder });
+      });
+      await resumeAwaitingProjects();
+      // Every prompt is requested from the click before the first (heavy) project open.
+      // openProject re-checks access afterwards, which no longer prompts once granted.
+      expect(order.slice(0, 3)).toEqual(["access:fsa://a", "access:fsa://b", "access:fsa://c"]);
+      expect(order.filter((step) => step.startsWith("open:"))).toEqual([
+        "open:fsa://a",
+        "open:fsa://c",
+      ]);
+      expect(mockEnsureFolderAccess).toHaveBeenCalledWith("fsa://b", true);
+      expect(projectStore.awaitingAccess).toEqual(["fsa://b"]);
+      expect(projectStore.tabs.map((tab) => tab.folder)).toEqual(["fsa://a", "fsa://c"]);
+    });
+
+    it("keeps folders another tab holds in the saved session", async () => {
+      mockLoadOpenSession.mockResolvedValue({
+        folders: ["fsa://mine", "fsa://other"],
+        activeFolder: "fsa://other",
+      });
+      mockEnsureFolderAccess.mockResolvedValue("granted");
+      mockReadProjectMeta.mockImplementation(async (folder: string) =>
+        sampleMeta({ id: folder, name: folder }),
+      );
+      mockAcquireFolderLock.mockImplementation(async (folder: string) =>
+        folder === "fsa://other" ? null : { release: vi.fn() },
+      );
+      await bootstrapOpenSession();
+      expect(projectStore.tabs.map((tab) => tab.folder)).toEqual(["fsa://mine"]);
+      const saved = mockSaveOpenSession.mock.calls.at(-1)?.[0];
+      expect(saved.folders).toEqual(["fsa://mine", "fsa://other"]);
+    });
+
+    it("never takes a cross-tab folder lock for the in-memory demo folder", async () => {
+      mockReadProjectMeta.mockResolvedValue(sampleMeta());
+      await openProject("/demo");
+      expect(mockAcquireFolderLock).not.toHaveBeenCalled();
+      expect(mockEnsureFolderAccess).not.toHaveBeenCalled();
+      expect(projectStore.folder).toBe("/demo");
     });
   });
 });

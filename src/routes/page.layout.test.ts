@@ -313,5 +313,19 @@ describe("editor shell layout", () => {
     const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
     expect(home).toMatch(/\{#if tauri\}[\s\S]*openFolderInCursor/);
     expect(sidebar).toMatch(/isTauriRuntime\(\)[\s\S]*revealProjectFileInExplorer/);
+    expect(sidebar).toMatch(/\{#if nativeShell\}\s*<button[^]*?onOpenInCursor\(\)[^]*?Cursorで開く\s*<\/button>\s*\{\/if\}/);
+  });
+
+  it("starts autosave before restoring the session so resume() can reschedule", () => {
+    const page = readFileSync(path.resolve("src/routes/+page.svelte"), "utf8");
+    expect(page.indexOf("startWebAutoSave()")).toBeGreaterThan(-1);
+    expect(page.indexOf("startWebAutoSave()")).toBeLessThan(page.indexOf("void bootstrapOpenSession()"));
+  });
+
+  it("opens the web import folder dialog from its own click, not after the file dialog", () => {
+    const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
+    expect(home).toContain("incomingFolderPick");
+    expect(home).toContain("の保存先フォルダを選ぶ");
+    expect(home).toContain("onPickImportFolder(index)");
   });
 });

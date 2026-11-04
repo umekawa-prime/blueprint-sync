@@ -30,7 +30,9 @@ import {
   type ProjectWorkflowStatus,
   type RecentProject,
 } from "./projectFormat";
+import { isBrowserFsPath } from "./browserFs";
 import {
+  adoptBrowserFolder,
   browserFolderName,
   deleteFile,
   ensureFolderAccess,
@@ -87,6 +89,11 @@ import { loadProjectNotes, resetNoteState } from "./noteActions";
 import { resetScheduleState } from "./scheduleActions";
 
 let restoringSession = false;
+// Folders from the saved session that another browser tab holds the lock for. They stay in
+// the shared session so this tab does not erase the other tab's projects.
+let heldElsewhere: string[] = [];
+
+class FolderHeldElsewhereError extends Error {}
 
 function requireTauri() {
   if (!isTauriRuntime() && !supportsBrowserFolders() && !isWebDemo()) {
@@ -113,7 +120,10 @@ async function persistOpenSession(): Promise<void> {
     await saveOpenSession(
       captureOpenSession({
         // Folders still waiting for a permission grant stay in the saved session.
-        tabs: [...projectStore.tabs, ...projectStore.awaitingAccess.map((folder) => ({ folder }))],
+        tabs: [
+          ...projectStore.tabs,
+          ...[...projectStore.awaitingAccess, ...heldElsewhere].map((folder) => ({ folder })),
+        ],
         activeFolder: projectStore.folder || null,
       }),
     );
@@ -305,6 +315,7 @@ async function bootstrapOpenSessionUnguarded(): Promise<void> {
       return;
     }
     await loadRecentsIntoStore();
+    heldElsewhere = [];
     restoringSession = true;
     let restored = false;
     try {
@@ -329,8 +340,11 @@ async function bootstrapOpenSessionUnguarded(): Promise<void> {
       for (const folder of existing) {
         try {
           await openProject(folder);
-        } catch {
-          // Skip folders that disappeared or have a broken project.json.
+        } catch (error) {
+          if (error instanceof FolderHeldElsewhereError) {
+            heldElsewhere = [...heldElsewhere, folder];
+          }
+          // Otherwise skip folders that disappeared or have a broken project.json.
         }
       }
       const active =
@@ -375,12 +389,17 @@ export async function setProjectWorkflowStatus(
 }
 
 export async function resumeAwaitingProjects(): Promise<void> {
-  for (const folder of [...projectStore.awaitingAccess]) {
-    const access = await ensureFolderAccess(folder, true);
-    if (access !== "granted") {
-      continue;
-    }
-    projectStore.awaitingAccess = projectStore.awaitingAccess.filter((item) => item !== folder);
+  const folders = [...projectStore.awaitingAccess];
+  // Ask for every folder straight from the click: opening a project first would let the
+  // click's user activation expire and the later prompts would fail.
+  const results = await Promise.all(
+    folders.map((folder) => ensureFolderAccess(folder, true).catch(() => "prompt" as const)),
+  );
+  const granted = folders.filter((_, index) => results[index] === "granted");
+  projectStore.awaitingAccess = projectStore.awaitingAccess.filter(
+    (item) => !granted.includes(item),
+  );
+  for (const folder of granted) {
     try {
       await openProject(folder);
     } catch {
@@ -405,7 +424,7 @@ async function createProjectUnguarded(name?: string): Promise<void> {
   if (!folder) {
     return;
   }
-  if (supportsBrowserFolders()) {
+  if (isBrowserFsPath(folder)) {
     await createProjectAt(folder, createProjectMeta(await browserFolderName(folder)));
     return;
   }
@@ -418,7 +437,7 @@ async function createProjectAt(folder: string, meta?: ProjectMeta): Promise<void
     await switchProjectTab(existing.id);
     return;
   }
-  const web = supportsBrowserFolders();
+  const web = isBrowserFsPath(folder);
   if (web) {
     await requireFolderAccessAndLock(folder);
   }
@@ -449,7 +468,7 @@ async function requireFolderAccessAndLock(folder: string): Promise<void> {
   }
   const lock = await acquireFolderLock(folder);
   if (!lock) {
-    throw new Error("このプロジェクトは別のタブで開いています");
+    throw new FolderHeldElsewhereError("このプロジェクトは別のタブで開いています");
   }
 }
 
@@ -483,7 +502,7 @@ async function openProjectUnguarded(folder?: string): Promise<void> {
     await switchProjectTab(existing.id);
     return;
   }
-  const web = supportsBrowserFolders();
+  const web = isBrowserFsPath(selected);
   if (web) {
     await requireFolderAccessAndLock(selected);
   }
@@ -567,9 +586,10 @@ async function closeProjectTabUnguarded(tabId: string): Promise<void> {
       return;
     }
   }
-  if (supportsBrowserFolders()) {
+  if (isBrowserFsPath(closing.folder)) {
     releaseFolderLock(closing.folder);
   }
+  heldElsewhere = heldElsewhere.filter((folder) => !sameProjectFolder(folder, closing.folder));
   const result = closeTabList(projectStore.tabs, tabId, projectStore.activeTabId);
   if (result.closedLast) {
     projectStore.reset();
@@ -648,7 +668,7 @@ async function closeProjectUnguarded(): Promise<void> {
   if (!persisted) {
     return;
   }
-  if (supportsBrowserFolders() && projectStore.folder) {
+  if (isBrowserFsPath(projectStore.folder)) {
     releaseFolderLock(projectStore.folder);
   }
   projectStore.reset();
@@ -1240,6 +1260,27 @@ export async function pickAndImportIncoming(): Promise<string> {
   return last;
 }
 
+export type IncomingFolderPick = "bundle" | "new-from-pdf";
+
+/**
+ * Browser folders only: does importing this file need a folder dialog? The dialog must be
+ * opened by its own click (a file dialog or confirm() before it lets the click's user
+ * activation expire), so the caller defers these files to a 「保存先を選ぶ」 button.
+ */
+export function incomingFolderPick(name: string, bytes: Uint8Array): IncomingFolderPick | null {
+  if (!supportsBrowserFolders()) {
+    return null;
+  }
+  const plan = planIncoming({ name, bytes, projectOpen: projectStore.isOpen, existingIds: [] });
+  if (plan.action === "install-project" || plan.action === "overwrite-project") {
+    return "bundle";
+  }
+  if (plan.action === "ask-new-from-pdf") {
+    return "new-from-pdf";
+  }
+  return null;
+}
+
 export async function importIncomingFile(
   name: string,
   bytes: Uint8Array,
@@ -1360,7 +1401,8 @@ async function installBundleIntoBrowserFolder(
   for (const [rel, data] of Object.entries(files)) {
     await writeBinaryFile(`${folder}/${rel}`, data);
   }
-  await openProject(folder);
+  // Open it as its own root so re-picking the folder later finds the same tab and lock.
+  await openProject(await adoptBrowserFolder(folder));
 }
 
 export function openProjectPdf(...args: Parameters<typeof openProjectPdfUnguarded>): ReturnType<typeof openProjectPdfUnguarded> {

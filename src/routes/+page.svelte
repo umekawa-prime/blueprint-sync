@@ -178,9 +178,10 @@
     void listenIncomingFiles().then((fn) => {
       unlisten = fn;
     });
+    // Start autosave first so the gate's resume() after bootstrap reschedules pending saves.
+    const stopAutoSave = startWebAutoSave();
     void bootstrapOpenSession();
     void registerWebServiceWorker();
-    const stopAutoSave = startWebAutoSave();
     return () => {
       window.removeEventListener("keydown", onKey);
       unbind();

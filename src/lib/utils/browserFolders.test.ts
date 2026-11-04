@@ -8,6 +8,7 @@ import {
   folderAccess,
   loadWebValue,
   pickBrowserFolder,
+  registerBrowserSubfolder,
   registerRootHandle,
   resolveRootHandle,
   resetBrowserFoldersForTest,
@@ -52,6 +53,31 @@ describe("browserFolders", () => {
     setPermission(root, "prompt", { onRequest: "granted" });
     expect(await folderAccess(path, true)).toBe("granted");
     expect(await folderAccess("fsa://00000000-0000-0000-0000-000000000000", false)).toBe("missing");
+  });
+
+  it("maps an expired-activation SecurityError from requestPermission to prompt", async () => {
+    const root = createMemoryDirectory();
+    const path = await registerRootHandle(root);
+    setPermission(root, "prompt");
+    const handle = root as unknown as { requestPermission: () => Promise<PermissionState> };
+    handle.requestPermission = vi.fn().mockRejectedValue(new DOMException("no activation", "SecurityError"));
+    expect(await folderAccess(path, true)).toBe("prompt");
+    handle.requestPermission = vi.fn().mockRejectedValue(new DOMException("boom", "InvalidStateError"));
+    await expect(folderAccess(path, true)).rejects.toThrow("boom");
+  });
+
+  it("gives an imported subfolder the same root path as picking it directly", async () => {
+    const parent = createMemoryDirectory("親");
+    const parentPath = await registerRootHandle(parent);
+    await browserFs.initProjectDir(`${parentPath}/現場A`);
+    const adopted = await registerBrowserSubfolder(`${parentPath}/現場A`);
+    expect(adopted).toMatch(/^fsa:\/\/[0-9a-f-]{36}$/);
+    expect(adopted).not.toBe(parentPath);
+    expect(await browserFolderName(adopted)).toBe("現場A");
+    // The user later picks 現場A itself in the folder dialog.
+    const picked = await parent.getDirectoryHandle("現場A");
+    expect(await registerRootHandle(picked)).toBe(adopted);
+    expect(await registerBrowserSubfolder(parentPath)).toBe(parentPath);
   });
 
   it("round-trips recents and session", async () => {

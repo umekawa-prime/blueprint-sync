@@ -91,11 +91,27 @@ describe("projectDrop", () => {
     await expect(importBrowserPdfIntoProject(file)).resolves.toBe(true);
 
     expect(mockPersistCurrentAnnotations).toHaveBeenCalled();
-    expect(mockInvoke).toHaveBeenCalledWith("write_file_bytes", {
-      path: "/projects/a/図面/A.pdf",
-      bytes: [1, 2, 3],
-    });
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "/projects/a/図面/A.pdf",
+      new Uint8Array([1, 2, 3]),
+    );
     expect(projectStore.pdfs).toEqual(["図面/A.pdf"]);
+    expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/A.pdf");
+  });
+
+  it("writes PDFs dropped onto a browser folder project through projectIo, not invoke", async () => {
+    projectStore.folder = "fsa://root-1";
+    const file = new File([new Uint8Array([1, 2, 3])], "A.pdf", {
+      type: "application/pdf",
+    });
+
+    await expect(importBrowserPdfIntoProject(file)).resolves.toBe(true);
+
+    expect(mockWriteBinaryFile).toHaveBeenCalledWith(
+      "fsa://root-1/図面/A.pdf",
+      new Uint8Array([1, 2, 3]),
+    );
+    expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/A.pdf");
   });
 
@@ -108,6 +124,7 @@ describe("projectDrop", () => {
     await expect(importBrowserPdfIntoProject(file)).resolves.toBe(false);
 
     expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
@@ -156,6 +173,7 @@ describe("projectDrop", () => {
 
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
     expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
   });
@@ -167,6 +185,7 @@ describe("projectDrop", () => {
     expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockPersistCurrentAnnotations).not.toHaveBeenCalled();
     expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
 
     projectStore.error = "";
@@ -175,6 +194,7 @@ describe("projectDrop", () => {
     expect(projectStore.error).toBe("PDFファイル名が不正です");
     expect(pdfStore.status).toBe("PDFファイル名が不正です");
     expect(mockInvoke).not.toHaveBeenCalled();
+    expect(mockWriteBinaryFile).not.toHaveBeenCalled();
   });
 
   it("rejects tauri drops with invalid pdf basenames before copying", async () => {

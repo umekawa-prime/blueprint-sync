@@ -504,13 +504,15 @@
   >
     メモ
   </button>
-  <button
-    type="button"
-    class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
-    onclick={() => void onOpenInCursor()}
-  >
-    Cursorで開く
-  </button>
+  {#if nativeShell}
+    <button
+      type="button"
+      class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"
+      onclick={() => void onOpenInCursor()}
+    >
+      Cursorで開く
+    </button>
+  {/if}
   <button
     type="button"
     class="border-t border-slate-800 px-3 py-2 text-xs text-cyan-300"

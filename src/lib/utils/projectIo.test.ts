@@ -56,7 +56,7 @@ import {
   writeProjectMeta,
   writeTextFile,
 } from "./projectIo";
-import { enableWebDemo, resetWebDemo } from "./webDemoFs";
+import { enableWebDemo, resetWebDemo, webHas, webPut } from "./webDemoFs";
 import { createBrowserFs } from "./browserFs";
 import { createMemoryDirectory } from "./testing/memoryDirectoryHandle";
 import { ensureFolderAccess } from "./projectIo";
@@ -179,6 +179,55 @@ describe("projectIo", () => {
     await expect(loadOpenSession()).resolves.toEqual({ folders: [], activeFolder: null });
     await expect(saveOpenSession({ folders: ["/demo"], activeFolder: "/demo" })).resolves.toBeUndefined();
     expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  describe("web demo next to real browser folders", () => {
+    beforeEach(() => {
+      mockIsTauriRuntime.mockReturnValue(false);
+      mockSupportsFolders.mockReturnValue(true);
+      enableWebDemo();
+    });
+
+    it("keeps writing a parked fsa tab to the browser folder after the demo starts", async () => {
+      await writeTextFile("fsa://r1/.blueprint-sync/annotations/A.pdf.json", "{}");
+      expect(webHas("fsa://r1/.blueprint-sync/annotations/A.pdf.json")).toBe(false);
+      expect(await fsHolder.fs.exists("fsa://r1/.blueprint-sync/annotations/A.pdf.json")).toBe(true);
+      expect(await pathExists("fsa://r1/.blueprint-sync/annotations/A.pdf.json")).toBe(true);
+      expect(await readTextFile("fsa://r1/.blueprint-sync/annotations/A.pdf.json")).toBe("{}");
+      await writeProjectMeta("fsa://r1", sampleMeta());
+      expect(await readProjectMeta("fsa://r1")).toEqual(sampleMeta());
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it("still serves demo paths from memory", async () => {
+      webPut("/demo/図面/A.pdf", new Uint8Array([1]));
+      expect(await readBinaryFile("/demo/図面/A.pdf")).toEqual(new Uint8Array([1]));
+      expect(await listProjectPdfs("/demo")).toEqual(["図面/A.pdf"]);
+      await initProjectDir("/demo");
+      expect(mockInvoke).not.toHaveBeenCalled();
+    });
+
+    it("opens the real folder dialog instead of returning the demo folder", async () => {
+      mockPickBrowserFolder.mockResolvedValueOnce("fsa://r3");
+      await expect(pickFolder()).resolves.toBe("fsa://r3");
+    });
+
+    it("keeps recents and session in IndexedDB but never remembers the demo folder", async () => {
+      mockLoadWebValue.mockResolvedValueOnce([{ name: "A", path: "fsa://r1" }]);
+      expect(await loadRecentProjects()).toEqual([{ name: "A", path: "fsa://r1" }]);
+      await saveRecentProjects([
+        { name: "デモ", path: "/demo" },
+        { name: "A", path: "fsa://r1" },
+      ]);
+      expect(mockSaveWebValue).toHaveBeenCalledWith("recents", [{ name: "A", path: "fsa://r1" }]);
+      await saveOpenSession({ folders: ["fsa://r1", "/demo"], activeFolder: "/demo" });
+      expect(mockSaveWebValue).toHaveBeenCalledWith("session", {
+        folders: ["fsa://r1"],
+        activeFolder: null,
+      });
+      mockLoadWebValue.mockResolvedValueOnce({ folders: ["fsa://r1"], activeFolder: "fsa://r1" });
+      expect(await loadOpenSession()).toEqual({ folders: ["fsa://r1"], activeFolder: "fsa://r1" });
+    });
   });
 
   it("reads and writes UTF-8 text through byte commands", async () => {

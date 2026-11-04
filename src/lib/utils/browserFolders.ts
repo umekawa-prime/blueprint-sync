@@ -127,8 +127,30 @@ export async function folderAccess(path: string, request: boolean): Promise<Fold
   }
   const descriptor = { mode: "readwrite" as const };
   let state = await handle.queryPermission(descriptor);
-  if (state === "prompt" && request) state = await handle.requestPermission(descriptor);
+  if (state === "prompt" && request) {
+    try {
+      state = await handle.requestPermission(descriptor);
+    } catch (e) {
+      // The click's user activation expired before the prompt could open: ask again later.
+      if ((e as { name?: string } | null)?.name === "SecurityError") return "prompt";
+      throw e;
+    }
+  }
   return state;
+}
+
+/**
+ * Register a subfolder of a registered folder as its own root (`fsa://<id>`), so that
+ * picking the same folder directly later resolves to the same path and folder lock.
+ */
+export async function registerBrowserSubfolder(path: string): Promise<string> {
+  const { rootId, segments } = parseBrowserFsPath(path);
+  if (segments.length === 0) return path;
+  let dir = await resolveRootHandle(rootId);
+  for (const seg of segments) {
+    dir = await dir.getDirectoryHandle(seg);
+  }
+  return registerRootHandle(dir);
 }
 
 export async function browserFolderName(path: string): Promise<string> {
