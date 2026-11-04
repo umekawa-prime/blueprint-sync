@@ -15,6 +15,7 @@
   } from "$lib/utils/projectActions";
   import { openCurrentProjectInCursor } from "$lib/utils/cursorOpen";
   import { revealProjectFileInExplorer } from "$lib/utils/revealInExplorer";
+  import { isTauriRuntime } from "$lib/utils/platform";
   import { openTodoPanel } from "$lib/utils/todoActions";
   import { todoStore } from "$lib/stores/todoStore.svelte";
   import {
@@ -214,6 +215,8 @@
     openTimer = 0;
     startRename(file);
   }
+
+  const nativeShell = isTauriRuntime();
 
   async function onRevealInExplorer(file: string) {
     contextMenu = null;
@@ -526,17 +529,19 @@
     style="left: {contextMenu.x}px; top: {contextMenu.y}px"
     role="menu"
   >
-    <button
-      type="button"
-      class="block w-full px-3 py-1.5 text-left text-slate-100 hover:bg-slate-700"
-      role="menuitem"
-      onclick={(event) => {
-        event.stopPropagation();
-        void onRevealInExplorer(menuFile);
-      }}
-    >
-      エクスプローラーで表示
-    </button>
+    {#if nativeShell}
+      <button
+        type="button"
+        class="block w-full px-3 py-1.5 text-left text-slate-100 hover:bg-slate-700"
+        role="menuitem"
+        onclick={(event) => {
+          event.stopPropagation();
+          void onRevealInExplorer(menuFile);
+        }}
+      >
+        エクスプローラーで表示
+      </button>
+    {/if}
     {#if isProjectCadRelPath(menuFile)}
       <button
         type="button"

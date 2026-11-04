@@ -298,4 +298,20 @@ describe("editor shell layout", () => {
     expect(help).toContain("Jw_cad の基本");
     expect(help).toContain("PDFに変換");
   });
+
+  it("offers folder actions and an access prompt in supporting browsers", () => {
+    const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
+    expect(home).toContain("supportsBrowserFolders");
+    expect(home).toContain("resumeAwaitingProjects");
+    expect(home).toContain("前回のプロジェクトを再開（フォルダへのアクセスを許可）");
+    expect(home).toContain("このブラウザではフォルダを開けません。Chrome または Edge で開いてください。");
+    expect(home).not.toContain("フォルダ選択は Tauri アプリ上のみです");
+  });
+
+  it("hides native-only actions outside Tauri", () => {
+    const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
+    const sidebar = readFileSync(path.resolve("src/lib/components/ProjectSidebar.svelte"), "utf8");
+    expect(home).toMatch(/\{#if tauri\}[\s\S]*openFolderInCursor/);
+    expect(sidebar).toMatch(/isTauriRuntime\(\)[\s\S]*revealProjectFileInExplorer/);
+  });
 });

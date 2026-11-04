@@ -6,6 +6,7 @@
     importIncomingFile,
     loadRecentsIntoStore,
     openProject,
+    resumeAwaitingProjects,
     setProjectWorkflowStatus,
     startWebDemo,
   } from "$lib/utils/projectActions";
@@ -15,6 +16,7 @@
     isTauriRuntime,
     shouldAutoStartWebDemo,
     shouldOfferBrowserDemo,
+    supportsBrowserFolders,
     usesSandboxProjects,
   } from "$lib/utils/platform";
   import {
@@ -30,11 +32,13 @@
   let ready = $state(false);
   let tauri = $state(false);
   let sandbox = $state(false);
+  let browserFolders = $state(false);
   let newName = $state("");
 
   onMount(() => {
     tauri = isTauriRuntime();
     sandbox = usesSandboxProjects();
+    browserFolders = supportsBrowserFolders(tauri);
     ready = true;
     void loadRecentsIntoStore();
     if (shouldAutoStartWebDemo(window.location.search, tauri)) {
@@ -122,23 +126,25 @@
         <option value={status}>{projectWorkflowLabel(status)}</option>
       {/each}
     </select>
-    {#if tauri && !sandbox}
-      <button
-        type="button"
-        class="mr-2 inline-flex shrink-0 items-center gap-1 rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700 disabled:opacity-50"
-        disabled={busy}
-        title="Cursorで開く"
-        aria-label={`${title} を Cursorで開く`}
-        onclick={(event) => {
-          event.stopPropagation();
-          void run(() => openFolderInCursor(recent.path));
-        }}
-      >
-        <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" aria-hidden="true">
-          <path fill="currentColor" d="M4.2 2.1 20 12 11.4 13.7 7.3 22z" />
-        </svg>
-        Cursor
-      </button>
+    {#if tauri}
+      {#if !sandbox}
+        <button
+          type="button"
+          class="mr-2 inline-flex shrink-0 items-center gap-1 rounded border border-slate-600 px-2 py-1 text-[11px] text-slate-200 hover:bg-slate-700 disabled:opacity-50"
+          disabled={busy}
+          title="Cursorで開く"
+          aria-label={`${title} を Cursorで開く`}
+          onclick={(event) => {
+            event.stopPropagation();
+            void run(() => openFolderInCursor(recent.path));
+          }}
+        >
+          <svg class="h-3.5 w-3.5" viewBox="0 0 24 24" aria-hidden="true">
+            <path fill="currentColor" d="M4.2 2.1 20 12 11.4 13.7 7.3 22z" />
+          </svg>
+          Cursor
+        </button>
+      {/if}
     {/if}
   </li>
 {/snippet}
@@ -173,9 +179,51 @@
 
     {#if !ready}
       <p class="mb-3 text-sm text-slate-400">起動しています…</p>
+    {:else if browserFolders}
+      {#if projectStore.awaitingAccess.length > 0}
+        <button
+          class="mb-3 w-full rounded bg-amber-600 px-3 py-2 text-sm"
+          disabled={busy}
+          onclick={() => run(() => resumeAwaitingProjects())}
+        >
+          前回のプロジェクトを再開（フォルダへのアクセスを許可）
+        </button>
+      {/if}
+      <button
+        class="mb-3 w-full rounded bg-cyan-700 px-3 py-2 text-sm"
+        disabled={busy}
+        onclick={() => run(() => openProject())}
+      >
+        フォルダを開く
+      </button>
+      <button
+        class="mb-3 w-full rounded bg-slate-800 px-3 py-2 text-sm"
+        disabled={busy}
+        onclick={() => run(() => createProject())}
+      >
+        新規プロジェクト（フォルダを選ぶ）
+      </button>
+      <button
+        class="mb-3 w-full rounded bg-slate-800 px-3 py-2 text-sm"
+        disabled={busy}
+        onclick={() => void onImport()}
+      >
+        一式を取り込む
+      </button>
+      <button
+        class="mb-6 w-full rounded px-3 py-1 text-xs text-slate-400 hover:text-slate-200"
+        disabled={busy}
+        onclick={() => run(() => startWebDemo())}
+      >
+        ブラウザで操作確認（デモ）
+      </button>
+
+      {#if projectStore.recents.length > 0}
+        {@render projectGroups(projectStore.recents, (recent) => recent.name || folderDisplayName(recent.path))}
+      {/if}
     {:else if shouldOfferBrowserDemo(tauri)}
       <p class="mb-3 text-sm text-amber-300">
-        フォルダ選択は Tauri アプリ上のみです。ブラウザではデモで操作確認できます。
+        このブラウザではフォルダを開けません。Chrome または Edge で開いてください。
       </p>
       <button
         class="mb-3 w-full rounded bg-cyan-700 px-3 py-2 text-sm"
