@@ -5,6 +5,7 @@ import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
 import type { ProjectMeta, RecentProject } from "./projectFormat";
+import { isAutoSaveSuspended, registerAutoSaveController } from "./autoSaveGate";
 
 const {
   mockOpenPdfsFromDisk,
@@ -1613,5 +1614,52 @@ describe("projectActions", () => {
       expect(mockRemoveDirAll).not.toHaveBeenCalled();
       expect(mockInitProjectDir).toHaveBeenCalledWith("fsa://parent/現場A (2)");
     });
+  });
+});
+
+describe("projectActions autosave gate", () => {
+  beforeEach(() => {
+    projectStore.reset();
+    annotationStore.clear();
+    pdfStore.clear();
+    vi.clearAllMocks();
+    mockIsTauriRuntime.mockReturnValue(true);
+  });
+
+  it("suspends autosave while openProjectPdf switches drawings", async () => {
+    const suspend = vi.fn().mockResolvedValue(undefined);
+    const resume = vi.fn();
+    const off = registerAutoSaveController({ suspend, resume });
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "A.pdf";
+    annotationStore.importByPage({ 0: { a: { id: "a", type: "path" } } });
+    annotationStore.dirty = true;
+    let suspendedDuringWrite = false;
+    mockWriteAnnotationFile.mockImplementation(async () => {
+      suspendedDuringWrite = isAutoSaveSuspended();
+    });
+    mockReadBinaryFile.mockRejectedValue(new Error("stop"));
+
+    await openProjectPdf("B.pdf");
+    off();
+
+    expect(suspend).toHaveBeenCalledTimes(1);
+    expect(suspendedDuringWrite).toBe(true);
+    expect(resume).toHaveBeenCalledTimes(1);
+    expect(isAutoSaveSuspended()).toBe(false);
+  });
+
+  it("keeps dirty when edits arrive during the write", async () => {
+    projectStore.folder = "/projects/a";
+    projectStore.currentPdf = "A.pdf";
+    annotationStore.importByPage({});
+    annotationStore.upsert(0, "a", { id: "a", type: "path" });
+    mockWriteAnnotationFile.mockImplementation(async () => {
+      annotationStore.upsert(0, "b", { id: "b", type: "path" });
+    });
+
+    expect(await persistCurrentAnnotations()).toBe(true);
+
+    expect(annotationStore.dirty).toBe(true);
   });
 });

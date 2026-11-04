@@ -6,6 +6,7 @@ import { viewerApi } from "$lib/stores/viewerApi";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
 import { convertCadBytesToPdf, isCadDrawingBasename, openCadFileInJwCad } from "./cadImport";
 import { isTauriRuntime, supportsBrowserFolders, usesSandboxProjects } from "./platform";
+import { withAutoSaveSuspended } from "./autoSaveGate";
 import { acquireFolderLock, releaseFolderLock } from "./folderLock";
 import {
   createProjectMeta,
@@ -294,7 +295,7 @@ export async function loadRecentsIntoStore(): Promise<void> {
   }
 }
 
-export async function bootstrapOpenSession(): Promise<void> {
+async function bootstrapOpenSessionUnguarded(): Promise<void> {
   if (projectStore.bootstrapped) {
     return;
   }
@@ -388,7 +389,7 @@ export async function resumeAwaitingProjects(): Promise<void> {
   }
 }
 
-export async function createProject(name?: string): Promise<void> {
+async function createProjectUnguarded(name?: string): Promise<void> {
   requireTauri();
   if (usesSandboxProjects()) {
     const trimmed = name?.trim();
@@ -471,7 +472,7 @@ async function finishCreateProject(
   await persistOpenSession();
 }
 
-export async function openProject(folder?: string): Promise<void> {
+async function openProjectUnguarded(folder?: string): Promise<void> {
   requireTauri();
   const selected = folder ?? (await pickFolder());
   if (!selected) {
@@ -531,7 +532,7 @@ export async function openProject(folder?: string): Promise<void> {
   }
 }
 
-export async function switchProjectTab(tabId: string): Promise<void> {
+async function switchProjectTabUnguarded(tabId: string): Promise<void> {
   const target = projectStore.tabs.find((tab) => tab.id === tabId);
   if (!target) {
     return;
@@ -554,7 +555,7 @@ export async function switchProjectTab(tabId: string): Promise<void> {
   await persistOpenSession();
 }
 
-export async function closeProjectTab(tabId: string): Promise<void> {
+async function closeProjectTabUnguarded(tabId: string): Promise<void> {
   const closing = projectStore.tabs.find((tab) => tab.id === tabId);
   if (!closing) {
     return;
@@ -597,7 +598,7 @@ export async function closeProjectTab(tabId: string): Promise<void> {
   await persistOpenSession();
 }
 
-export async function openProjectTab(): Promise<void> {
+async function openProjectTabUnguarded(): Promise<void> {
   requireTauri();
   if (usesSandboxProjects()) {
     return;
@@ -618,7 +619,7 @@ export async function openProjectTab(): Promise<void> {
   await createProjectAt(folder);
 }
 
-export async function showProjectHome(): Promise<void> {
+async function showProjectHomeUnguarded(): Promise<void> {
   if (!projectStore.isOpen || !projectStore.activeTabId) {
     return;
   }
@@ -638,7 +639,7 @@ export async function showProjectHome(): Promise<void> {
   resetProjectLists();
 }
 
-export async function closeProject(): Promise<void> {
+async function closeProjectUnguarded(): Promise<void> {
   if (projectStore.activeTabId) {
     await closeProjectTab(projectStore.activeTabId);
     return;
@@ -728,7 +729,7 @@ export async function removeProjectLink(id: string): Promise<void> {
   }
 }
 
-export async function removeProjectPdf(relPath: string): Promise<void> {
+async function removeProjectPdfUnguarded(relPath: string): Promise<void> {
   const folder = projectStore.folder;
   if (!folder) {
     throw new Error("プロジェクトが開かれていません");
@@ -768,7 +769,7 @@ export async function removeProjectPdf(relPath: string): Promise<void> {
   }
 }
 
-export async function renameProjectFile(relPath: string, nextName: string): Promise<void> {
+async function renameProjectFileUnguarded(relPath: string, nextName: string): Promise<void> {
   const folder = projectStore.folder;
   if (!folder) {
     throw new Error("プロジェクトが開かれていません");
@@ -867,6 +868,7 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
   if (!projectStore.folder || !projectStore.currentPdf) {
     return true;
   }
+  const seqAtStart = annotationStore.editSeq;
   try {
     await writeAnnotationFile(
       projectStore.folder,
@@ -883,7 +885,9 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
         memoPins: annotationStore.exportMemoPins(),
       },
     );
-    annotationStore.dirty = false;
+    if (annotationStore.editSeq === seqAtStart) {
+      annotationStore.dirty = false;
+    }
     return true;
   } catch (error) {
     pdfStore.status = error instanceof Error ? error.message : "注釈の保存に失敗しました";
@@ -893,7 +897,7 @@ export async function persistCurrentAnnotations(): Promise<boolean> {
 
 let openPdfSeq = 0;
 
-export async function openProjectPdf(fileName: string): Promise<void> {
+async function openProjectPdfUnguarded(fileName: string): Promise<void> {
   if (!projectStore.folder) {
     return;
   }
@@ -1011,7 +1015,7 @@ async function makeDemoPdf(title: string): Promise<Uint8Array> {
   return new Uint8Array(await document.save());
 }
 
-export async function startWebDemo(): Promise<void> {
+async function startWebDemoUnguarded(): Promise<void> {
   if (isTauriRuntime()) {
     throw new Error("デモモードはブラウザ専用です");
   }
@@ -1357,4 +1361,52 @@ async function installBundleIntoBrowserFolder(
     await writeBinaryFile(`${folder}/${rel}`, data);
   }
   await openProject(folder);
+}
+
+export function openProjectPdf(...args: Parameters<typeof openProjectPdfUnguarded>): ReturnType<typeof openProjectPdfUnguarded> {
+  return withAutoSaveSuspended(() => openProjectPdfUnguarded(...args));
+}
+
+export function renameProjectFile(...args: Parameters<typeof renameProjectFileUnguarded>): ReturnType<typeof renameProjectFileUnguarded> {
+  return withAutoSaveSuspended(() => renameProjectFileUnguarded(...args));
+}
+
+export function removeProjectPdf(...args: Parameters<typeof removeProjectPdfUnguarded>): ReturnType<typeof removeProjectPdfUnguarded> {
+  return withAutoSaveSuspended(() => removeProjectPdfUnguarded(...args));
+}
+
+export function switchProjectTab(...args: Parameters<typeof switchProjectTabUnguarded>): ReturnType<typeof switchProjectTabUnguarded> {
+  return withAutoSaveSuspended(() => switchProjectTabUnguarded(...args));
+}
+
+export function closeProjectTab(...args: Parameters<typeof closeProjectTabUnguarded>): ReturnType<typeof closeProjectTabUnguarded> {
+  return withAutoSaveSuspended(() => closeProjectTabUnguarded(...args));
+}
+
+export function showProjectHome(...args: Parameters<typeof showProjectHomeUnguarded>): ReturnType<typeof showProjectHomeUnguarded> {
+  return withAutoSaveSuspended(() => showProjectHomeUnguarded(...args));
+}
+
+export function closeProject(...args: Parameters<typeof closeProjectUnguarded>): ReturnType<typeof closeProjectUnguarded> {
+  return withAutoSaveSuspended(() => closeProjectUnguarded(...args));
+}
+
+export function openProject(...args: Parameters<typeof openProjectUnguarded>): ReturnType<typeof openProjectUnguarded> {
+  return withAutoSaveSuspended(() => openProjectUnguarded(...args));
+}
+
+export function createProject(...args: Parameters<typeof createProjectUnguarded>): ReturnType<typeof createProjectUnguarded> {
+  return withAutoSaveSuspended(() => createProjectUnguarded(...args));
+}
+
+export function startWebDemo(...args: Parameters<typeof startWebDemoUnguarded>): ReturnType<typeof startWebDemoUnguarded> {
+  return withAutoSaveSuspended(() => startWebDemoUnguarded(...args));
+}
+
+export function bootstrapOpenSession(...args: Parameters<typeof bootstrapOpenSessionUnguarded>): ReturnType<typeof bootstrapOpenSessionUnguarded> {
+  return withAutoSaveSuspended(() => bootstrapOpenSessionUnguarded(...args));
+}
+
+export function openProjectTab(...args: Parameters<typeof openProjectTabUnguarded>): ReturnType<typeof openProjectTabUnguarded> {
+  return withAutoSaveSuspended(() => openProjectTabUnguarded(...args));
 }

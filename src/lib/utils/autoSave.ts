@@ -66,6 +66,14 @@ export function createAutoSaver(opts: {
       }
       if (running) await running;
     },
+    /** Drop a waiting timer without saving. */
+    cancel() {
+      clearTimer();
+    },
+    /** Resolves once no save is in flight. */
+    async idle() {
+      while (running) await running;
+    },
     get pending() {
       return timer !== null || running !== null;
     },
