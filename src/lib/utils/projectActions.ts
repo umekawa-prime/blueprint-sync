@@ -1087,11 +1087,7 @@ async function importPickedPdfIntoOpenProject(
     if (await pathExists(destPath)) {
       throw new Error("同じ名前のPDFが既にあります");
     }
-    const { invoke } = await import("@tauri-apps/api/core");
-    await invoke("write_file_bytes", {
-      path: destPath,
-      bytes: Array.from(file.bytes),
-    });
+    await writeBinaryFile(destPath, file.bytes);
   }
   return [relPath];
 }

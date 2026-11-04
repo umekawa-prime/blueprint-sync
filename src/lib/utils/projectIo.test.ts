@@ -1,8 +1,13 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ProjectMeta } from "./projectFormat";
 
-const { mockInvoke, mockIsTauriRuntime, mockUsesRfd } = vi.hoisted(() => ({
+const { mockInvoke, mockIsTauriRuntime, mockUsesRfd, mockSupportsFolders, mockLoadWebValue, mockSaveWebValue, mockPickBrowserFolder, fsHolder } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
+  mockSupportsFolders: vi.fn(() => false),
+  mockLoadWebValue: vi.fn<(...a: unknown[]) => Promise<unknown>>(),
+  mockSaveWebValue: vi.fn<(...a: unknown[]) => Promise<void>>(async () => {}),
+  mockPickBrowserFolder: vi.fn(),
+  fsHolder: { fs: null as any },
   mockIsTauriRuntime: vi.fn(() => false),
   mockUsesRfd: vi.fn(() => false),
 }));
@@ -14,6 +19,18 @@ vi.mock("@tauri-apps/api/core", () => ({
 vi.mock("./platform", () => ({
   isTauriRuntime: () => mockIsTauriRuntime(),
   usesRfdFileDialog: () => mockUsesRfd(),
+  supportsBrowserFolders: () => mockSupportsFolders(),
+}));
+
+vi.mock("./browserFolders", () => ({
+  get browserFs() {
+    return fsHolder.fs;
+  },
+  pickBrowserFolder: () => mockPickBrowserFolder(),
+  folderAccess: vi.fn(async () => "prompt"),
+  browserFolderName: vi.fn(async () => "name"),
+  loadWebValue: (...a: unknown[]) => mockLoadWebValue(...a),
+  saveWebValue: (...a: unknown[]) => mockSaveWebValue(...a),
 }));
 
 import {
@@ -40,6 +57,9 @@ import {
   writeTextFile,
 } from "./projectIo";
 import { enableWebDemo, resetWebDemo } from "./webDemoFs";
+import { createBrowserFs } from "./browserFs";
+import { createMemoryDirectory } from "./testing/memoryDirectoryHandle";
+import { ensureFolderAccess } from "./projectIo";
 
 function sampleMeta(): ProjectMeta {
   return {
@@ -54,9 +74,38 @@ function sampleMeta(): ProjectMeta {
 describe("projectIo", () => {
   beforeEach(() => {
     vi.clearAllMocks();
-    mockIsTauriRuntime.mockReturnValue(false);
-    mockUsesRfd.mockReturnValue(false);
+    mockIsTauriRuntime.mockReturnValue(true);
+    mockUsesRfd.mockReturnValue(true);
     resetWebDemo();
+    mockSupportsFolders.mockReturnValue(false);
+    const root = createMemoryDirectory();
+    fsHolder.fs = createBrowserFs(async () => root as unknown as FileSystemDirectoryHandle);
+  });
+
+  it("routes fsa paths to the browser folder without calling invoke", async () => {
+    await writeProjectMeta("fsa://r1", sampleMeta());
+    expect(await readProjectMeta("fsa://r1")).toEqual(sampleMeta());
+    expect(await listProjectPdfs("fsa://r1")).toEqual([]);
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("stores recents and session in IndexedDB outside Tauri", async () => {
+    mockIsTauriRuntime.mockReturnValue(false);
+    await saveRecentProjects([{ name: "A", path: "fsa://r1" }]);
+    expect(mockSaveWebValue).toHaveBeenCalledWith("recents", [{ name: "A", path: "fsa://r1" }]);
+    mockLoadWebValue.mockResolvedValueOnce({ folders: ["fsa://r1"], activeFolder: "fsa://r1" });
+    expect(await loadOpenSession()).toEqual({ folders: ["fsa://r1"], activeFolder: "fsa://r1" });
+    expect(mockInvoke).not.toHaveBeenCalled();
+  });
+
+  it("picks a browser folder when supported", async () => {
+    mockSupportsFolders.mockReturnValue(true);
+    mockPickBrowserFolder.mockResolvedValueOnce("fsa://r2");
+    await expect(pickFolder()).resolves.toBe("fsa://r2");
+  });
+
+  it("treats native paths as always accessible", async () => {
+    expect(await ensureFolderAccess("C:/x", true)).toBe("granted");
   });
 
   it("keeps using Tauri file commands even if the web demo flag was left on", async () => {
@@ -125,6 +174,7 @@ describe("projectIo", () => {
   });
 
   it("returns an empty open session in the web demo", async () => {
+    mockIsTauriRuntime.mockReturnValue(false);
     enableWebDemo();
     await expect(loadOpenSession()).resolves.toEqual({ folders: [], activeFolder: null });
     await expect(saveOpenSession({ folders: ["/demo"], activeFolder: "/demo" })).resolves.toBeUndefined();

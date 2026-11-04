@@ -8,6 +8,10 @@ export function shouldOfferBrowserDemo(isTauri = isTauriRuntime()): boolean {
   return !isTauri;
 }
 
+export function supportsBrowserFolders(isTauri = isTauriRuntime()): boolean {
+  return !isTauri && typeof window !== "undefined" && "showDirectoryPicker" in window;
+}
+
 export function shouldAutoStartWebDemo(
   search = typeof window === "undefined" ? "" : window.location.search,
   isTauri = isTauriRuntime(),

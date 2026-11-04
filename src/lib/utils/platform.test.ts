@@ -5,6 +5,7 @@ import {
   isIosLike,
   shouldAutoStartWebDemo,
   shouldOfferBrowserDemo,
+  supportsBrowserFolders,
   usesRfdFileDialog,
   usesSandboxProjects,
   usesSystemCamera,
@@ -59,5 +60,15 @@ describe("platform detection", () => {
     expect(usesSandboxProjects(true, false)).toBe(true);
     expect(usesSandboxProjects(true, true)).toBe(false);
     expect(usesSandboxProjects(false, false)).toBe(false);
+  });
+});
+
+describe("supportsBrowserFolders", () => {
+  it("offers browser folders only outside Tauri when the picker exists", () => {
+    (window as any).showDirectoryPicker = () => {};
+    expect(supportsBrowserFolders(false)).toBe(true);
+    expect(supportsBrowserFolders(true)).toBe(false);
+    delete (window as any).showDirectoryPicker;
+    expect(supportsBrowserFolders(false)).toBe(false);
   });
 });

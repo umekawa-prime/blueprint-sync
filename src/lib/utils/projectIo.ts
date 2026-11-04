@@ -9,7 +9,17 @@ import {
 } from "./projectFormat";
 import { parseAnnotations, serializeAnnotations } from "./annotationPersist";
 import type { AnnotationFile, AnnotationPersistExtras, PageObjects, PhotoPinRecord } from "./annotationPersist";
-import { isTauriRuntime, usesRfdFileDialog } from "./platform";
+import { isTauriRuntime, supportsBrowserFolders, usesRfdFileDialog } from "./platform";
+import { isBrowserFsPath } from "./browserFs";
+import {
+  browserFolderName,
+  browserFs,
+  folderAccess,
+  loadWebValue,
+  pickBrowserFolder,
+  saveWebValue,
+  type FolderAccess,
+} from "./browserFolders";
 import { EMPTY_OPEN_SESSION, parseOpenSession, type OpenSession } from "./projectSession";
 import { shouldDeleteSourceAfterCopy } from "./projectMove";
 import {
@@ -25,9 +35,25 @@ function useWebDemoFs(): boolean {
   return isWebDemo() && !isTauriRuntime();
 }
 
+function useWebStorage(): boolean {
+  return !isTauriRuntime() && !useWebDemoFs();
+}
+
+export { browserFolderName };
+
+export async function ensureFolderAccess(folder: string, request: boolean): Promise<FolderAccess> {
+  if (!isBrowserFsPath(folder)) {
+    return "granted";
+  }
+  return folderAccess(folder, request);
+}
+
 export async function pickFolder(): Promise<string | null> {
   if (useWebDemoFs()) {
     return "/demo";
+  }
+  if (supportsBrowserFolders()) {
+    return pickBrowserFolder();
   }
   if (isTauriRuntime() && !usesRfdFileDialog()) {
     return null;
@@ -39,12 +65,18 @@ export async function initProjectDir(folder: string): Promise<void> {
   if (useWebDemoFs()) {
     return;
   }
+  if (isBrowserFsPath(folder)) {
+    return browserFs.initProjectDir(folder);
+  }
   await invoke("init_project_dir", { folder });
 }
 
 export async function listProjectPdfs(folder: string): Promise<string[]> {
   if (useWebDemoFs()) {
     return webListPdfs(folder);
+  }
+  if (isBrowserFsPath(folder)) {
+    return browserFs.listProjectPdfs(folder);
   }
   return invoke<string[]>("list_project_pdfs", { folder });
 }
@@ -56,12 +88,19 @@ export async function copyFileIntoFolder(source: string, folder: string): Promis
     webPut(dest, webReadBytes(source));
     return dest;
   }
+  if (isBrowserFsPath(folder) || isBrowserFsPath(source)) {
+    return browserFs.copyInto(source, folder);
+  }
   return invoke<string>("copy_file_into_folder", { source, folder });
 }
 
 export async function deleteFile(path: string): Promise<void> {
   if (useWebDemoFs()) {
     webDelete(path);
+    return;
+  }
+  if (isBrowserFsPath(path)) {
+    await browserFs.remove(path);
     return;
   }
   await invoke("delete_file", { path });
@@ -75,6 +114,10 @@ export async function renameFile(from: string, to: string): Promise<void> {
     const bytes = webReadBytes(from);
     webPut(to, bytes);
     webDelete(from);
+    return;
+  }
+  if (isBrowserFsPath(from)) {
+    await browserFs.rename(from, to);
     return;
   }
   await invoke("rename_file", { from, to });
@@ -96,11 +139,18 @@ export async function loadRecentProjects(): Promise<RecentProject[]> {
   if (useWebDemoFs()) {
     return [];
   }
+  if (useWebStorage()) {
+    return loadWebValue<RecentProject[]>("recents", []);
+  }
   return invoke<RecentProject[]>("load_recent_projects");
 }
 
 export async function saveRecentProjects(items: RecentProject[]): Promise<void> {
   if (useWebDemoFs()) {
+    return;
+  }
+  if (useWebStorage()) {
+    await saveWebValue("recents", items);
     return;
   }
   await invoke("save_recent_projects", { items });
@@ -110,12 +160,19 @@ export async function loadOpenSession(): Promise<OpenSession> {
   if (useWebDemoFs()) {
     return EMPTY_OPEN_SESSION;
   }
+  if (useWebStorage()) {
+    return parseOpenSession(JSON.stringify(await loadWebValue("session", EMPTY_OPEN_SESSION)));
+  }
   const raw = await invoke<OpenSession>("load_open_session");
   return parseOpenSession(JSON.stringify(raw ?? EMPTY_OPEN_SESSION));
 }
 
 export async function saveOpenSession(session: OpenSession): Promise<void> {
   if (useWebDemoFs()) {
+    return;
+  }
+  if (useWebStorage()) {
+    await saveWebValue("session", session);
     return;
   }
   await invoke("save_open_session", { session });
@@ -125,12 +182,18 @@ export async function pathExists(path: string): Promise<boolean> {
   if (useWebDemoFs()) {
     return webHas(path);
   }
+  if (isBrowserFsPath(path)) {
+    return browserFs.exists(path);
+  }
   return invoke<boolean>("path_exists", { path });
 }
 
 export async function readTextFile(path: string): Promise<string> {
   if (useWebDemoFs()) {
     return new TextDecoder().decode(webReadBytes(path));
+  }
+  if (isBrowserFsPath(path)) {
+    return new TextDecoder().decode(await browserFs.readBytes(path));
   }
   const bytes = await invoke<number[]>("read_file_bytes", { path });
   return new TextDecoder().decode(Uint8Array.from(bytes));
@@ -139,6 +202,10 @@ export async function readTextFile(path: string): Promise<string> {
 export async function writeBinaryFile(path: string, bytes: Uint8Array): Promise<void> {
   if (useWebDemoFs()) {
     webPut(path, bytes);
+    return;
+  }
+  if (isBrowserFsPath(path)) {
+    await browserFs.writeBytes(path, bytes);
     return;
   }
   await invoke("write_file_bytes", {
@@ -174,6 +241,9 @@ export async function httpGet(url: string): Promise<{
 export async function readBinaryFile(path: string): Promise<Uint8Array> {
   if (useWebDemoFs()) {
     return webReadBytes(path);
+  }
+  if (isBrowserFsPath(path)) {
+    return browserFs.readBytes(path);
   }
   const bytes = await invoke<number[]>("read_file_bytes", { path });
   return Uint8Array.from(bytes);
@@ -235,11 +305,18 @@ export async function listProjectFiles(folder: string): Promise<string[]> {
   if (useWebDemoFs()) {
     return [];
   }
+  if (isBrowserFsPath(folder)) {
+    return browserFs.listProjectFiles(folder);
+  }
   return invoke<string[]>("list_project_files", { folder });
 }
 
 export async function removeDirAll(path: string): Promise<void> {
   if (useWebDemoFs()) {
+    return;
+  }
+  if (isBrowserFsPath(path)) {
+    await browserFs.removeDirAll(path);
     return;
   }
   await invoke("remove_dir_all", { path });
