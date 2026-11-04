@@ -1,13 +1,12 @@
 # Blueprint Sync
 
-現場オフライン環境向けの、Windows / Android クロスプラットフォーム PDF 図面編集・同期アプリです。
+現場オフライン環境向けの、Windows / Android クロスプラットフォーム PDF 図面編集アプリです。
 
 - フロントエンド: Svelte 5 + TypeScript + Tailwind CSS
 - デスクトップ / モバイル: Tauri v2 (Rust)
 - PDF 表示: `pdfjs-dist`
 - 注釈レイヤー: Fabric.js
 - PDF 書き出し: `pdf-lib`
-- 同期: Rust 実装のローカル WebSocket リレー
 
 公式の Tauri v2 `svelte-ts` テンプレートは SvelteKit (SPA / `adapter-static`) です。仕様書の `App.svelte` 相当は `src/routes/+page.svelte`、共有コードは `src/lib/` に置いています。
 
@@ -32,8 +31,6 @@ npm run tauri dev
 ```bash
 npm run dev
 ```
-
-ホスト（WebSocket サーバー起動・QR 表示）は Tauri 実行時のみ使えます。
 
 ## Windows インストーラ
 
@@ -75,8 +72,6 @@ npm run tauri android init
 npm run tauri android dev
 ```
 
-同じ Wi-Fi / テザリング網で、Windows 側の「接続待機」QR を Android から読み取って同期します。
-
 ## iOS / iPadOS
 
 有料の Apple Developer Program は不要です。CI が未署名の `.ipa` を作り、iPad では [SideStore](https://docs.sidestore.io/) が無料 Apple ID で再署名してインストールします。
@@ -100,28 +95,25 @@ Bundle ID は `com.mitra.blueprintsync`。iPhone / iPad 両対応、最低バー
 
 ## 使い方
 
-1. Windows で PDF を開く（ファイル選択またはドラッグ＆ドロップ）
-2. 「接続」→ Windows ホストで待機開始。QR と `ws://IP:7840` を表示
-3. Android で QR を読むか IP を入力して接続
-4. ペン / テキスト / カメラ写真を追加。差分は WebSocket で相互同期
-5. 「保存」で注釈を元 PDF に合成して書き出し
+1. PDF を開く（ファイル選択またはドラッグ＆ドロップ）
+2. ペン / テキスト / カメラ写真を追加
+3. 「保存」で注釈を元 PDF に合成して書き出し
 
 ## ディレクトリ
 
 ```text
 blueprint-sync/
 ├── .github/workflows/build-ios.yml  # iOS / iPadOS IPA の CI
-├── src-tauri/                 # Rust (Tauri, WebSocket サーバー, ファイル選択)
+├── src-tauri/                 # Rust (Tauri, ファイル選択, CAD 変換)
 │   ├── Info.ios.plist         # iOS / iPad 向け Info.plist（カメラ権限など）
 │   └── src/
 │       ├── lib.rs
-│       ├── main.rs
-│       └── sync_server.rs
+│       └── main.rs
 ├── src/
 │   ├── lib/
-│   │   ├── components/        # ツールバー, PDF+Fabric, QR, 接続パネル
-│   │   ├── stores/            # ツール / PDF / 接続 / 注釈
-│   │   └── utils/             # pdfjs, pdf-lib, 同期プロトコル, 画像リサイズ
+│   │   ├── components/        # ツールバー, PDF+Fabric, パネル類
+│   │   ├── stores/            # ツール / PDF / 注釈 / プロジェクト
+│   │   └── utils/             # pdfjs, pdf-lib, ファイル I/O, 画像リサイズ
 │   └── routes/+page.svelte    # メインビュー
 ├── package.json
 └── tailwind.config.js

@@ -3,7 +3,6 @@ import { historyStore } from "$lib/stores/historyStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { viewerApi } from "$lib/stores/viewerApi";
-import { sendCurrentPdf } from "./connectionActions";
 import { openPdfsFromDisk, pickImportFiles } from "./fileAccess";
 import { convertCadBytesToPdf, isCadDrawingBasename, openCadFileInJwCad } from "./cadImport";
 import { isTauriRuntime, usesSandboxProjects } from "./platform";
@@ -881,7 +880,6 @@ export async function openProjectPdf(fileName: string): Promise<void> {
     projectStore.currentPdf = normalized;
     projectStore.error = "";
     pdfStore.status = annotationWarning;
-    sendCurrentPdf();
   } catch (error) {
     const message = error instanceof Error ? error.message : "PDFを開けませんでした";
     pdfStore.status = message;

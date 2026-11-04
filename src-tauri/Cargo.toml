@@ -25,10 +25,7 @@ tauri-plugin-fs = "2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 ezjww-core = { git = "https://github.com/monozukuri-ai/ezjww", tag = "v0.3.2" }
-tokio = { version = "1", features = ["macros", "net", "sync", "time", "rt"] }
-tokio-tungstenite = { version = "0.26", default-features = false, features = ["handshake"] }
-futures-util = "0.3"
-local-ip-address = "0.6"
+tokio = { version = "1", features = ["time"] }
 reqwest = { version = "0.12", default-features = false, features = ["rustls-tls"] }
 ttf-parser = "0.25"
 

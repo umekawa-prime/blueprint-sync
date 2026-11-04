@@ -27,7 +27,6 @@ const {
   mockWriteProjectMeta,
   mockDeleteFile,
   mockOpenUrl,
-  mockSendCurrentPdf,
   mockImportOneDrive,
   mockSandboxProjectsDir,
   mockListProjectFiles,
@@ -59,7 +58,6 @@ const {
   mockDeleteFile: vi.fn(),
   mockRenameFile: vi.fn(),
   mockOpenUrl: vi.fn(),
-  mockSendCurrentPdf: vi.fn(),
   mockImportOneDrive: vi.fn(),
   mockSandboxProjectsDir: vi.fn(),
   mockListProjectFiles: vi.fn(),
@@ -141,9 +139,6 @@ vi.mock("./noteActions", () => ({
   resetNoteState: vi.fn(),
 }));
 
-vi.mock("./connectionActions", () => ({
-  sendCurrentPdf: mockSendCurrentPdf,
-}));
 
 import {
   addProjectLink,
@@ -442,7 +437,6 @@ describe("projectActions", () => {
     expect(annotationStore.exportByPage()).toEqual({
       1: { next: { id: "next", type: "path" } },
     });
-    expect(mockSendCurrentPdf).toHaveBeenCalledTimes(1);
   });
 
   it("opens a schedule pdf from the 工程表 subfolder", async () => {
@@ -472,7 +466,6 @@ describe("projectActions", () => {
       2: { prev: { id: "prev", type: "path" } },
     });
     expect(pdfStore.status).toBe("write failed");
-    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("still opens the next drawing when its annotation file cannot be read", async () => {
@@ -488,7 +481,6 @@ describe("projectActions", () => {
     expect(projectStore.currentPdf).toBe("図面/After.pdf");
     expect(annotationStore.exportByPage()).toEqual({});
     expect(pdfStore.status).toBe("注釈を読み込めなかったため、空の注釈で開きました");
-    expect(mockSendCurrentPdf).toHaveBeenCalledTimes(1);
   });
 
   it("rejects invalid pdf names before importing into a project", async () => {

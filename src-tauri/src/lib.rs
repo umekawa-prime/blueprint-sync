@@ -9,21 +9,18 @@ mod jwcad;
 mod explorer_dialog;
 mod sandbox;
 mod share;
-mod sync_server;
 mod system_camera;
 
 use std::path::{Path, PathBuf};
-use std::sync::Arc;
 
 use serde::Serialize;
 use tauri::ipc::Response;
-use tauri::{AppHandle, Emitter, Manager, State};
+use tauri::{AppHandle, Emitter, Manager};
 
 use crate::sandbox::{
     list_project_files, list_sandbox_projects, remove_dir_all, sandbox_projects_dir, RecentProject,
 };
 use crate::share::share_file;
-use crate::sync_server::{ServerInfo, SyncServer, DEFAULT_PORT};
 
 #[derive(Serialize)]
 struct PdfFile {
@@ -77,20 +74,6 @@ fn decide_copy_into_folder(
     } else {
         CopyIntoFolderDecision::Proceed
     }
-}
-
-#[tauri::command]
-async fn start_sync_server(
-    state: State<'_, Arc<SyncServer>>,
-    port: Option<u16>,
-) -> Result<ServerInfo, String> {
-    state.start(port.unwrap_or(DEFAULT_PORT)).await
-}
-
-#[tauri::command]
-async fn stop_sync_server(state: State<'_, Arc<SyncServer>>) -> Result<(), String> {
-    state.stop().await;
-    Ok(())
 }
 
 #[tauri::command]
@@ -684,10 +667,7 @@ pub fn run() {
             }
             Ok(())
         })
-        .manage(Arc::new(SyncServer::default()))
         .invoke_handler(tauri::generate_handler![
-            start_sync_server,
-            stop_sync_server,
             read_file_bytes,
             write_file_bytes,
             parse_cad_to_dxf,

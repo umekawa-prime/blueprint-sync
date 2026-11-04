@@ -42,14 +42,6 @@ describe("editor shell layout", () => {
     expect(tabBar).not.toContain("min-w-0 flex-1 overflow-x-auto");
   });
 
-  it("labels LAN roles as host and client", () => {
-    const connection = readFileSync(path.resolve("src/lib/components/ConnectionPanel.svelte"), "utf8");
-    expect(connection).toContain("ホスト");
-    expect(connection).toContain("クライアント");
-    expect(connection).not.toContain("Windows ホスト");
-    expect(connection).not.toContain("Android クライアント");
-  });
-
   it("uses sandbox project home actions instead of a folder picker when RFD is off", () => {
     const home = readFileSync(path.resolve("src/lib/components/ProjectHome.svelte"), "utf8");
     expect(home).toContain("usesSandboxProjects");

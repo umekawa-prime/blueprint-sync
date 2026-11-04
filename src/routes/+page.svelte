@@ -2,7 +2,6 @@
   import { onMount } from "svelte";
   import CameraCapture from "$lib/components/CameraCapture.svelte";
   import PhotoMarkup from "$lib/components/PhotoMarkup.svelte";
-  import ConnectionPanel from "$lib/components/ConnectionPanel.svelte";
   import DockPane from "$lib/components/DockPane.svelte";
   import PageSidebar from "$lib/components/PageSidebar.svelte";
   import PdfViewer from "$lib/components/PdfViewer.svelte";
@@ -44,7 +43,6 @@
     watchSystemCameraShots,
   } from "$lib/utils/systemCamera";
 
-  let connectionOpen = $state(false);
   let fileSearchOpen = $state(false);
   let cameraOpen = $state(false);
   let systemCamera = $state<{ message: string; failed: boolean } | null>(null);
@@ -241,7 +239,6 @@
         <div class="flex min-w-0 flex-1 flex-col">
           {#if !viewportStore.isPhone}
             <Toolbar
-              onToggleConnection={() => (connectionOpen = !connectionOpen)}
               onRequestPhoto={requestPhoto}
               onShareProject={onShareProject}
               onSharePdf={onSharePdf}
@@ -256,7 +253,6 @@
                 : ''}"
             >
               <PdfViewer />
-              <ConnectionPanel bind:open={connectionOpen} />
             </div>
             {#if viewportStore.isPhone}
               {#if todoStore.panelOpen}
@@ -282,7 +278,6 @@
           {#if viewportStore.isPhone}
             <Toolbar
               compact
-              onToggleConnection={() => (connectionOpen = !connectionOpen)}
               onRequestPhoto={requestPhoto}
               onShareProject={onShareProject}
               onSharePdf={onSharePdf}

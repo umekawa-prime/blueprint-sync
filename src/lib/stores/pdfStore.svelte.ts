@@ -17,7 +17,6 @@ class PdfStore {
   pageIndex = $state(0);
   zoom = $state(1);
   status = $state("");
-  muteSync = $state(false);
 
   get pageLabel() {
     if (this.pageCount === 0) {

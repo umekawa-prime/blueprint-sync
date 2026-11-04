@@ -14,7 +14,6 @@
   import { photoCaptureStore } from "$lib/stores/photoCaptureStore.svelte";
   import { projectStore } from "$lib/stores/projectStore.svelte";
   import { toolStore } from "$lib/stores/toolStore.svelte";
-  import { broadcastAnnotation } from "$lib/utils/connectionActions";
   import { imageBlobFromPicked, pickImagesFromDisk, readFileAsBytes } from "$lib/utils/fileAccess";
   import { createPhotoPinAssets } from "$lib/utils/imageResize";
   import { bytesForStandaloneViewer, isCadDrawingBasename } from "$lib/utils/cadImport";
@@ -68,7 +67,6 @@
   import { renderPdfPage } from "$lib/utils/pdfRenderer";
   import { isTauriRuntime } from "$lib/utils/platform";
   import { viewerApi } from "$lib/stores/viewerApi";
-  import { sendCurrentPdf } from "$lib/utils/connectionActions";
   import type { EditCommand } from "$lib/utils/editHistory";
   import { staggeredPinPosition } from "$lib/utils/photoPinUi";
   import { renderPinMarkerOverlay } from "$lib/utils/pinMarkers";
@@ -901,7 +899,6 @@
       if (id) {
         const serialized = opt.target.toObject(CUSTOM_PROPS) as Record<string, unknown>;
         annotationStore.remove(pdfStore.pageIndex, id);
-        broadcastAnnotation("remove", pdfStore.pageIndex, id);
         historyStore.push({
           op: "remove",
           page: pdfStore.pageIndex,
@@ -1025,7 +1022,6 @@
     const id = assignId(object);
     const serialized = object.toObject(CUSTOM_PROPS) as Record<string, unknown>;
     annotationStore.upsert(pdfStore.pageIndex, id, serialized);
-    broadcastAnnotation(op, pdfStore.pageIndex, id, serialized);
     if (op === "add") {
       historyStore.push({
         op: "add",
@@ -1064,7 +1060,6 @@
     try {
       if (command.op === "remove") {
         annotationStore.remove(command.page, command.id);
-        broadcastAnnotation("remove", command.page, command.id);
         if (fabricCanvas && command.page === pdfStore.pageIndex) {
           const target = fabricCanvas
             .getObjects()
@@ -1077,7 +1072,6 @@
       }
       if (command.op === "add" && command.after) {
         annotationStore.upsert(command.page, command.id, command.after);
-        broadcastAnnotation("add", command.page, command.id, command.after);
         if (fabricCanvas && command.page === pdfStore.pageIndex) {
           const revived = await util.enlivenObjects<FabricObject>([command.after]);
           revived.forEach((object) => fabricCanvas!.add(object));
@@ -1087,7 +1081,6 @@
       }
       if (command.op === "modify" && command.after) {
         annotationStore.upsert(command.page, command.id, command.after);
-        broadcastAnnotation("modify", command.page, command.id, command.after);
         if (command.page === pdfStore.pageIndex) {
           await restorePageObjects();
         }
@@ -1139,7 +1132,6 @@
     annotationStore.clear();
     const loaded = await bytesForStandaloneViewer(name, bytes);
     await pdfStore.load(loaded.name, loaded.bytes);
-    sendCurrentPdf();
   }
 
   async function onPdfFileDrop(event: DragEvent) {

@@ -1,5 +1,4 @@
 <script lang="ts">
-  import { connectionStore } from "$lib/stores/connectionStore.svelte";
   import { historyStore } from "$lib/stores/historyStore.svelte";
   import { pdfStore } from "$lib/stores/pdfStore.svelte";
   import { todoStore } from "$lib/stores/todoStore.svelte";
@@ -20,13 +19,11 @@
   import ToolGlyph from "$lib/components/ToolGlyph.svelte";
 
   let {
-    onToggleConnection,
     onRequestPhoto,
     compact = false,
     onShareProject,
     onSharePdf,
   }: {
-    onToggleConnection: () => void;
     onRequestPhoto: () => void;
     compact?: boolean;
     onShareProject?: () => void;
@@ -220,9 +217,6 @@
       課題{todoStore.activeCount > 0 ? ` ${todoStore.activeCount}` : ""}
     </button>
     <button type="button" class="toolbar-btn" onclick={() => openSampleSchedule()}>工程表</button>
-    <button class="toolbar-btn ml-auto" class:active={connectionStore.status !== "idle"} onclick={onToggleConnection}>
-      接続
-    </button>
   {/if}
 </header>
 
@@ -276,7 +270,6 @@
         課題{todoStore.activeCount > 0 ? ` ${todoStore.activeCount}` : ""}
       </button>
       <button type="button" class="toolbar-btn" onclick={() => openSampleSchedule()}>工程表</button>
-      <button class="toolbar-btn" class:active={connectionStore.status !== "idle"} onclick={onToggleConnection}>接続</button>
     </div>
   </div>
 {/if}

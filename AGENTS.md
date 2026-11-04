@@ -1,6 +1,6 @@
 # Agent notes — Blueprint Sync
 
-現場オフライン向けの PDF 図面編集・LAN 同期アプリ。スタックは **Svelte 5 + SvelteKit SPA + Tauri v2 (Rust)**。Next.js / React / Svelte 4 の慣習は持ち込まない。
+現場オフライン向けの PDF 図面編集アプリ（LAN 同期機能は削除済み）。スタックは **Svelte 5 + SvelteKit SPA + Tauri v2 (Rust)**。Next.js / React / Svelte 4 の慣習は持ち込まない。
 
 ## 先に読む
 
@@ -13,7 +13,6 @@
 | ファイル I/O・ダイアログ | `src/lib/utils/fileAccess.ts`、`projectIo.ts`、`platform.ts` |
 | Tauri コマンド | `src-tauri/src/lib.rs` の `#[tauri::command]` と `src-tauri/capabilities/default.json` |
 | PDF ↔ キャンバス座標 | `src/lib/utils/pdfCoords.ts`（ここ以外で座標変換を再発明しない） |
-| 同期プロトコル | `src/lib/utils/syncProtocol.ts`、`src-tauri/src/sync_server.rs` |
 
 仕様がある作業は `docs/superpowers/` の該当 spec / plan に従う。
 
@@ -76,7 +75,6 @@
 
 - デスクトップ（Windows）: ネイティブファイルダイアログ（rfd / カスタムコマンド）。
 - Android / iOS: HTML のファイル選択・カメラ。`pick_pdf_file` などはモバイルで意図的にエラーを返す。
-- ホスト（WebSocket・QR）は Tauri 実行時のみ。ブラウザプレビューでは UI だけ動く前提。
 
 ## 検証
 

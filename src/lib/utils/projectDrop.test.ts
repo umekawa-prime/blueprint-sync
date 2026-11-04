@@ -6,7 +6,6 @@ import { projectStore } from "$lib/stores/projectStore.svelte";
 const {
   mockInvoke,
   mockReadFileAsBytes,
-  mockSendCurrentPdf,
   mockPersistCurrentAnnotations,
   mockOpenProjectPdf,
   mockMoveFileIntoFolder,
@@ -19,7 +18,6 @@ const {
 } = vi.hoisted(() => ({
   mockInvoke: vi.fn(),
   mockReadFileAsBytes: vi.fn(),
-  mockSendCurrentPdf: vi.fn(),
   mockPersistCurrentAnnotations: vi.fn(),
   mockOpenProjectPdf: vi.fn(),
   mockMoveFileIntoFolder: vi.fn(),
@@ -39,9 +37,6 @@ vi.mock("./fileAccess", () => ({
   readFileAsBytes: mockReadFileAsBytes,
 }));
 
-vi.mock("./connectionActions", () => ({
-  sendCurrentPdf: mockSendCurrentPdf,
-}));
 
 vi.mock("./projectActions", async () => {
   const actual = await vi.importActual<typeof import("./projectActions")>("./projectActions");
@@ -102,7 +97,6 @@ describe("projectDrop", () => {
     });
     expect(projectStore.pdfs).toEqual(["図面/A.pdf"]);
     expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/A.pdf");
-    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("keeps the current drawing when browser-drop persistence fails", async () => {
@@ -116,7 +110,6 @@ describe("projectDrop", () => {
     expect(mockInvoke).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
-    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("moves tauri-dropped PDFs into the drawing folder and opens them", async () => {
@@ -129,7 +122,6 @@ describe("projectDrop", () => {
     expect(mockMoveFileIntoFolder).toHaveBeenCalledWith("/downloads/B.pdf", "/projects/a/図面");
     expect(projectStore.pdfs).toEqual(["図面/A.pdf", "図面/B.pdf"]);
     expect(mockOpenProjectPdf).toHaveBeenCalledWith("図面/B.pdf");
-    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("moves tauri-dropped PDFs into the schedule folder when requested", async () => {
@@ -150,7 +142,6 @@ describe("projectDrop", () => {
     expect(mockMoveFileIntoFolder).not.toHaveBeenCalled();
     expect(mockListProjectPdfs).not.toHaveBeenCalled();
     expect(mockOpenProjectPdf).not.toHaveBeenCalled();
-    expect(mockSendCurrentPdf).not.toHaveBeenCalled();
   });
 
   it("ignores project imports when no project folder is open", async () => {

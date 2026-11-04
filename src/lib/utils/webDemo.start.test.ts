@@ -13,9 +13,6 @@ vi.mock("./platform", () => ({
   isTauriRuntime: () => mockIsTauriRuntime(),
 }));
 
-vi.mock("./connectionActions", () => ({
-  sendCurrentPdf: vi.fn(),
-}));
 
 import { projectStore } from "$lib/stores/projectStore.svelte";
 import { pdfStore } from "$lib/stores/pdfStore.svelte";

@@ -159,20 +159,6 @@ class AnnotationStore {
     }
   }
 
-  applyRemote(
-    page: number,
-    id: string,
-    object: Record<string, unknown> | undefined,
-    remove = false,
-  ) {
-    if (remove) {
-      this.remove(page, id);
-    } else if (object) {
-      this.upsert(page, id, object);
-    }
-    this.remoteRevision += 1;
-  }
-
   clear() {
     this.byPage = {};
     this.photoPins = {};
