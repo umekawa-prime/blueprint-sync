@@ -4,10 +4,12 @@ import { createMemoryDirectory, readMemoryTree, setPermission } from "./testing/
 import {
   browserFolderName,
   browserFs,
+  clearHandleCacheForTest,
   folderAccess,
   loadWebValue,
   pickBrowserFolder,
   registerRootHandle,
+  resolveRootHandle,
   resetBrowserFoldersForTest,
   saveWebValue,
 } from "./browserFolders";
@@ -46,5 +48,33 @@ describe("browserFolders", () => {
   it("returns null when the folder dialog is cancelled", async () => {
     window.showDirectoryPicker = vi.fn().mockRejectedValue(new DOMException("x", "AbortError"));
     expect(await pickBrowserFolder()).toBeNull();
+  });
+
+  it("resolves a persisted handle from IndexedDB after the cache is cleared", async () => {
+    const clonable = { kind: "directory", name: "保存済み" } as unknown as FileSystemDirectoryHandle;
+    const path = await registerRootHandle(clonable);
+    clearHandleCacheForTest();
+    const rootId = path.slice("fsa://".length);
+    const resolved = await resolveRootHandle(rootId);
+    expect(resolved).not.toBe(clonable);
+    expect(resolved.name).toBe("保存済み");
+    expect(await browserFolderName(path)).toBe("保存済み");
+  });
+
+  it("rejects for an unknown root id", async () => {
+    await expect(resolveRootHandle("unknown-id")).rejects.toThrow(
+      "フォルダが見つかりません。もう一度選んでください",
+    );
+  });
+
+  it("propagates non-clone persistence errors", async () => {
+    const spy = vi.spyOn(IDBObjectStore.prototype, "put").mockImplementation(() => {
+      throw new DOMException("full", "QuotaExceededError");
+    });
+    try {
+      await expect(registerRootHandle(createMemoryDirectory())).rejects.toThrow("full");
+    } finally {
+      spy.mockRestore();
+    }
   });
 });

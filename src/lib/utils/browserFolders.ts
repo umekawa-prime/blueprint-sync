@@ -54,8 +54,13 @@ export async function registerRootHandle(handle: FileSystemDirectoryHandle): Pro
   handleCache.set(rootId, handle);
   try {
     await idbRequest(HANDLES, "readwrite", (s) => s.put(handle, rootId));
-  } catch {
-    // 構造化複製できないハンドル（テスト用など）はセッション内キャッシュのみで扱う。
+  } catch (e) {
+    // 構造化複製できないハンドル（テスト用など）だけはセッション内キャッシュのみで扱う。
+    // クォータ超過などの保存失敗は握りつぶさず呼び出し側へ伝える。
+    if ((e as { name?: string } | null)?.name !== "DataCloneError") {
+      handleCache.delete(rootId);
+      throw e;
+    }
   }
   return `${FSA_SCHEME}${rootId}`;
 }
@@ -123,6 +128,10 @@ export async function saveWebValue(key: WebValueKey, value: unknown): Promise<vo
 }
 
 export const browserFs: BrowserFs = createBrowserFs(resolveRootHandle);
+
+export function clearHandleCacheForTest(): void {
+  handleCache.clear();
+}
 
 export async function resetBrowserFoldersForTest(): Promise<void> {
   handleCache.clear();
