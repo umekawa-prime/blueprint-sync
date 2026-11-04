@@ -168,3 +168,12 @@ describe("annotationStore memo pins", () => {
     expect(annotationStore.memosFor(0)).toEqual([]);
   });
 });
+
+describe("annotationStore.editSeq", () => {
+  it("bumps editSeq on every dirtying edit", () => {
+    const before = annotationStore.editSeq;
+    annotationStore.upsert(0, "a", { id: "a", type: "path" });
+    annotationStore.remove(0, "a");
+    expect(annotationStore.editSeq).toBe(before + 2);
+  });
+});

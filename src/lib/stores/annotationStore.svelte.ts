@@ -8,7 +8,13 @@ class AnnotationStore {
   photoPins = $state<Record<number, Record<string, PhotoPinRecord>>>({});
   memoPins = $state<Record<number, Record<string, MemoPinRecord>>>({});
   dirty = $state(false);
+  editSeq = $state(0);
   remoteRevision = $state(0);
+
+  private markDirty() {
+    this.dirty = true;
+    this.editSeq += 1;
+  }
 
   objectsFor(page: number): Record<string, unknown>[] {
     return Object.values(this.byPage[page] ?? {});
@@ -32,7 +38,7 @@ class AnnotationStore {
     const current = { ...(this.byPage[page] ?? {}) };
     current[id] = { ...object, id };
     this.byPage = { ...this.byPage, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   addPhotoPin(page: number, pin: PhotoPinRecord) {
@@ -43,7 +49,7 @@ class AnnotationStore {
       createdAt: pin.createdAt ?? nextPinCreatedAt(Object.values(current)),
     };
     this.photoPins = { ...this.photoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   updatePhotoPin(page: number, id: string, patch: Partial<Pick<PhotoPinRecord, "title" | "nx" | "ny">>) {
@@ -54,7 +60,7 @@ class AnnotationStore {
     }
     current[id] = { ...existing, ...patch };
     this.photoPins = { ...this.photoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   addPhotoPinImages(page: number, id: string, images: PhotoPinImage[]) {
@@ -68,7 +74,7 @@ class AnnotationStore {
     }
     current[id] = { ...existing, images: [...existing.images, ...images] };
     this.photoPins = { ...this.photoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   // A pin with no photo has nothing to show on the drawing, so dropping the
@@ -86,12 +92,12 @@ class AnnotationStore {
     if (images.length === 0) {
       delete current[id];
       this.photoPins = { ...this.photoPins, [page]: current };
-      this.dirty = true;
+      this.markDirty();
       return "pin";
     }
     current[id] = { ...existing, images };
     this.photoPins = { ...this.photoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
     return "image";
   }
 
@@ -99,7 +105,7 @@ class AnnotationStore {
     const current = { ...(this.photoPins[page] ?? {}) };
     delete current[id];
     this.photoPins = { ...this.photoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   addMemoPin(page: number, pin: MemoPinRecord) {
@@ -109,7 +115,7 @@ class AnnotationStore {
       createdAt: pin.createdAt ?? nextPinCreatedAt(Object.values(current)),
     };
     this.memoPins = { ...this.memoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   updateMemoPin(page: number, id: string, patch: Partial<Pick<MemoPinRecord, "text" | "color" | "nx" | "ny">>) {
@@ -120,21 +126,21 @@ class AnnotationStore {
     }
     current[id] = { ...existing, ...patch };
     this.memoPins = { ...this.memoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   removeMemoPin(page: number, id: string) {
     const current = { ...(this.memoPins[page] ?? {}) };
     delete current[id];
     this.memoPins = { ...this.memoPins, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   remove(page: number, id: string) {
     const current = { ...(this.byPage[page] ?? {}) };
     delete current[id];
     this.byPage = { ...this.byPage, [page]: current };
-    this.dirty = true;
+    this.markDirty();
   }
 
   replacePage(page: number, objects: Record<string, unknown>[], markDirty = true) {
@@ -149,13 +155,13 @@ class AnnotationStore {
     const previous = this.byPage[page] ?? {};
     if (JSON.stringify(previous) === JSON.stringify(mapped)) {
       if (markDirty) {
-        this.dirty = true;
+        this.markDirty();
       }
       return;
     }
     this.byPage = { ...this.byPage, [page]: mapped };
     if (markDirty) {
-      this.dirty = true;
+      this.markDirty();
     }
   }
 
