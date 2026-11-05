@@ -5,13 +5,14 @@
     currentVideoDeviceId,
     defaultEnumerateDevices,
     defaultGetUserMedia,
+    isEnvironmentStream,
     listVideoCameras,
     pickPreferredCamera,
+    selectableCameras,
     startCameraStream,
     stopMediaStream,
     type CameraDevice,
   } from "$lib/utils/cameraCapture";
-  import { prefersCameraCapture } from "$lib/utils/platform";
   import { CAMERA_OVERLAY_CLASS } from "$lib/utils/chromeLayout";
 
   const STORAGE_KEY = "blueprint-sync.cameraDeviceId";
@@ -47,7 +48,7 @@
   }
 
   async function refreshCameras() {
-    cameras = await listVideoCameras(defaultEnumerateDevices);
+    cameras = selectableCameras(await listVideoCameras(defaultEnumerateDevices));
     selectedId = currentVideoDeviceId(stream) ?? cameras[0]?.deviceId ?? "";
   }
 
@@ -55,10 +56,10 @@
     error = "";
     ready = false;
     try {
-      const next = await startCameraStream(defaultGetUserMedia, deviceId, prefersCameraCapture());
+      const next = await startCameraStream(defaultGetUserMedia, deviceId);
       await attachStream(next);
       await refreshCameras();
-      if (autoPrefer) {
+      if (autoPrefer && !isEnvironmentStream(stream)) {
         const preferred = pickPreferredCamera(cameras, deviceId);
         const current = currentVideoDeviceId(stream);
         if (preferred && preferred !== current) {
@@ -110,7 +111,7 @@
 
   onMount(() => {
     const stored = localStorage.getItem(STORAGE_KEY) ?? undefined;
-    void start(stored, !stored && !prefersCameraCapture());
+    void start(stored, true);
   });
 
   onDestroy(() => {
@@ -126,19 +127,21 @@
       <button class="text-slate-400" onclick={close}>閉じる</button>
     </div>
 
-    <label class="mb-3 flex items-center gap-2 text-sm text-slate-300">
-      カメラ
-      <select
-        class="min-w-0 flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1"
-        bind:value={selectedId}
-        onchange={() => void onCameraChange()}
-        disabled={cameras.length === 0}
-      >
-        {#each cameras as camera (camera.deviceId)}
-          <option value={camera.deviceId}>{camera.label}</option>
-        {/each}
-      </select>
-    </label>
+    {#if cameras.length > 1}
+      <label class="mb-3 flex items-center gap-2 text-sm text-slate-300">
+        カメラ
+        <select
+          class="min-w-0 flex-1 rounded border border-slate-600 bg-slate-800 px-2 py-1"
+          bind:value={selectedId}
+          onchange={() => void onCameraChange()}
+          disabled={cameras.length === 0}
+        >
+          {#each cameras as camera (camera.deviceId)}
+            <option value={camera.deviceId}>{camera.label}</option>
+          {/each}
+        </select>
+      </label>
+    {/if}
 
     <video
       bind:this={videoEl}

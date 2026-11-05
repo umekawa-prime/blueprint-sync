@@ -56,6 +56,23 @@ export function isExternalCameraLabel(label: string): boolean {
   return false;
 }
 
+export function isBackCameraLabel(label: string): boolean {
+  return /back|rear|environment|world|背面|リア|アウトカメラ/i.test(label);
+}
+
+export function isFrontCameraLabel(label: string): boolean {
+  if (isBackCameraLabel(label)) {
+    return false;
+  }
+  return /front|user|facetime|integrated|前面|インカメラ|内蔵/i.test(label);
+}
+
+/** Front cameras are hidden whenever any other camera exists. */
+export function selectableCameras(devices: CameraDevice[]): CameraDevice[] {
+  const others = devices.filter((device) => !isFrontCameraLabel(device.label));
+  return others.length > 0 ? others : devices;
+}
+
 export function pickPreferredCamera(
   devices: CameraDevice[],
   preferredId?: string,
@@ -63,8 +80,13 @@ export function pickPreferredCamera(
   if (preferredId && devices.some((device) => device.deviceId === preferredId)) {
     return preferredId;
   }
+  const back = devices.find((device) => isBackCameraLabel(device.label));
   const external = devices.find((device) => isExternalCameraLabel(device.label));
-  return external?.deviceId ?? devices[0]?.deviceId;
+  return back?.deviceId ?? external?.deviceId ?? devices[0]?.deviceId;
+}
+
+export function isEnvironmentStream(stream: MediaStream | null | undefined): boolean {
+  return stream?.getVideoTracks()[0]?.getSettings().facingMode === "environment";
 }
 
 export async function listVideoCameras(
@@ -149,7 +171,7 @@ export function defaultEnumerateDevices(): Promise<MediaDeviceInfo[]> {
 export async function startCameraStream(
   getUserMedia: GetUserMedia = defaultGetUserMedia,
   deviceId?: string,
-  preferEnvironment = false,
+  preferEnvironment = true,
 ): Promise<MediaStream> {
   const attempts: MediaStreamConstraints[] = [];
   if (deviceId) {

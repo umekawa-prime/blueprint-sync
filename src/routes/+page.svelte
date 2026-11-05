@@ -37,6 +37,7 @@
   import { toggleTodoPanel } from "$lib/utils/todoActions";
   import { registerWebServiceWorker } from "$lib/utils/pwa";
   import { startWebAutoSave } from "$lib/utils/webAutoSave.svelte";
+  import { installPageZoomGuard } from "$lib/utils/pageZoomGuard";
   import { prefersCameraCapture, usesSystemCamera } from "$lib/utils/platform";
   import {
     focusAppWindow,
@@ -173,6 +174,7 @@
       fileSearchOpen = true;
     };
     window.addEventListener("keydown", onKey);
+    const removeZoomGuard = installPageZoomGuard();
     const unbind = viewportStore.bind();
     let unlisten: (() => void) | undefined;
     void listenIncomingFiles().then((fn) => {
@@ -184,6 +186,7 @@
     void registerWebServiceWorker();
     return () => {
       window.removeEventListener("keydown", onKey);
+      removeZoomGuard();
       unbind();
       stopAutoSave();
       unlisten?.();

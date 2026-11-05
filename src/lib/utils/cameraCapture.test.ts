@@ -5,10 +5,14 @@ import {
   blobFromCanvas,
   cameraConstraints,
   drawVideoFrame,
+  isBackCameraLabel,
+  isEnvironmentStream,
   isExternalCameraLabel,
+  isFrontCameraLabel,
   listVideoCameras,
   mapCameraError,
   pickPreferredCamera,
+  selectableCameras,
   startCameraStream,
   stopMediaStream,
 } from "./cameraCapture";
@@ -141,6 +145,54 @@ describe("pickPreferredCamera", () => {
   });
 });
 
+describe("back camera preference", () => {
+  const tablet = [
+    { deviceId: "front", label: "Front Camera" },
+    { deviceId: "rear", label: "Rear Camera" },
+  ];
+
+  it("picks the back camera over the front one", () => {
+    expect(pickPreferredCamera(tablet)).toBe("rear");
+    expect(pickPreferredCamera([...tablet].reverse())).toBe("rear");
+  });
+
+  it("does not keep a stored front camera when a back camera exists", () => {
+    expect(pickPreferredCamera(selectableCameras(tablet), "front")).toBe("rear");
+  });
+
+  it("hides front cameras when another camera exists", () => {
+    expect(selectableCameras(tablet)).toEqual([{ deviceId: "rear", label: "Rear Camera" }]);
+    expect(
+      selectableCameras([
+        { deviceId: "front", label: "Integrated Camera" },
+        { deviceId: "usb", label: "USB Camera" },
+      ]).map((camera) => camera.deviceId),
+    ).toEqual(["usb"]);
+  });
+
+  it("keeps the only camera even when it faces the user", () => {
+    const laptop = [{ deviceId: "front", label: "Integrated Camera" }];
+    expect(selectableCameras(laptop)).toEqual(laptop);
+    expect(pickPreferredCamera(selectableCameras(laptop))).toBe("front");
+  });
+
+  it("recognises back and front labels", () => {
+    expect(isBackCameraLabel("camera2 0, facing back")).toBe(true);
+    expect(isBackCameraLabel("背面カメラ")).toBe(true);
+    expect(isFrontCameraLabel("camera2 1, facing front")).toBe(true);
+    expect(isFrontCameraLabel("Rear Camera")).toBe(false);
+    expect(isFrontCameraLabel("USB Camera")).toBe(false);
+  });
+
+  it("detects an environment-facing stream", () => {
+    const stream = (facingMode?: string) =>
+      ({ getVideoTracks: () => [{ getSettings: () => ({ facingMode }) }] }) as unknown as MediaStream;
+    expect(isEnvironmentStream(stream("environment"))).toBe(true);
+    expect(isEnvironmentStream(stream("user"))).toBe(false);
+    expect(isEnvironmentStream(null)).toBe(false);
+  });
+});
+
 describe("isExternalCameraLabel", () => {
   it("treats USB and capture devices as external", () => {
     expect(isExternalCameraLabel("Logitech USB Webcam")).toBe(true);
@@ -162,12 +214,24 @@ describe("listVideoCameras", () => {
 });
 
 describe("startCameraStream", () => {
-  it("requests a video-only stream without locking to a phone camera", async () => {
+  it("asks for the back camera first by default", async () => {
     const stream = { id: "cam" } as unknown as MediaStream;
     const getUserMedia = vi.fn().mockResolvedValue(stream);
 
     await expect(startCameraStream(getUserMedia)).resolves.toBe(stream);
-    expect(getUserMedia).toHaveBeenCalledWith(DEFAULT_CAMERA_CONSTRAINTS);
+    expect(getUserMedia).toHaveBeenCalledTimes(1);
+    expect(getUserMedia).toHaveBeenCalledWith(ENVIRONMENT_CAMERA_CONSTRAINTS);
+  });
+
+  it("falls back to any camera when there is no back camera", async () => {
+    const stream = { id: "cam" } as unknown as MediaStream;
+    const getUserMedia = vi
+      .fn()
+      .mockRejectedValueOnce(new DOMException("none", "OverconstrainedError"))
+      .mockResolvedValueOnce(stream);
+
+    await expect(startCameraStream(getUserMedia)).resolves.toBe(stream);
+    expect(getUserMedia).toHaveBeenNthCalledWith(2, DEFAULT_CAMERA_CONSTRAINTS);
   });
 
   it("tries the selected device before falling back to any camera", async () => {
